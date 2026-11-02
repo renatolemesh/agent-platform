@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block title %}Comentários{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Comentários</h1><p class="sub">Tudo o que comentaram nos seus posts e o que foi feito. Nenhum comentário fica sem registro.</p></div>
+  <div class="actions">
+    {% for key, label in (('attention', 'Precisam de você'), ('noreply', 'Não responderam ao direct'), ('all', 'Todos')) %}
+    <a class="badge {{ 'accent' if f == key else 'plain' }}" href="/console/comments?f={{ key }}{% if media %}&media={{ media }}{% endif %}">{{ label }}{% if key == 'attention' %} ({{ attention }}){% endif %}</a>{% endfor %}
+  </div></div>
+<div class="card flush">{% include "_comments_table.html" %}</div>
+{% endblock %}

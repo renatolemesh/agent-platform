@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block title %}Tenants{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Tenants</h1><p class="sub">Como administrador da plataforma, escolha o tenant cujas telas você quer abrir. A troca fica registrada na auditoria.</p></div></div>
+<div class="card flush"><div class="table-wrap"><table><thead><tr><th>Nome</th><th>Slug</th><th>Status</th><th></th></tr></thead><tbody>
+{% for r in rows %}<tr><td><div class="who-cell"><span class="avatar">{{ r.display_name | initials }}</span><b>{{ r.display_name }}</b></div></td>
+<td class="mono">{{ r.slug }}</td><td><span class="badge {{ 'ok' if r.status == 'active' else (r.status | status_tone) }}">{{ 'Ativo' if r.status == 'active' else (r.status | status_label) }}</span></td>
+<td style="text-align:right"><form method="post" action="/console/tenants/select" class="inline">{{ csrf_input(user) }}<input type="hidden" name="tenant_id" value="{{ r.id }}">
+{% if user.acting_tenant == r.id|string %}<button class="btn-sm" disabled>Atual</button>{% else %}<button class="btn-sm btn-primary">Abrir</button>{% endif %}</form></td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

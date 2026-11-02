@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block title %}Preparação{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Preparação</h1><p class="sub">O que falta para o assistente atender clientes de verdade, lido do estado real da conta.{% if missing %} Faltam <b>{{ missing }}</b>.{% else %} Nada essencial faltando.{% endif %}</p></div></div>
+<div class="card flush"><div class="table-wrap"><table><tbody>
+{% for i in items %}{% set l = labels.get(i.key, (i.key, '')) %}<tr data-setup="{{ i.key }}" data-state="{{ i.state }}">
+<td style="width:36px">{% if i.state == 'done' %}<span class="badge ok">{{ icon('check', 13) }}</span>{% elif i.state == 'warn' %}<span class="badge warn">{{ icon('alert', 13) }}</span>{% else %}<span class="badge bad">{{ icon('alert', 13) }}</span>{% endif %}</td>
+<td><b>{{ l[0] }}</b><div class="muted small">{{ l[1] }}</div></td>
+<td class="muted small">{{ i.get('detail') or '' }}</td>
+<td style="text-align:right">{% if i.link and i.state != 'done' %}<a class="btn btn-sm" href="{{ i.link }}">Resolver</a>{% elif i.link %}<a class="small" href="{{ i.link }}">Ver</a>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div></div>
+<p class="muted small">Itens sem botão dependem de quem cuida da plataforma: a chave do provedor no servidor, a revisão jurídica e a liberação final. O roteiro completo está em <code>docs/runbooks/go-live.md</code>.</p>
+{% endblock %}

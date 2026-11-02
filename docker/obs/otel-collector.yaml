@@ -1,0 +1,57 @@
+# Collector for the obs profile (plan 10 §1). The app exports traces only, over OTLP/HTTP (core/ops/tracing.py).
+# This stack has no trace backend: spans become Prometheus counters and latency histograms and are then discarded.
+# Only service, span name, kind and status turn into labels, so span attributes (IDs, costs) are never stored here.
+# The turn-by-turn trace lives in the database and is read in the console (plan 10 §1).
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # First in every pipeline: refuses data under memory pressure instead of being killed at the container limit (128 MB).
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 100
+    spike_limit_mib: 20
+  # Each app process has its own instance id, new at every restart. As a label it would start new series at each deploy.
+  resource/no-instance:
+    attributes:
+      - key: service.instance.id
+        action: delete
+  batch:
+    timeout: 5s
+
+connectors:
+  span_metrics:
+    metrics_flush_interval: 30s
+    resource_metrics_key_attributes: [service.name]     # one set of counters per service, summed over its processes
+    histogram:
+      explicit:
+        # 20s is the turn p95 limit in plan 10; keep it as a bucket boundary.
+        buckets: [100ms, 500ms, 1s, 2s, 5s, 10s, 20s, 60s]
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+service:
+  telemetry:
+    logs:
+      level: warn
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/no-instance, batch]
+      exporters: [span_metrics]
+    metrics/spans:
+      receivers: [span_metrics]
+      processors: [memory_limiter]
+      exporters: [prometheus]

@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block title %}Verificação{% endblock %}{% block body %}
+<h1 style="margin-bottom:4px">Verificação em duas etapas</h1>
+<p class="muted">Digite o código de 6 dígitos do seu aplicativo autenticador.</p>
+{% if error %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ error }}</p></div>{% endif %}
+<form method="post" action="/console/login/totp">
+  <div class="field"><label for="code">Código</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code"
+    pattern="[0-9 ]{6,7}" placeholder="000 000" required autofocus style="font-size:20px;letter-spacing:.2em;text-align:center"></div>
+  <button class="btn-primary">Confirmar</button>
+</form>
+<p class="muted small" style="margin-top:14px">Perdeu o aplicativo? Peça ao administrador da plataforma para redefinir o 2FA.</p>
+{% endblock %}

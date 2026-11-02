@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% block title %}Base de conhecimento{% if user.role in ('tenant_owner', 'platform_admin') %}<div class="card" data-embedding><h2>Modelo de busca</h2>
+<p class="muted small">Em uso: <span class="mono">{{ embedding.model }}</span>. Trocar refaz os vetores do material aprovado num índice novo, ao lado do atual: os clientes continuam sendo atendidos pelo atual até você aprovar a troca. Custa o preço do modelo novo sobre todo o material.</p>
+{% if reindex and reindex.status == 'running' %}<div class="alert info">{{ icon('sparkle', 16) }}<div style="flex:1"><p>Preparando <span class="mono">{{ reindex.model }}</span>: {{ reindex.done }} de {{ reindex.total }}.</p></div></div>
+<form method="post" action="/console/documents/reindex/{{ reindex.id }}/cancel" class="inline">{{ csrf_input(user) }}<button class="btn-sm">Cancelar</button></form>
+{% elif reindex and reindex.status == 'failed' %}<div class="alert bad">{{ icon('alert', 16) }}<p>A troca para <span class="mono">{{ reindex.model }}</span> parou em {{ reindex.done }} de {{ reindex.total }}. {{ KB_ERROR.get(reindex.error, '') }} O que já foi feito não será pago de novo.</p></div>
+<div class="actions"><form method="post" action="/console/documents/reindex/{{ reindex.id }}/retry" class="inline">{{ csrf_input(user) }}<button class="btn-primary btn-sm">Tentar de novo</button></form>
+<form method="post" action="/console/documents/reindex/{{ reindex.id }}/cancel" class="inline">{{ csrf_input(user) }}<button class="btn-sm">Desistir</button></form></div>
+{% elif reindex and reindex.status == 'ready' and reindex.draft_version_id %}<div class="alert ok">{{ icon('check', 16) }}<p>Índice de <span class="mono">{{ reindex.model }}</span> pronto. Falta aprovar o rascunho em <a href="/console/config">Configuração</a>.</p></div>
+{% else %}<form method="post" action="/console/documents/reindex" class="row">{{ csrf_input(user) }}<div class="field"><label>Trocar para</label><select name="model">{% for m in embedding_models %}<option value="{{ m.name }}">{{ m.name }} · {{ m.per_m | usd }} por milhão de tokens</option>{% endfor %}</select></div>
+<button {{ 'disabled' if not can_index or not embedding_models }}>Preparar a troca</button></form>{% endif %}</div>{% endif %}
+{% endblock %}{% block body %}
+{% if processing %}<meta http-equiv="refresh" content="5">{% endif %}
+<div class="page-head"><div><h1>Base de conhecimento</h1><p class="sub">O assistente só usa o que está aprovado aqui. Envie o documento, leia os trechos e aprove.</p></div></div>
+{% if error %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ error }}</p></div>{% endif %}
+{% if not can_index %}<div class="alert warn">{{ icon('alert', 16) }}<p>Este ambiente usa a chave de testes, que não recebe material real. Dá para enviar e revisar, mas aprovar só funciona com o provedor de produção.</p></div>{% endif %}
+<div class="kpis">
+  <div class="kpi"><div class="label">{{ icon('check', 15) }} Em uso</div><div class="value" data-kpi="approved">{{ rows | selectattr('status', 'equalto', 'approved') | list | length }}</div></div>
+  <div class="kpi"><div class="label">{{ icon('book', 15) }} Em revisão</div><div class="value" data-kpi="in_review">{{ rows | selectattr('status', 'equalto', 'in_review') | list | length }}</div></div>
+  <div class="kpi"><div class="label">{{ icon('alert', 15) }} Bloqueados</div><div class="value" data-kpi="blocked">{{ rows | selectattr('status', 'equalto', 'blocked_pii') | list | length }}</div><div class="hint">Têm dados pessoais</div></div>
+</div>
+
+<div class="card"><h2>Enviar documento</h2>
+  <form method="post" action="/console/documents/upload" enctype="multipart/form-data">{{ csrf_input(user) }}
+    <div class="row">
+      <div class="field"><label>Arquivo PDF (até {{ max_mb }} MB)</label><input type="file" name="file" accept=".pdf,application/pdf" required></div>
+      <div class="field"><label>Nome do documento (opcional)</label><input name="title" maxlength="200" placeholder="Como você chama este material"></div>
+      <button class="btn-primary">{{ icon('upload', 16) }} Enviar</button>
+    </div>
+    <label class="small" style="display:flex;gap:8px;align-items:flex-start;margin:10px 0 4px"><input type="checkbox" name="mask_identifiers" value="1" style="width:auto"> <span>O telefone, o e-mail e o CNPJ deste arquivo são da própria empresa: substituir por marcadores em vez de bloquear. <b>Não marque se houver dados de clientes.</b> CPF e cartão continuam bloqueando.</span></label>
+    <span class="help">Nada é usado até você aprovar. Arquivo com CPF, telefone ou e-mail de pessoas fica bloqueado: envie uma cópia sem esses dados.</span>
+  </form></div>
+
+<div class="card flush"><div class="table-wrap"><table><thead><tr><th>Documento</th><th>Situação</th><th>Uso</th><th class="num">Trechos</th><th>Versão</th><th>Validade</th></tr></thead><tbody>
+{% for r in rows %}<tr><td><div class="who-cell">{{ icon('book', 16) }}<div><a href="/console/documents/{{ r.id }}">{{ r.title }}</a><div class="muted small">{{ r.file_name }}{% if not r.tenant_id %} · do pacote, só leitura{% endif %}</div></div></div></td>
+<td>{% if r.processing == 'queued' %}<span class="badge info">Lendo o arquivo</span>{% elif r.processing == 'indexing' %}<span class="badge info">Preparando para uso</span>{% elif r.processing == 'failed' %}<span class="badge bad">Falhou</span>{% else %}<span class="badge {{ r.status | status_tone }}">{{ r.status | status_label }}</span>{% endif %}</td>
+<td class="small">{{ KB_USE.get(r.visibility, r.visibility) }}{% if r.conflicts %}<div><a class="badge warn" href="/console/documents/{{ r.id }}" data-conflict-badge>Pode contradizer outro</a></div>{% endif %}</td><td class="num">{{ r.chunks }}</td><td class="muted">{{ r.version_label or '—' }}</td><td class="muted nowrap">{{ r.effective_to | dt('%d/%m/%Y') if r.effective_to else '—' }}</td></tr>
+{% else %}<tr><td colspan="6"><div class="empty">{{ icon('book', 28) }}<div>Nenhum documento ainda.</div></div></td></tr>{% endfor %}</tbody></table></div></div>
+{% if user.role in ('tenant_owner', 'platform_admin') %}<div class="card" data-embedding><h2>Modelo de busca</h2>
+<p class="muted small">Em uso: <span class="mono">{{ embedding.model }}</span>. Trocar refaz os vetores do material aprovado num índice novo, ao lado do atual: os clientes continuam sendo atendidos pelo atual até você aprovar a troca. Custa o preço do modelo novo sobre todo o material.</p>
+{% if reindex and reindex.status == 'running' %}<div class="alert info">{{ icon('sparkle', 16) }}<div style="flex:1"><p>Preparando <span class="mono">{{ reindex.model }}</span>: {{ reindex.done }} de {{ reindex.total }}.</p></div></div>
+<form method="post" action="/console/documents/reindex/{{ reindex.id }}/cancel" class="inline">{{ csrf_input(user) }}<button class="btn-sm">Cancelar</button></form>
+{% elif reindex and reindex.status == 'failed' %}<div class="alert bad">{{ icon('alert', 16) }}<p>A troca para <span class="mono">{{ reindex.model }}</span> parou em {{ reindex.done }} de {{ reindex.total }}. {{ KB_ERROR.get(reindex.error, '') }} O que já foi feito não será pago de novo.</p></div>
+<div class="actions"><form method="post" action="/console/documents/reindex/{{ reindex.id }}/retry" class="inline">{{ csrf_input(user) }}<button class="btn-primary btn-sm">Tentar de novo</button></form>
+<form method="post" action="/console/documents/reindex/{{ reindex.id }}/cancel" class="inline">{{ csrf_input(user) }}<button class="btn-sm">Desistir</button></form></div>
+{% elif reindex and reindex.status == 'ready' and reindex.draft_version_id %}<div class="alert ok">{{ icon('check', 16) }}<p>Índice de <span class="mono">{{ reindex.model }}</span> pronto. Falta aprovar o rascunho em <a href="/console/config">Configuração</a>.</p></div>
+{% else %}<form method="post" action="/console/documents/reindex" class="row">{{ csrf_input(user) }}<div class="field"><label>Trocar para</label><select name="model">{% for m in embedding_models %}<option value="{{ m.name }}">{{ m.name }} · {{ m.per_m | usd }} por milhão de tokens</option>{% endfor %}</select></div>
+<button {{ 'disabled' if not can_index or not embedding_models }}>Preparar a troca</button></form>{% endif %}</div>{% endif %}
+{% endblock %}

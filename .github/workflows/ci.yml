@@ -1,0 +1,129 @@
+# CI gate (plan 14 F1-REPO-01, F1-EVAL-01). No live LLM calls here: `pytest -m live` and `lab gate --level full`
+# spend budget and run only by hand / before activating in prod.
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: agentplatform
+          POSTGRES_PASSWORD: agentplatform
+          POSTGRES_DB: agentplatform
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U agentplatform" --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      APP_ENV: dev
+      LLM_PROVIDER: openrouter
+      # owner role runs migrations; the app and the tests connect as app_rw (created by 0002, RLS enforced)
+      MIGRATION_DATABASE_URL: postgresql://agentplatform:agentplatform@127.0.0.1:5432/agentplatform
+      DATABASE_URL: postgresql://app_rw:app_rw@127.0.0.1:5432/agentplatform
+      REDIS_URL: redis://127.0.0.1:6379/0
+      META_APP_SECRET: ci-app-secret
+      META_VERIFY_TOKEN: ci-verify-token
+      CONSOLE_SESSION_SECRET: ci-console-secret
+      SPOOL_DIR: ${{ github.workspace }}/var/spool
+      E2E_REQUIRED: "1"      # tests/e2e skip without a browser on a dev machine; here that would hide them
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Browser for the console tests
+        run: uv run playwright install --with-deps chromium
+
+      - name: Throwaway crypto keys
+        run: |
+          kek=$(python3 -c "import base64,os;print(base64.b64encode(os.urandom(32)).decode())")
+          pepper=$(python3 -c "import base64,os;print(base64.b64encode(os.urandom(32)).decode())")
+          echo "::add-mask::$kek"; echo "::add-mask::$pepper"
+          echo "KEK_B64=$kek" >> "$GITHUB_ENV"; echo "HASH_PEPPER_B64=$pepper" >> "$GITHUB_ENV"
+
+      - name: Ruff
+        run: uv run ruff check src packages tests migrations
+
+      - name: Mypy (typed modules)
+        run: uv run mypy src/agentplatform/core/config src/agentplatform/core/security
+
+      - name: Migrate
+        run: uv run agentplatform migrate
+
+      - name: Bootstrap dev tenant
+        run: uv run agentplatform bootstrap
+
+      - name: Pytest (no live calls)
+        run: uv run pytest -q -m "not live"
+
+      - name: Eval gate (fast, deterministic)
+        run: uv run agentplatform lab gate --level fast
+
+  docker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose files
+        run: |
+          touch .env
+          docker compose -f docker/compose.yaml --profile dev --profile app --profile obs config -q
+          cp docker/prod.env.example docker/prod.env
+          mkdir -p docker/secrets && for s in $(sed -n 's/^  \([a-z_]*\): { file: \.\/secrets\/.*/\1/p' docker/compose.prod.yaml); do
+            echo dummy > "docker/secrets/$s"; done
+          PUBLIC_DOMAIN=ci.example.com ACME_EMAIL=ci@example.com APP_IMAGE=agentplatform:ci docker compose -f docker/compose.prod.yaml config -q
+      - name: Build image
+        run: docker build -f docker/Dockerfile -t agentplatform:ci .
+      - name: Alert rules
+        run: |
+          docker run --rm -v "$PWD/docker/obs/prometheus:/p:ro" --entrypoint promtool prom/prometheus:v3.15.1 test rules /p/tests/agentplatform.test.yml
+      - name: Shell scripts
+        run: shellcheck -S warning scripts/*/*.sh docker/walg/*.sh docker/postgres/initdb/*.sh
+
+  publish:
+    # deploy.sh pulls ghcr.io/<repo>:<sha>: only code that passed every job above gets an image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, docker]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        run: |
+          IMAGE="ghcr.io/$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]'):$GITHUB_SHA"
+          docker build -f docker/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "published $IMAGE"

@@ -1,0 +1,143 @@
+{% extends "base.html" %}{% block title %}Simulador{% endblock %}{% block body %}
+{% set c = snap.conv %}{% set t = snap.turn %}{% set tr = (t.trace if t and t.trace else {}) %}
+{% macro vlabel(x) %}v{{ x.version }} · {{ x.status | status_label }}{% endmacro %}
+<div class="page-head">
+  <div><h1>Simulador</h1><p class="sub">Converse com o assistente como se fosse um cliente, com a configuração ativa ou com um rascunho
+  ainda não aprovado. Nada chega a clientes e nenhum vendedor é avisado. Usa o modelo de IA real: cada mensagem custa frações de centavo.</p></div>
+  <div class="actions">
+    <form method="get" action="/console/simulator" class="row" style="align-items:flex-end">
+      <input type="hidden" name="s" value="{{ session }}">
+      <div class="field" style="min-width:230px"><label>Versão da configuração</label>
+        <select name="v" onchange="this.form.submit()">
+          <option value="active" {{ 'selected' if v == 'active' }}>Ativa (a que os clientes veem)</option>
+          {% for x in versions if x.status != 'active' %}<option value="{{ x.id }}" {{ 'selected' if v == x.id|string }}>{{ vlabel(x) }}</option>{% endfor %}
+        </select></div>
+    </form>
+    <a class="btn" href="/console/simulator?v={{ v }}">{{ icon('sparkle', 16) }} Nova conversa</a>
+  </div>
+</div>
+{% if error %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ error }}</p></div>{% endif %}
+{% for d in table_drafts %}<div class="alert info">{{ icon('table', 16) }}<p>O simulador está usando o <b>rascunho v{{ d.version }}</b> de
+  <a href="/console/datasets?name={{ d.name }}">{{ d.label }}</a> (os clientes continuam com a versão em uso até você ativar).</p></div>{% endfor %}
+
+<div class="grid g-side">
+<div>
+  <div class="card flush">
+    <div class="card-head"><div><h2>Conversa de teste</h2><p class="sub mono">{{ session }}</p></div>
+      {% if c %}<div class="actions"><span class="badge {{ c.ownership | owner_tone }}">{{ c.ownership | owner_label }}</span>
+      <span class="badge plain">{{ stage_label(c.stage, labels) }}</span></div>{% endif %}</div>
+    <div class="chat" id="sim-chat" style="min-height:320px">
+      {% for m in snap.msgs %}<div class="bubble {{ m.direction }}"><span class="meta">{{ DIRECTION.get(m.direction, m.direction) }} · {{ m.provider_ts | dt('%H:%M:%S') }}</span>{{ m.text_masked or '(mídia)' }}</div>
+      {% else %}<div class="empty">{{ icon('chat', 28) }}<div>Escreva como um cliente escreveria no Instagram.</div>
+        <div class="small">Teste o caminho feliz, perguntas sobre o produto, objeções, pedidos de garantia ou promessa e "quero falar com alguém".</div></div>{% endfor %}
+    </div>
+    <form method="post" action="/console/simulator/send" id="sim-form" style="padding:14px;border-top:1px solid var(--line)">{{ csrf_input(user) }}
+      <input type="hidden" name="s" value="{{ session }}"><input type="hidden" name="v" value="{{ v }}">
+      <div class="row" style="flex-wrap:nowrap">
+        <input name="text" placeholder="Mensagem do cliente…" maxlength="1000" required autofocus autocomplete="off" style="flex:1">
+        <button class="btn-primary">Enviar</button></div>
+    </form>
+  </div>
+
+  {% if c and snap.msgs %}<div class="card"><h2>Comparar com outra versão</h2>
+    <p class="muted small">Reenvia as mesmas mensagens do cliente numa conversa nova, com a versão escolhida, para ver a diferença lado a lado.</p>
+    <form method="post" action="/console/simulator/replay" class="row" onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='Reexecutando…'">{{ csrf_input(user) }}
+      <input type="hidden" name="s" value="{{ session }}">
+      <div class="field"><label>Reexecutar com</label><select name="v">
+        <option value="active">Ativa</option>{% for x in versions if x.status != 'active' %}<option value="{{ x.id }}">{{ vlabel(x) }}</option>{% endfor %}</select></div>
+      <button>{{ icon('play', 16) }} Reexecutar conversa</button>
+    </form></div>{% endif %}
+</div>
+
+<div>
+  {% if t %}<div class="card"><h2>O que o assistente fez no último turno</h2>
+    <dl class="kv">
+      <dt>Resultado</dt><dd><span class="badge {{ t.status | status_tone }}">{{ t.status | status_label }}</span></dd>
+      <dt>Estágio</dt><dd>{{ stage_label(t.stage_before, labels) }} → {{ stage_label(t.stage_after, labels) if t.stage_after else '—' }}
+        {% if tr.stage_decision and tr.stage_decision.reason %}<div class="muted small mono">{{ tr.stage_decision.reason }}</div>{% endif %}</dd>
+      <dt>Intenções</dt><dd>{% for i in tr.intents or [] %}<span class="badge plain" style="margin:0 4px 4px 0">{{ i | humanize }}</span>{% else %}—{% endfor %}</dd>
+      {% if tr.handoff %}<dt>Handoff</dt><dd><span class="badge warn">{{ tr.handoff | reason_label }}</span></dd>{% endif %}
+      {% if tr.tools %}<dt>Ferramentas</dt><dd>{% for x in tr.tools %}<span class="badge info plain" style="margin:0 4px 4px 0">{{ x }}</span>{% endfor %}</dd>{% endif %}
+      {% if tr.input_guard %}<dt>Entrada</dt><dd>{% for x in tr.input_guard %}<span class="badge warn plain" style="margin:0 4px 4px 0">{{ x | humanize }}</span>{% endfor %}</dd>{% endif %}
+      <dt>Versão</dt><dd>{{ ('v' ~ t.config_version) if t.config_version else 'arquivo local' }}</dd>
+      <dt>Custo</dt><dd>{{ t.cost_usd | money }} <span class="muted small">· conversa {{ c.cost_usd | money }}</span></dd>
+    </dl></div>
+
+  {% if tr.guidelines %}<div class="card"><h2>Diretrizes aplicadas</h2><ul class="steps">{% for g in tr.guidelines %}<li class="small">{{ g }}</li>{% endfor %}</ul></div>{% endif %}
+
+  {% if snap.guards %}<div class="card" style="border-color:color-mix(in srgb,var(--warn) 40%,var(--line))"><h2>Revisão de segurança</h2>
+    <p class="muted small">Regras que barraram ou reescreveram a resposta antes do envio.</p>
+    {% for g in snap.guards %}<div style="margin-bottom:8px"><span class="badge {{ 'bad' if g.verdict == 'block' else 'warn' }}">{{ g.verdict }}</span>
+      <span class="mono small">{{ g.guard }} · {{ g.rule_id }}</span>{% if g.detail and g.detail.detail %}<div class="muted small">{{ g.detail.detail }}</div>{% endif %}</div>{% endfor %}</div>{% endif %}
+
+  {% if snap.explained and snap.explained.faq %}<div class="card"><h2>Pergunta frequente usada</h2><p class="small"><a href="/console/faqs">{{ snap.explained.faq.canonical_question }}</a></p></div>{% endif %}
+  {% if snap.chunks %}<div class="card"><h2>Trechos consultados</h2>
+    {% for k in snap.chunks %}<div style="margin-bottom:10px"><div class="small"><b>{{ k.file_name }}</b>{% if k.page %} <span class="muted">· p. {{ k.page }}</span>{% endif %}</div>
+      <div class="muted small">{{ k.excerpt }}…</div></div>{% endfor %}</div>{% endif %}
+  {% endif %}
+
+  {% if c %}<div class="card"><h2>Perfil coletado</h2>
+    {% if c.profile %}<dl class="kv">{% for k, val in c.profile.items() %}<dt>{{ slot_label(k, labels) }}</dt><dd>{{ slot_value(k, val, labels) }}</dd>{% endfor %}</dl>
+    {% else %}<p class="muted small">Nada coletado ainda.</p>{% endif %}
+    <p style="margin:12px 0 0"><a href="/console/conversations/{{ c.id }}">Ver trace completo →</a></p></div>{% endif %}
+
+  {% if not t %}<div class="card"><h2>Como calibrar</h2><ol class="steps small">
+    <li>Converse aqui com a versão <b>ativa</b> e anote o que não ficou bom.</li>
+    <li>Em <a href="/console/config">Configuração</a>, ajuste o YAML (persona, diretrizes, perguntas, limites) e <b>proponha</b> uma versão. Ela fica como rascunho.</li>
+    <li>Volte aqui, escolha o rascunho no seletor e use <b>Comparar com outra versão</b> para reexecutar a mesma conversa.</li>
+    <li>Ficou melhor? Outra pessoa aprova o rascunho em Configuração (de uma vez ou como canário).</li></ol></div>{% endif %}
+
+  {% if recent %}<div class="card flush"><div class="card-head"><h2>Conversas de teste recentes</h2></div>
+    <div class="table-wrap"><table><tbody>{% for r in recent %}<tr><td><a class="mono small" href="/console/simulator?s={{ r.session }}&v={{ v }}">{{ r.session }}</a></td>
+      <td class="small">{{ stage_label(r.stage, labels) }}</td><td class="num small muted">{{ r.turns }} msg</td></tr>{% endfor %}</tbody></table></div></div>{% endif %}
+</div>
+</div>
+<script>
+/* Simulator UX: show the customer message at once with a "typing" bubble, then swap in the server-rendered page
+   (same HTML as a normal reload, so the turn explanation panel stays server-side). Falls back to a normal POST. */
+window.simInit = function () {
+  var chat = document.getElementById('sim-chat'), form = document.getElementById('sim-form');
+  if (!chat || !form) return;
+  chat.scrollTop = chat.scrollHeight;
+  var input = form.querySelector('input[name=text]');
+  if (input) input.focus();
+  form.addEventListener('submit', function (e) {
+    if (!window.fetch || !window.DOMParser) return;          // old browser: normal submit
+    e.preventDefault();
+    var text = (input.value || '').trim();
+    if (!text) return;
+    var data = new FormData(form), btn = form.querySelector('button');
+    var empty = chat.querySelector('.empty'); if (empty) empty.remove();
+    var now = new Date(), hh = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    var mine = document.createElement('div'); mine.className = 'bubble in';
+    var meta = document.createElement('span'); meta.className = 'meta'; meta.textContent = 'Cliente · ' + hh;
+    mine.appendChild(meta); mine.appendChild(document.createTextNode(text)); chat.appendChild(mine);
+    var typing = document.createElement('div'); typing.className = 'bubble out_bot typing-bubble';
+    typing.innerHTML = '<span class="meta">Assistente</span><span class="typing"><i></i><i></i><i></i></span> <span class="tick">0 s</span>';
+    chat.appendChild(typing); chat.scrollTop = chat.scrollHeight;
+    input.value = ''; input.disabled = true; btn.disabled = true; btn.textContent = 'Pensando…';
+    var t0 = Date.now(), timer = setInterval(function () {
+      var el = typing.querySelector('.tick'); if (el) el.textContent = Math.round((Date.now() - t0) / 1000) + ' s';
+    }, 500);
+    fetch(form.action, { method: 'POST', body: data, credentials: 'same-origin' })
+      .then(function (r) { return r.text().then(function (html) { return { r: r, html: html }; }); })
+      .then(function (x) {
+        clearInterval(timer);
+        var doc = new DOMParser().parseFromString(x.html, 'text/html');
+        var next = doc.querySelector('main.content'), cur = document.querySelector('main.content');
+        if (!x.r.ok || !next || !cur) throw new Error('HTTP ' + x.r.status);
+        cur.innerHTML = next.innerHTML;
+        if (x.r.redirected) history.replaceState(null, '', x.r.url);
+        window.simInit();
+      })
+      .catch(function (err) {
+        clearInterval(timer);
+        typing.className = 'bubble out_system';
+        typing.textContent = 'Não foi possível obter a resposta (' + err.message + '). Recarregue a página.';
+        input.disabled = false; btn.disabled = false; btn.textContent = 'Enviar';
+      });
+  });
+};
+window.simInit();
+</script>
+{% endblock %}

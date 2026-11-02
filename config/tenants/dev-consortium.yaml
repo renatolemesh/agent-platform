@@ -1,0 +1,146 @@
+# Dev tenant config. OpenAI direct key: synthetic data only (no ZDR). Hard cap below the 0.50 USD key budget.
+schema_version: 1
+tenant_slug: dev-consortium
+segment_package:
+  name: consortium
+  version: 0.1.0
+models:
+  analyze_turn:
+    primary: openai/gpt-4.1-mini
+    fallbacks:
+    - openai/gpt-5-nano
+    temperature: 0.0
+    max_output_tokens: 400
+    timeout_s: 6
+    prompt_version: analyze_turn@v3
+    provider:
+      allow_fallbacks: true
+  respond:
+    primary: openai/gpt-4.1-mini
+    fallbacks:
+    - openai/gpt-5-nano
+    temperature: 0.4
+    max_output_tokens: 500
+    timeout_s: 12
+    prompt_version: respond@v10
+    provider:
+      allow_fallbacks: true
+  output_judge:
+    primary: openai/gpt-5-nano
+    fallbacks: []
+    temperature: 0.0
+    max_output_tokens: 150
+    timeout_s: 5
+    prompt_version: output_judge@v2
+  summarize:
+    primary: openai/gpt-5-nano
+    temperature: 0.0
+    max_output_tokens: 250
+    timeout_s: 10
+    prompt_version: summarize@v1
+  comment_intent:
+    primary: openai/gpt-5-nano
+    fallbacks: []
+    temperature: 0.0
+    max_output_tokens: 60
+    timeout_s: 5
+    prompt_version: comment_intent@v1
+  embedding:
+    model: openai/text-embedding-3-small
+    dims: 1024
+  transcription:
+    model: openai/gpt-4o-mini-transcribe
+    timeout_s: 20
+  allow_same_family_judge: true
+budget:
+  pilot_total_cap_usd: '0.95'
+  net_credit_usd: '1.00'
+  daily_cap_usd: '0.95'
+  per_conversation_cap_usd: '0.05'
+  per_turn_cap_usd: '0.01'
+  experiment_cap_usd: '0.20'
+  openrouter_key_limit_usd: '1.00'
+conversation:
+  persona:
+    assistant_name: Assistente virtual
+    seller_display_name: Consultor (dev)
+    tone: friendly
+    disclose_on_first_message: true
+rag:
+  active_index_id: kb-consortium-v1
+  faq_threshold: 0.86
+  min_score: 0.35
+  top_k: 4
+handoff:
+  routing:
+  - when: 'true'
+    seller_ids:
+    - seller-01
+    strategy: single
+  sla_minutes: 30
+  expectation_message_in_hours: Vou chamar o {seller} para continuar com você por
+    aqui.
+  expectation_message_off_hours: O {seller} responde a partir das 8h. Enquanto isso,
+    posso tirar outras dúvidas.
+comments:
+  enabled: true
+followups:
+  cadences:
+  - id: form_not_filled
+    trigger:
+      event: stage_entered
+      stage: pre_cadastro_enviado
+    steps:
+    - delay: 4h
+      content_kind: template
+      template_key: form_reminder
+compliance:
+  forbidden_phrases:
+  - contempla(ção|do) garantid
+  - garant\w+ (a |de )?contempla
+  - aprova(ção|do) garantid
+  - grupo que (mais )?contempla (mais )?rápido
+  - comiss(ão|ões)
+  required_disclosures:
+    simulation_estimate: Valores estimados com base na tabela vigente. As condições
+      finais constam no contrato e no regulamento do grupo.
+    history_not_guarantee: Isso é histórico de assembleias anteriores e não garante
+      resultado futuro.
+  never_request:
+  - cpf
+  - rg
+  - income
+  - assets
+  - bank_data
+  - health_data
+  extra_rules:
+  - contracting_only_in_official_system
+  - no_contemplation_confirmation
+  - credit_paid_to_seller_of_good_only
+media:
+  transcribe_audio: true
+  images: local_ocr_masked
+  documents: local_extract_masked
+subprocessors:
+- name: OpenAI (direct, dev only, synthetic data)
+  purpose: LLM/embedding/STT in dev
+  data_categories:
+  - synthetic
+  country: US
+  transfer_mechanism: pending
+  zdr: false
+- name: Meta Platforms
+  purpose: Instagram channel
+  data_categories:
+  - messages
+  - ids
+  country: US
+  transfer_mechanism: not_applicable
+  zdr: false
+funnel:
+  question_cooldown_turns: 1     # an unanswered flow question waits one message, then may come back
+operations:
+  feature_flags:
+    consortium.simulation_enabled: true
+    consortium.group_history_enabled: false
+environment: dev

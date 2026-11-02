@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block title %}Curadoria{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Curadoria</h1><p class="sub">O que o assistente não soube responder, das perguntas mais repetidas para as menos. Escreva a resposta uma vez, e da próxima ele responde sozinho.</p></div></div>
+{% if saved %}<div class="alert ok">{{ icon('check', 16) }}<p>{{ saved }}</p></div>{% endif %}
+{% if error %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ error }}</p></div>{% endif %}
+{% for p in problems %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ p | text_problem }}</p></div>{% endfor %}
+{% if not can_index %}<div class="alert warn">{{ icon('alert', 16) }}<p>Este ambiente usa a chave de testes: a resposta vira rascunho em Perguntas frequentes, porque aprovar só funciona com o provedor de produção.</p></div>{% endif %}
+{% for r in rows %}<div class="card" data-question="{{ r.id }}">
+  <div class="row" style="justify-content:space-between;align-items:flex-start">
+    <div><b>{{ r.question_masked }}</b>
+      <div class="muted small">{% if r.frequency > 1 %}Perguntaram {{ r.frequency }} vezes · {% endif %}desde {{ r.created_at | dt('%d/%m') }}{% if r.conversation_id %} · <a href="/console/conversations/{{ r.conversation_id }}">ver a conversa</a>{% endif %}</div></div>
+    <form method="post" action="/console/curation/{{ r.id }}/out-of-scope" class="inline">{{ csrf_input(user) }}<button class="btn-sm btn-ghost">Fora do assunto</button></form>
+  </div>
+  {% if r.similar %}<details style="margin-top:8px" data-group><summary class="small">Parecidas, respondidas junto ({{ r.similar | length }})</summary>{% for q in r.similar %}<div class="row" style="align-items:center;justify-content:space-between;margin-top:6px"><span class="small">{{ q }}</span>
+    <form method="post" action="/console/curation/{{ r.id }}/ungroup" class="inline">{{ csrf_input(user) }}<input type="hidden" name="question" value="{{ q }}"><button class="btn-sm">É outro assunto</button></form></div>{% endfor %}</details>{% endif %}
+  <form method="post" action="/console/curation/{{ r.id }}/faq" style="margin-top:10px">{{ csrf_input(user) }}
+    {% set mine = draft if draft.get('id') == r.id | string else {} %}
+    <div class="field"><label>Pergunta, como vai ficar salva</label><input name="question" value="{{ mine.get('question', r.question_masked) }}" maxlength="200"></div>
+    <div class="field"><label>Resposta</label><textarea name="answer" rows="3" maxlength="1000">{{ mine.get('answer', '') }}</textarea></div>
+    <button class="btn-primary btn-sm">{{ icon('check', 14) }} Salvar resposta</button>
+  </form>
+  {% if faqs or docs %}<details style="margin-top:10px"><summary class="small">Já está respondida em outro lugar</summary>
+    {% if faqs %}<form method="post" action="/console/curation/{{ r.id }}/variant" class="row" style="margin-top:8px">{{ csrf_input(user) }}
+      <div class="field"><label>Mesma pergunta de</label><select name="faq_id">{% for f in faqs %}<option value="{{ f.id }}">{{ f.canonical_question }}</option>{% endfor %}</select></div><button class="btn-sm">Anexar</button></form>{% endif %}
+    {% if docs %}<form method="post" action="/console/curation/{{ r.id }}/document" class="row" style="margin-top:8px">{{ csrf_input(user) }}
+      <div class="field"><label>O documento responde</label><select name="document_id">{% for d in docs %}<option value="{{ d.id }}">{{ d.title }}</option>{% endfor %}</select></div><button class="btn-sm">Ligar</button></form>{% endif %}
+    <p class="muted small" style="margin-top:6px">Falta um documento? <a href="/console/documents">Envie em Base de conhecimento</a>.</p>
+  </details>{% endif %}
+</div>{% else %}<div class="card"><div class="empty">{{ icon('check', 28) }}<div>Nada pendente.</div></div></div>{% endfor %}
+{% endblock %}

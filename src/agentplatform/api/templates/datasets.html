@@ -1,0 +1,153 @@
+{% extends "base.html" %}{% block title %}{{ spec.label if spec else 'Tabelas' }}{% endblock %}{% block body %}
+{% if not spec %}
+<div class="page-head"><div><h1>Tabelas</h1><p class="sub">O segmento deste tenant não usa tabelas cadastráveis.</p></div></div>
+{% else %}
+{% set can_edit = user.role in ('tenant_owner', 'platform_admin') %}
+{% macro show(v, c) %}{% if v is none or v == '' %}<span class="muted">—</span>{% elif c.kind == 'choice' %}{{ c.choices.get(v|string, v) }}{% elif c.kind == 'number' %}{{ v|brnum }}{% else %}{{ v }}{% endif %}{% endmacro %}
+<style>
+.ds-grid td{padding:4px 4px}.ds-grid th{padding:8px 6px;font-size:11px}
+.ds-grid input,.ds-grid select{width:100%;min-width:92px;padding:6px 7px;font-size:13px}
+.ds-grid td.ix{color:var(--faint);font-size:12px;text-align:right;padding-right:8px;width:28px}
+.ds-grid button.rm{padding:4px 8px;color:var(--muted)}
+.ds-prev td{white-space:nowrap}
+.ds-grid th,.ds-prev th{white-space:normal;min-width:84px;vertical-align:bottom;line-height:1.3;overflow-wrap:normal;word-break:normal}
+tr.mark-new td{background:var(--ok-soft)}tr.mark-changed td{background:var(--warn-soft)}
+tr.mark-removed td{background:var(--bad-soft);text-decoration:line-through;color:var(--muted)}
+.ds-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+</style>
+
+<div class="page-head"><div><h1>{{ spec.label }}</h1><p class="sub">{{ spec.description }} Você cadastra e atualiza aqui:
+cada mudança vira uma <b>nova versão</b> em rascunho, e só vale para os clientes depois de <b>ativada</b>. Dá para voltar a qualquer
+versão anterior.</p></div>
+  <div class="actions">
+    {% if live %}<a class="btn btn-sm" href="/console/datasets/export?name={{ spec.name }}">{{ icon('download', 14) }} Baixar planilha em uso</a>{% endif %}
+    <a class="btn btn-sm" href="/console/datasets/export?name={{ spec.name }}&template=1">{{ icon('download', 14) }} Baixar modelo</a>
+  </div></div>
+
+{% if specs|length > 1 %}<div class="ds-tabs">{% for s in specs %}<a class="btn btn-sm{{ ' btn-primary' if s.name == spec.name }}" href="/console/datasets?name={{ s.name }}">{{ s.label }}</a>{% endfor %}</div>{% endif %}
+
+{% if msg == 'draft' %}<div class="alert ok">{{ icon('check', 16) }}<div><p><b>Rascunho salvo.</b> Confira a prévia abaixo e clique em <b>Ativar</b> quando estiver certo.
+  {% if flag_on is not none %}Antes de ativar, dá para testar no <a href="/console/simulator">simulador</a>: ele usa o rascunho.{% endif %}</p></div></div>
+{% elif msg == 'activated' %}<div class="alert ok">{{ icon('check', 16) }}<div><p><b>Versão ativada.</b> Vale a partir da próxima mensagem dos clientes.
+  {% if flag_on == false %}O uso nas respostas ainda está <b>desligado</b> (veja abaixo).{% endif %}</p></div></div>
+{% elif msg == 'discarded' %}<div class="alert info">{{ icon('check', 16) }}<div><p>Rascunho descartado.</p></div></div>{% endif %}
+{% if flag_draft %}<div class="alert ok">{{ icon('check', 16) }}<div style="flex:1"><p>Rascunho de configuração criado. Teste e peça para outra pessoa aprovar.</p>
+  <div class="actions" style="margin-top:10px"><a class="btn btn-primary btn-sm" href="/console/simulator?v={{ flag_draft }}">{{ icon('sparkle', 14) }} Testar no simulador</a>
+  <a class="btn btn-sm" href="/console/config">Aprovar em Configuração</a></div></div></div>{% endif %}
+{% if ignored %}<div class="alert warn">{{ icon('alert', 16) }}<div><p>Colunas da planilha que não foram reconhecidas e ficaram de fora: <b>{{ ignored|join(', ') }}</b>.
+  Use os nomes do modelo.</p></div></div>{% endif %}
+{% if errors %}<div class="alert bad">{{ icon('alert', 16) }}<div><p><b>Não foi salvo. Corrija e tente de novo:</b></p>{% for e in errors %}<p>· {{ e }}</p>{% endfor %}</div></div>{% endif %}
+
+<div class="kpis">
+  <div class="kpi{{ ' ok' if live else ' warn' }}"><div class="label">{{ icon('table', 14) }} Em uso</div>
+    <div class="value">{% if live %}v{{ live.version }}{% else %}nenhuma{% endif %}</div>
+    <div class="hint">{% if live %}{{ live.row_count }} linha(s){% if live_is_platform %} · tabela padrão da plataforma{% endif %}{% else %}nada cadastrado ainda{% endif %}</div></div>
+  <div class="kpi{{ ' warn' if draft }}"><div class="label">{{ icon('settings', 14) }} Rascunho</div>
+    <div class="value">{% if draft %}v{{ draft.version }}{% else %}—{% endif %}</div>
+    <div class="hint">{% if draft %}{{ draft.row_count }} linha(s) · aguardando ativação{% else %}nenhuma mudança pendente{% endif %}</div></div>
+  {% if flag_on is not none %}<div class="kpi{{ ' ok' if flag_on and live else '' }}"><div class="label">{{ icon('sparkle', 14) }} Uso nas respostas</div>
+    <div class="value">{{ 'Ligado' if flag_on else 'Desligado' }}</div>
+    <div class="hint">{% if flag_on and not live %}ligado, mas sem tabela ativa: passa para o vendedor{% elif flag_on %}o assistente informa valores desta tabela{% else %}o assistente não informa valores{% endif %}</div></div>{% endif %}
+</div>
+
+  {% if draft %}
+  <div class="card flush"><div class="card-head"><div><h2>Prévia do rascunho v{{ draft.version }}</h2>
+    <p class="sub">{{ marks|select('equalto','new')|list|length }} nova(s) · {{ marks|select('equalto','changed')|list|length }} alterada(s) · {{ removed|length }} removida(s)
+    em relação à versão em uso{% if draft.note %} · “{{ draft.note }}”{% endif %}</p></div>
+    {% if can_edit %}<div class="actions">
+      <form method="post" action="/console/datasets/discard" class="inline">{{ csrf_input(user) }}<input type="hidden" name="name" value="{{ spec.name }}">
+        <button class="btn-sm btn-ghost">Descartar</button></form>
+      <form method="post" action="/console/datasets/activate" class="inline">{{ csrf_input(user) }}<input type="hidden" name="name" value="{{ spec.name }}">
+        <input type="hidden" name="dataset_id" value="{{ draft.id }}"><button class="btn-sm btn-primary">{{ icon('check', 14) }} Ativar v{{ draft.version }}</button></form>
+    </div>{% endif %}</div>
+    <div class="table-wrap"><table class="ds-prev"><thead><tr><th></th>{% for c in cols %}<th>{{ c.label }}</th>{% endfor %}{% for k in (draft_preview[0] or {}).keys() %}<th class="num">{{ k }}</th>{% endfor %}</tr></thead><tbody>
+    {% for r in draft_rows %}{% set m = marks[loop.index0] %}<tr class="{{ 'mark-' ~ m if m }}">
+      <td>{% if m == 'new' %}<span class="badge ok">Nova</span>{% elif m == 'changed' %}<span class="badge warn">Alterada</span>{% endif %}</td>
+      {% for c in cols %}<td class="{{ 'num' if c.kind in ('number','integer') }}">{{ show(r.get(c.name), c) }}</td>{% endfor %}
+      {% for v in draft_preview[loop.index0].values() %}<td class="num nowrap">{{ v }}</td>{% endfor %}</tr>{% endfor %}
+    {% for r in removed %}<tr class="mark-removed"><td><span class="badge bad">Removida</span></td>{% for c in cols %}<td>{{ show(r.get(c.name), c) }}</td>{% endfor %}{% for k in (draft_preview[0] or {}).keys() %}<td></td>{% endfor %}</tr>{% endfor %}
+    </tbody></table></div></div>
+  {% endif %}
+
+  {% if can_edit %}
+  <div class="card"><h2>{{ 'Editar' if (draft or live) else 'Cadastrar' }}</h2>
+    <p class="muted small">{% if draft %}Editando a partir do rascunho v{{ draft.version }}.{% elif live and not live_is_platform %}Editando a partir da versão em uso (v{{ live.version }}).{% else %}Preencha uma linha por item.{% endif %}
+    Números podem ir no formato brasileiro (<span class="mono">300.000,00</span>, <span class="mono">15%</span>). Linhas em branco são ignoradas.</p>
+    <form method="post" action="/console/datasets/save" id="ds-form">{{ csrf_input(user) }}<input type="hidden" name="name" value="{{ spec.name }}">
+      <div class="table-wrap"><table class="ds-grid"><thead><tr><th></th>{% for c in cols %}<th title="{{ c.help }}">{{ c.label }}{% if c.required %} *{% endif %}</th>{% endfor %}<th></th></tr></thead>
+      <tbody id="ds-rows">{% for r in grid %}<tr>
+        <td class="ix">{{ loop.index }}</td>
+        {% for c in cols %}<td>{% if c.kind == 'choice' %}<select name="c_{{ c.name }}"><option value="">—</option>{% for v, lab in c.choices.items() %}<option value="{{ v }}" {{ 'selected' if (r.get(c.name)|string) == v }}>{{ lab }}</option>{% endfor %}</select>
+          {% else %}<input name="c_{{ c.name }}" value="{{ r.get(c.name, '') }}" {{ 'inputmode=decimal' if c.kind in ('number','integer') }}>{% endif %}</td>{% endfor %}
+        <td><button type="button" class="btn-sm btn-ghost rm" title="Remover linha" onclick="dsRemove(this)">×</button></td></tr>{% endfor %}
+      </tbody></table></div>
+      <div class="row" style="margin-top:12px">
+        <button type="button" class="btn-sm" onclick="dsAdd()">+ Linha</button>
+        <div class="field"><label>O que mudou (anotação)</label><input name="note" maxlength="300" value="{{ note }}" placeholder="ex.: tabela de outubro"></div>
+        <button class="btn-primary">Salvar rascunho</button>
+      </div>
+    </form>
+  </div>
+
+  {% endif %}
+<div class="grid g-side">
+<div>
+  {% if can_edit %}
+  <div class="card"><h2>Importar planilha</h2>
+    <p class="muted small">Envie um .xlsx ou .csv com os nomes das colunas na primeira linha (os do <a href="/console/datasets/export?name={{ spec.name }}&template=1">modelo</a>).
+    A planilha <b>substitui a tabela inteira</b> no rascunho; nada muda para os clientes até você ativar.</p>
+    <form method="post" action="/console/datasets/upload" enctype="multipart/form-data" class="row">{{ csrf_input(user) }}
+      <input type="hidden" name="name" value="{{ spec.name }}">
+      <div class="field"><label>Arquivo</label><input type="file" name="file" accept=".xlsx,.xlsm,.csv" required></div>
+      <button>{{ icon('upload', 14) }} Enviar para o rascunho</button></form>
+  </div>
+  {% elif live %}
+  <div class="card flush"><div class="card-head"><h2>Versão em uso (v{{ live.version }})</h2></div>
+    <div class="table-wrap"><table class="ds-prev"><thead><tr>{% for c in cols %}<th>{{ c.label }}</th>{% endfor %}{% for k in (live_preview[0] or {}).keys() %}<th class="num">{{ k }}</th>{% endfor %}</tr></thead><tbody>
+    {% for r in live_rows %}<tr>{% for c in cols %}<td>{{ show(r.get(c.name), c) }}</td>{% endfor %}{% for v in live_preview[loop.index0].values() %}<td class="num nowrap">{{ v }}</td>{% endfor %}</tr>{% endfor %}
+    </tbody></table></div></div>
+  {% endif %}
+
+  <div class="card flush"><div class="card-head"><h2>Versões</h2></div>
+  {% if versions %}<div class="table-wrap"><table><thead><tr><th>Versão</th><th>Situação</th><th class="num">Linhas</th><th>Criada</th><th>Ativada</th><th>Anotação</th><th></th></tr></thead><tbody>
+  {% for v in versions %}<tr><td class="mono">v{{ v.version }}</td>
+    <td>{% if v.status == 'active' %}<span class="badge ok">Em uso</span>{% elif v.status == 'draft' %}<span class="badge warn">Rascunho</span>{% else %}<span class="badge muted">Anterior</span>{% endif %}</td>
+    <td class="num">{{ v.row_count }}</td>
+    <td class="nowrap small">{{ v.created_at|dt }}{% if v.created_by_name %}<div class="muted">{{ v.created_by_name }}</div>{% endif %}</td>
+    <td class="nowrap small">{% if v.activated_at %}{{ v.activated_at|dt }}{% if v.approved_by_name %}<div class="muted">{{ v.approved_by_name }}</div>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="small">{{ v.note or '' }}</td>
+    <td class="nowrap"><a class="btn btn-sm btn-ghost" href="/console/datasets/export?name={{ spec.name }}&dataset_id={{ v.id }}" title="Baixar">{{ icon('download', 14) }}</a>
+      {% if can_edit and v.status == 'retired' %}<form method="post" action="/console/datasets/activate" class="inline">{{ csrf_input(user) }}<input type="hidden" name="name" value="{{ spec.name }}">
+        <input type="hidden" name="dataset_id" value="{{ v.id }}"><button class="btn-sm" title="Voltar a usar esta versão">Voltar para esta</button></form>{% endif %}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<div class="empty">{{ icon('table', 28) }}<p>Nenhuma versão cadastrada.</p></div>{% endif %}</div>
+</div>
+
+<div>
+  <div class="card"><h3>Como o assistente usa</h3><p class="small">{{ spec.used_for }}</p>
+    {% if flag_on is not none and can_edit %}
+    <p class="small muted">Ligar ou desligar cria um rascunho de configuração (outra pessoa aprova em Configuração).</p>
+    <form method="post" action="/console/datasets/flag">{{ csrf_input(user) }}<input type="hidden" name="name" value="{{ spec.name }}">
+      <input type="hidden" name="on" value="{{ '0' if flag_on else '1' }}">
+      <button class="btn-sm{{ '' if flag_on else ' btn-primary' }}">{{ 'Desligar uso nas respostas' if flag_on else 'Ligar uso nas respostas' }}</button></form>{% endif %}
+  </div>
+  <div class="card"><h3>Colunas</h3><dl class="small" style="margin:0">{% for c in cols %}
+    <dt style="font-weight:600;margin-top:8px">{{ c.label }}{% if c.required %} <span class="muted">(obrigatória)</span>{% endif %}</dt>
+    <dd style="margin:2px 0 0;color:var(--fg-2)">{{ c.help }}{% if c.kind == 'choice' %}{{ ' ' if c.help }}Opções: {{ c.choices.values()|join(', ') }}.{% endif %}</dd>{% endfor %}</dl></div>
+  <div class="card"><h3>Boas práticas</h3><ol class="steps small">
+    <li>Use os números da tabela oficial vigente; o assistente nunca inventa valores fora dela.</li>
+    <li>Ao trocar de mês, importe a planilha nova, confira a prévia e ative.</li>
+    <li>Errou? Em <b>Versões</b>, clique em <b>Voltar para esta</b>.</li></ol></div>
+</div>
+</div>
+
+<script>
+function dsRenumber(){document.querySelectorAll('#ds-rows tr').forEach(function(tr,i){var c=tr.querySelector('td.ix');if(c)c.textContent=i+1;});}
+function dsAdd(){var rows=document.getElementById('ds-rows');var last=rows.lastElementChild;if(!last)return;var tr=last.cloneNode(true);
+  tr.querySelectorAll('input').forEach(function(i){i.value='';});tr.querySelectorAll('select').forEach(function(s){s.selectedIndex=0;});
+  rows.appendChild(tr);dsRenumber();var f=tr.querySelector('input,select');if(f)f.focus();}
+function dsRemove(btn){var rows=document.getElementById('ds-rows');var tr=btn.closest('tr');
+  if(rows.children.length>1){tr.remove();}else{tr.querySelectorAll('input').forEach(function(i){i.value='';});tr.querySelectorAll('select').forEach(function(s){s.selectedIndex=0;});}
+  dsRenumber();}
+</script>
+{% endif %}
+{% endblock %}

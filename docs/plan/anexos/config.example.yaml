@@ -1,0 +1,125 @@
+# Example tenant config (first client). Model ids are OpenRouter slugs checked on 2026-10-09;
+# final per-node choice comes from the lab sweep (plan 10). Prices: plan 08 §custo.
+schema_version: 1
+tenant_slug: consultor-exemplo-01
+segment_package: { name: consortium, version: 0.1.0 }
+meta: { graph_api_version: v26.0, login_kind: facebook_login }
+
+models:
+  analyze_turn:
+    primary: google/gemini-2.5-flash-lite
+    fallbacks: [openai/gpt-5-nano]
+    temperature: 0.0
+    max_output_tokens: 400
+    timeout_s: 6
+    prompt_version: analyze_turn@v1
+    provider: { allow_fallbacks: true }      # 'only' would block the openai fallback (review #18)
+  respond:
+    primary: deepseek/deepseek-v4-flash
+    fallbacks: [google/gemini-3.1-flash-lite]
+    temperature: 0.4
+    max_output_tokens: 500
+    timeout_s: 12
+    prompt_version: respond@v1
+    provider: { order: [deepinfra], allow_fallbacks: true }
+  output_judge:
+    primary: openai/gpt-5-nano
+    fallbacks: [mistralai/mistral-small-2603]
+    temperature: 0.0
+    max_output_tokens: 150
+    timeout_s: 5
+    prompt_version: output_judge@v1
+  summarize:
+    primary: google/gemini-2.5-flash-lite
+    temperature: 0.0
+    max_output_tokens: 250
+    timeout_s: 10
+    prompt_version: summarize@v1
+  embedding: { model: qwen/qwen3-embedding-8b, dims: 1024 }
+  transcription: { model: openai/whisper-large-v3-turbo, timeout_s: 20 }
+  rerank: null
+
+budget:
+  pilot_total_cap_usd: "4.50"
+  net_credit_usd: "4.74"
+  daily_cap_usd: "2.00"
+  per_conversation_cap_usd: "0.10"
+  per_turn_cap_usd: "0.02"
+  openrouter_key_limit_usd: "2.50"
+
+conversation:
+  persona:
+    assistant_name: "Assistente virtual"
+    seller_display_name: "{{seller_first_name}}"
+    tone: friendly
+    disclose_on_first_message: true
+
+rag:
+  active_index_id: kb-consortium-v1
+  faq_threshold: 0.86
+  min_score: 0.35
+  top_k: 4
+
+handoff:
+  triggers_enabled: [explicit_request, frustration, low_confidence_repeated, no_progress, technical_failure,
+                     hot_lead, simulation_request, post_sale, cancellation, legal, requires_sensitive_data]
+  routing:
+    - { when: "true", seller_ids: [seller-01], strategy: single }
+  sla_minutes: 30
+  expectation_message_in_hours: "Vou chamar o {seller} para continuar com você por aqui."
+  expectation_message_off_hours: "O {seller} responde a partir das 8h. Enquanto isso, posso tirar outras dúvidas."
+  notifier: whatsapp_cloud
+  notifier_fallback: email
+
+comments:
+  enabled: true
+  rules:
+    - id: interest-any-post
+      scope: account
+      trigger: { kind: keyword, values: ["quero", "valor", "como funciona", "info", "parcela", "me chama", "tenho interesse"] }
+      actions: [public_reply, private_reply, register_lead]
+      public_variants:
+        - "Te chamei no direct! 😊"
+        - "Mandei uma mensagem para você no direct."
+        - "Oi! Te respondi por mensagem, dá uma olhada lá."
+      private_variants:
+        A: "Oi! Vi seu comentário 😊 Você está pensando em imóvel, carro ou outro objetivo?"
+        B: "Oi! Posso te explicar como funciona. É para imóvel ou para veículo?"
+      private_weights: { A: 0.5, B: 0.5 }
+      priority: 100
+
+followups:
+  cadences:
+    - id: form_not_filled
+      trigger: { event: stage_entered, stage: pre_cadastro_enviado }
+      steps: [ { delay: 4h, content_kind: template, template_key: form_reminder } ]
+      stop_on: [inbound_message, opt_out, handoff, ownership_human, stage_changed, form_submitted]
+
+compliance:
+  forbidden_phrases:
+    - "contempla(ção|do) garantid"
+    - "garant\\w+ (a |de )?contempla"
+    - "aprova(ção|do) garantid"
+    - "grupo que (mais )?contempla (mais )?rápido"
+    - "comiss(ão|ões)"
+  required_disclosures:
+    simulation_estimate: "Valores estimados com base na tabela vigente. As condições finais constam no contrato e no regulamento do grupo."
+    history_not_guarantee: "Isso é histórico de assembleias anteriores e não garante resultado futuro."
+  never_request: [cpf, rg, income, assets, bank_data, health_data]
+  extra_rules: [contracting_only_in_official_system, no_contemplation_confirmation, credit_paid_to_seller_of_good_only]
+
+media: { transcribe_audio: true, images: local_ocr_masked, documents: local_extract_masked }
+
+subprocessors:   # LGPD inventory (RIPD); transfer mechanism validated with legal before go_live
+  - { name: OpenRouter, purpose: "LLM/embedding/STT routing", data_categories: [masked_messages], country: US, transfer_mechanism: pending, zdr: true }
+  - { name: Google (via OpenRouter), purpose: "analyze_turn, summarize", data_categories: [masked_messages], country: US, transfer_mechanism: pending, zdr: true }
+  - { name: DeepInfra (via OpenRouter), purpose: "respond, STT", data_categories: [masked_messages, audio], country: US, transfer_mechanism: pending, zdr: true }
+  - { name: OpenAI/Azure (via OpenRouter), purpose: "output_judge", data_categories: [masked_messages], country: US, transfer_mechanism: pending, zdr: true }
+  - { name: Meta Platforms, purpose: "Instagram channel, WhatsApp notifier", data_categories: [messages, ids], country: US, transfer_mechanism: not_applicable, zdr: false }
+  - { name: SMTP provider, purpose: "handoff e-mail fallback", data_categories: [first_name, summary], country: BR, transfer_mechanism: not_applicable, zdr: false }
+  - { name: Object storage, purpose: "encrypted backups", data_categories: [all_encrypted], country: BR, transfer_mechanism: not_applicable, zdr: false }
+
+operations:
+  feature_flags: { consortium.simulation_enabled: false, consortium.group_history_enabled: false }
+  canary_percent: 0
+  trace_sampling: 1.0

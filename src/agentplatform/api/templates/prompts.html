@@ -1,0 +1,59 @@
+{% extends "base.html" %}{% block title %}Prompts{% endblock %}{% block body %}
+{% set cur = (nodes | selectattr(0, 'equalto', node) | list)[0] %}
+<div class="page-head"><div><h1>Prompts</h1>
+<p class="sub">Instruções que o modelo recebe em cada etapa. Editar cria uma <b>nova versão</b> (nada é sobrescrito) e um
+<b>rascunho de configuração</b> que só vale no simulador até outra pessoa aprovar. As regras de segurança (números com fonte, frases
+proibidas, dados sensíveis) são verificadas pelo sistema mesmo que o prompt mude.</p></div></div>
+
+{% if saved %}<div class="alert ok">{{ icon('check', 16) }}<div style="flex:1"><p><b>Versão salva:</b> <span class="mono">{{ saved }}</span>. Rascunho de configuração criado.</p>
+  <div class="actions" style="margin-top:10px">
+    <a class="btn btn-primary btn-sm" href="/console/simulator?v={{ draft }}">{{ icon('sparkle', 14) }} Testar no simulador</a>
+    <a class="btn btn-sm" href="/console/config">Aprovar em Configuração</a></div></div></div>
+{% elif draft %}<div class="alert ok">{{ icon('check', 16) }}<div style="flex:1"><p>Rascunho de configuração criado com <span class="mono">{{ version }}</span>.</p>
+  <div class="actions" style="margin-top:10px"><a class="btn btn-primary btn-sm" href="/console/simulator?v={{ draft }}">{{ icon('sparkle', 14) }} Testar no simulador</a>
+  <a class="btn btn-sm" href="/console/config">Aprovar em Configuração</a></div></div></div>{% endif %}
+{% if errors %}<div class="alert bad">{{ icon('alert', 16) }}<div><p><b>Não foi salvo:</b></p>{% for e in errors %}<p>· {{ e }}</p>{% endfor %}</div></div>{% endif %}
+
+<div class="grid" style="grid-template-columns:280px minmax(0,1fr)">
+<div>
+  {% for n, title, desc in nodes %}<a href="/console/prompts?node={{ n }}" class="card" style="display:block;text-decoration:none;color:inherit;padding:14px;{{ 'border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)' if n == node }}">
+    <b>{{ title }}</b><div class="muted small" style="margin:4px 0 6px">{{ desc }}</div>
+    <span class="badge plain mono">{{ active[n] }}</span> <span class="muted small">ativa</span></a>{% endfor %}
+  <div class="card"><h3>Como testar uma mudança</h3><ol class="steps small">
+    <li>Edite o texto e clique em <b>Salvar e testar</b>.</li>
+    <li>No simulador (já com o rascunho selecionado), converse ou use <b>Reexecutar conversa</b> para comparar com a versão ativa.</li>
+    <li>Ficou melhor? Outra pessoa aprova o rascunho em <a href="/console/config">Configuração</a>.</li></ol></div>
+</div>
+
+<div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:flex-end;margin-bottom:12px">
+      <div><h2 style="margin:0">{{ cur[1] }}</h2><p class="muted small" style="margin:2px 0 0">Editando a partir de <span class="mono">{{ version }}</span>{% if version == active[node] %} (ativa){% endif %}</p></div>
+      <form method="get" action="/console/prompts" class="row" style="align-items:flex-end"><input type="hidden" name="node" value="{{ node }}">
+        <div class="field" style="min-width:260px"><label>Versão</label><select name="version" onchange="this.form.submit()">
+          {% for v in versions %}<option value="{{ v.label }}" {{ 'selected' if v.label == version }}>{{ v.label }}{% if v.label == active[node] %} · ativa{% endif %}{% if v.kind == 'seed' %} · original{% else %} · editada #{{ v.n }}{% if v.note %} — {{ v.note[:40] }}{% endif %}{% endif %}</option>{% endfor %}
+        </select></div></form>
+    </div>
+    <form method="post" action="/console/prompts/save">{{ csrf_input(user) }}
+      <input type="hidden" name="node" value="{{ node }}"><input type="hidden" name="base_version" value="{{ version }}">
+      <textarea name="body" rows="30" spellcheck="false" style="font-size:12.5px;line-height:1.55">{{ body }}</textarea>
+      <div class="row" style="margin-top:12px">
+        <div class="field"><label>O que mudou (anotação)</label><input name="note" maxlength="300" value="{{ note }}" placeholder="ex.: não repetir explicação; usar exemplos"></div>
+        <button class="btn-primary">{{ icon('sparkle', 16) }} Salvar e testar</button>
+      </div>
+    </form>
+    {% if version != active[node] %}<form method="post" action="/console/prompts/use" style="margin-top:10px">{{ csrf_input(user) }}
+      <input type="hidden" name="node" value="{{ node }}"><input type="hidden" name="version" value="{{ version }}">
+      <button class="btn-sm">Criar rascunho usando esta versão como está</button></form>{% endif %}
+  </div>
+
+  {% if diff %}<div class="card"><h2>O que mudou</h2><pre>{% for line in diff.splitlines() %}<span class="{{ 'diff-add' if line.startswith('+') else ('diff-del' if line.startswith('-') else '') }}">{{ line }}</span>
+{% endfor %}</pre></div>{% endif %}
+
+  <div class="card"><h2>Variáveis disponíveis nesta etapa</h2>
+    <p class="muted small">Use com <code>{% raw %}{{ nome }}{% endraw %}</code>. Variáveis fora desta lista quebrariam a resposta e são recusadas ao salvar.
+    Mantenha as seções <code>{% raw %}{# role: system #}{% endraw %}</code> e <code>{% raw %}{# role: user #}{% endraw %}</code>.</p>
+    <div>{% for v in variables %}<span class="badge plain mono" style="margin:0 6px 6px 0">{{ v }}</span>{% endfor %}</div></div>
+</div>
+</div>
+{% endblock %}

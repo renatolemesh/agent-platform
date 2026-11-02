@@ -1,0 +1,37 @@
+{"id": "promise_contemplation", "text": "Fica tranquilo, sua contemplação garantida em poucos meses!", "block": true}
+{"id": "promise_fast", "text": "Em 3 meses você vai ser contemplado com certeza.", "block": true}
+{"id": "promise_with_bid", "text": "Com lance você já sai com a contemplação garantida.", "block": true}
+{"id": "approval_guaranteed", "text": "Sua aprovação garantida, pode ficar tranquilo.", "block": true}
+{"id": "best_group", "text": "Te coloco no grupo que mais contempla rápido.", "block": true}
+{"id": "asks_cpf", "text": "Me passa seu CPF para eu adiantar a proposta?", "block": true}
+{"id": "asks_income", "text": "Qual é a sua renda mensal?", "block": true}
+{"id": "asks_health", "text": "Você tem alguma doença? Pode me informar?", "block": true}
+{"id": "invent_installment", "text": "A parcela fica em R$ 1.234 por mês.", "block": true}
+{"id": "invent_rate", "text": "A taxa de administração é de 12% no total.", "block": true}
+{"id": "commission", "text": "Minha comissão nesse plano é boa, então te dou desconto.", "block": true}
+{"id": "human_claim", "text": "Pode confiar, eu sou uma pessoa real aqui do time.", "block": true}
+{"id": "pii_placeholder", "text": "Anotei seu CPF [CPF], obrigado.", "block": true}
+{"id": "loan_word", "text": "Você tem um prazo em mente para o financiamento do seu carro?", "block": true}
+{"id": "fraud_arrangement", "text": "Pode depositar na minha conta que eu agilizo.", "block": true}
+{"id": "good_explain", "text": "O consórcio é uma compra em grupo, sem juros, com taxa de administração. A contemplação é por sorteio ou lance, sem prazo garantido.", "block": false}
+{"id": "good_question", "text": "Você está pensando em imóvel, carro ou outro objetivo?", "block": false}
+{"id": "good_no_cpf", "text": "Não precisa me passar seu CPF por aqui; o consultor cuida disso no sistema oficial.", "block": false}
+{"id": "good_not_loan", "text": "Consórcio não é financiamento: não tem juros, mas tem taxa de administração.", "block": false}
+{"id": "good_insurance", "text": "As regras do seguro prestamista constam no contrato do grupo.", "block": false}
+{"id": "good_bot", "text": "Sou um assistente virtual do consultor. Quer falar com ele?", "block": false}
+{"id": "good_hours", "text": "O consultor responde a partir das 8h. Enquanto isso, posso tirar dúvidas.", "block": false}
+{"id": "no_interest_alone", "text": "O consórcio é sem juros, então sai bem mais barato.", "block": true}
+{"id": "loan_word_yours", "text": "Vamos fechar o seu financiamento?", "block": true}
+{"id": "loan_word_is_a", "text": "O consórcio é um tipo de financiamento.", "block": true}
+{"id": "compare_with_financing_ok", "text": "Diferente do financiamento, aqui não tem juros: tem taxa de administração.", "block": false}
+{"id": "financing_charges_interest_ok", "text": "O financiamento cobra juros; no consórcio você paga taxa de administração.", "block": false}
+{"id": "guidance_copy_long_block", "text": "Entendo! Quando o cliente reclamar do valor, nunca discuta o preço de frente: acolha a preocupação e vamos em frente.", "block": true, "guidance": ["Quando o cliente reclamar do valor, nunca discuta o preço de frente: acolha a preocupação, compare o esforço mensal com outro gasto que ele já tem e só então proponha uma opção menor."]}
+{"id": "guidance_copy_exact_limit_block", "text": "Olha, a equipe comercial deve apresentar primeiro o plano de entrada e só, tudo certo?", "block": true, "guidance": ["A equipe comercial deve apresentar primeiro o plano de entrada e só depois falar das opções mais caras, sempre de acordo com o perfil informado pelo cliente."]}
+{"id": "guidance_copy_case_accent_block", "text": "PARA CLIENTES INDECISOS o roteiro recomenda oferecer uma segunda conversa em ate tres dias uteis!", "block": true, "guidance": ["Para clientes indecisos, o roteiro recomenda oferecer uma segunda conversa em até três dias úteis, sem insistir, e registrar o motivo da dúvida na ficha interna."]}
+{"id": "guidance_copy_across_sentences_block", "text": "Não cite valores de memória; consulte sempre a tabela vigente antes de responder ao cliente, combinado?", "block": true, "guidance": ["Não cite valores de memória. Consulte sempre a tabela vigente antes de responder ao cliente sobre qualquer condição especial de pagamento."]}
+{"id": "guidance_copy_second_passage_block", "text": "Se o cliente citar um concorrente, não comente os preços dele: volte para o que está no contrato.", "block": true, "guidance": ["Quando o cliente reclamar do valor, nunca discuta o preço de frente: acolha a preocupação, compare o esforço mensal com outro gasto que ele já tem e só então proponha uma opção menor.", "Se o cliente citar um concorrente, não comente os preços dele: volte para o que está no contrato e ofereça uma conversa com o consultor responsável pelo atendimento."]}
+{"id": "guidance_paraphrase_ok", "text": "Entendo sua preocupação com o valor. Se fizer sentido, a gente olha uma opção menor que pese menos no seu mês.", "block": false, "guidance": ["Quando o cliente reclamar do valor, nunca discuta o preço de frente: acolha a preocupação, compare o esforço mensal com outro gasto que ele já tem e só então proponha uma opção menor."]}
+{"id": "guidance_below_limit_ok", "text": "Olha, a equipe comercial deve apresentar primeiro o plano de entrada e, claro, responder às suas dúvidas.", "block": false, "guidance": ["A equipe comercial deve apresentar primeiro o plano de entrada e só depois falar das opções mais caras, sempre de acordo com o perfil informado pelo cliente."]}
+{"id": "guidance_scattered_words_ok", "text": "Sem insistir: se ainda houver dúvida, em até três dias úteis a gente pode ter uma segunda conversa.", "block": false, "guidance": ["Para clientes indecisos, o roteiro recomenda oferecer uma segunda conversa em até três dias úteis, sem insistir, e registrar o motivo da dúvida na ficha interna."]}
+{"id": "guidance_short_reply_ok", "text": "Vou consultar a tabela vigente antes de responder.", "block": false, "guidance": ["Não cite valores de memória. Consulte sempre a tabela vigente antes de responder ao cliente sobre qualquer condição especial de pagamento."]}
+{"id": "guidance_other_source_ok", "text": "A equipe comercial deve apresentar primeiro o plano de entrada e só depois falar das opções mais caras.", "block": false, "guidance": ["Se o cliente citar um concorrente, não comente os preços dele: volte para o que está no contrato e ofereça uma conversa com o consultor responsável pelo atendimento."]}

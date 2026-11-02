@@ -1,0 +1,10 @@
+{"id": "u1", "stage": "engajado", "msgs": ["quero comprar um carro, uns 80 mil"], "slots": {"goal": "vehicle", "credit_amount": "80000"}}
+{"id": "u2", "stage": "qualificando", "msgs": ["parcela de até 1.500 por mês"], "slots": {"monthly_budget": "1500"}}
+{"id": "u3", "stage": "qualificando", "msgs": ["em uns 5 anos"], "slots": {"term_months": "60"}}
+{"id": "u4", "stage": "engajado", "msgs": ["to pensando num apartamento de 300 mil"], "slots": {"goal": "real_estate", "credit_amount": "300000"}}
+{"id": "u5", "stage": "qualificando", "msgs": ["tenho uns 20 mil guardados pra dar de lance"], "slots": {"has_bid_funds": "True"}}
+{"id": "u6", "stage": "novo", "msgs": ["oi, tudo bem?"], "slots": {}}
+{"id": "u7", "stage": "engajado", "msgs": ["preciso de um caminhão pra trabalhar"], "slots": {"goal": "heavy_vehicle"}}
+{"id": "u8", "stage": "qualificando", "msgs": ["sou de Campinas"], "slots": {"city": "Campinas"}}
+{"id": "u9", "stage": "engajado", "msgs": ["Uma carta"], "slots": {}}
+{"id": "u10", "stage": "qualificando", "msgs": ["uma carta de 100k"], "slots": {"credit_amount": "100000"}}

@@ -1,0 +1,337 @@
+# Production / staging stack for a small dedicated VPS (2 vCPU / 4 GB / 40 GB) — plan 12.
+#
+#   cd /srv/agentplatform/docker
+#   cp prod.env.example prod.env && $EDITOR prod.env           # non-secret settings
+#   ../scripts/deploy/init-secrets.sh                            # creates secrets/<name> (0444 files in a 0700 dir)
+#   export APP_IMAGE=ghcr.io/<org>/agentplatform:<sha> PUBLIC_DOMAIN=agente.example.com ACME_EMAIL=ops@example.com
+#   docker compose -f compose.prod.yaml run --rm migrate
+#   docker compose -f compose.prod.yaml up -d
+#   docker compose -f compose.prod.yaml --profile obs up -d      # optional: docs/runbooks/observabilidade.md
+#
+# Only Caddy publishes ports to the outside. Postgres and Redis publish none. The obs profile binds Grafana and Prometheus to
+# 127.0.0.1 only (SSH tunnel). Secrets are Docker secrets (files), never env vars in this file;
+# scripts/docker/secrets-entrypoint.sh exports them for the app at start.
+name: agentplatform
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "5" }
+
+x-app: &app
+  image: ${APP_IMAGE:?set APP_IMAGE to the image built by CI (digest or sha tag)}
+  env_file: [prod.env]
+  environment:
+    PUBLIC_BASE_URL: https://${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN}
+  entrypoint: ["sh", "/usr/local/bin/secrets-entrypoint.sh"]
+  secrets:
+    - app_rw_password
+    - redis_password
+    - kek_b64
+    - hash_pepper_b64
+    - openrouter_api_key
+    - meta_app_secret
+    - meta_verify_token
+    - whatsapp_token
+    - whatsapp_app_secret
+    - smtp_url
+    - console_session_secret
+    - connect_webhook_secret
+    - metrics_token
+  volumes:
+    - ../scripts/docker/secrets-entrypoint.sh:/usr/local/bin/secrets-entrypoint.sh:ro
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  networks: [internal, egress]        # egress: outbound HTTPS to Meta, OpenRouter, WhatsApp
+  logging: *logging
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api: { condition: service_healthy }
+    # no healthcheck: admin API is off and TLS needs SNI; `restart` covers crashes, the external uptime check covers TLS
+    deploy:
+      resources: { limits: { cpus: "0.25", memory: 64m } }
+    restart: unless-stopped
+    networks: [edge, internal]
+    logging: *logging
+
+  api:
+    <<: *app
+    command: ["uvicorn", "agentplatform.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2",
+              "--proxy-headers", "--forwarded-allow-ips", "*", "--no-server-header"]
+    volumes:
+      - ../scripts/docker/secrets-entrypoint.sh:/usr/local/bin/secrets-entrypoint.sh:ro
+      - webhook_spool:/var/spool/agentplatform     # durable spool while Postgres is down (07 §1); api only
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources: { limits: { cpus: "0.75", memory: 320m } }
+
+  worker:
+    <<: *app
+    command: ["procrastinate", "--app=agentplatform.jobs.app.app", "worker",
+              "--queues=turns,comments,media,dispatch,echo,ingress", "--concurrency=8"]
+    healthcheck: &worker_health
+      # healthchecks run via `docker exec`, which skips the entrypoint: wrap it so the DB URL comes from the secrets
+      test: ["CMD", "sh", "/usr/local/bin/secrets-entrypoint.sh", "procrastinate", "--app=agentplatform.jobs.app.app", "healthchecks"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    stop_grace_period: 45s            # let in-flight turns finish / release their lease
+    deploy:
+      resources: { limits: { cpus: "1.0", memory: 640m } }
+
+  worker-bg:
+    <<: *app
+    command: ["procrastinate", "--app=agentplatform.jobs.app.app", "worker",
+              "--queues=followups,ingest,lab,maintenance", "--concurrency=2"]
+    volumes:
+      - ../scripts/docker/secrets-entrypoint.sh:/usr/local/bin/secrets-entrypoint.sh:ro
+      - webhook_spool:/var/spool/agentplatform:ro    # read-only: lets the periodic `spool` alert see the size
+    healthcheck: *worker_health
+    stop_grace_period: 45s
+    deploy:
+      resources: { limits: { cpus: "0.5", memory: 512m } }
+
+  # One-shot: `docker compose -f compose.prod.yaml run --rm migrate` before every `up -d` (expand/contract migrations).
+  migrate:
+    <<: *app
+    command: ["agentplatform", "migrate"]
+    restart: "no"
+    volumes:                          # also runs `bootstrap` and `ingest`, the only commands that need these and the owner role
+      - ../scripts/docker/secrets-entrypoint.sh:/usr/local/bin/secrets-entrypoint.sh:ro
+      - ./tenants:/app/config/tenants:ro             # the account's file, on the server only: it never goes to git (ADR-023)
+      - ./materiais:/app/materiais:ro                # the client's PDFs, for `agentplatform ingest`
+    secrets:                          # only migrations use the owner role; the running app has no way to bypass RLS
+      - app_rw_password
+      - pg_owner_password
+      - redis_password
+      - kek_b64
+      - hash_pepper_b64
+      - openrouter_api_key
+      - meta_app_secret
+      - meta_verify_token
+      - whatsapp_token
+      - whatsapp_app_secret
+      - smtp_url
+      - console_session_secret
+      - connect_webhook_secret
+      - metrics_token
+    profiles: [migrate]
+
+  postgres:
+    build: { context: ., dockerfile: postgres/Dockerfile }
+    image: agentplatform-postgres:pg17-walg-v3.0.9
+    env_file: [prod.env]
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_owner_password
+      PGDATA: /var/lib/postgresql/data
+    secrets: [pg_owner_password, app_rw_password, walg_libsodium_key, walg_s3_access_key, walg_s3_secret_key]
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - max_connections=60
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=/usr/local/bin/walg-env wal-push %p
+      - -c
+      - archive_timeout=300           # RPO <= 5 min even when idle
+      - -c
+      - log_min_duration_statement=1000
+    volumes: [pg_data:/var/lib/postgresql/data]
+    shm_size: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-agentplatform} -d $${POSTGRES_DB:-agentplatform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    stop_grace_period: 60s
+    deploy:
+      resources: { limits: { cpus: "1.0", memory: 1024m } }
+    restart: unless-stopped
+    # egress: archive_command pushes WAL to object storage from this container. No port is published, so nothing can reach it from outside.
+    networks: [internal, egress]
+    logging: *logging
+
+  # Daily wal-g base backup + retention, weekly pg_dump (plan 12 §3). Reads PGDATA read-only from the shared volume.
+  backup:
+    image: agentplatform-postgres:pg17-walg-v3.0.9
+    depends_on:
+      postgres: { condition: service_healthy }
+    entrypoint: ["/usr/local/bin/walg-backup-loop"]
+    user: postgres
+    env_file: [prod.env]
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      PGHOST: postgres
+      DUMP_DIR: /dumps
+    secrets: [pg_owner_password, walg_libsodium_key, walg_s3_access_key, walg_s3_secret_key]
+    volumes:
+      - pg_data:/var/lib/postgresql/data:ro
+      - pg_dumps:/dumps
+    healthcheck:
+      # heartbeat written after every successful base backup (and at start); alert if older than 26 h
+      test: ["CMD-SHELL", "[ $$(( $$(date +%s) - $$(cat /tmp/backup-heartbeat) )) -lt 93600 ]"]
+      interval: 10m
+      timeout: 5s
+      retries: 1
+    deploy:
+      resources: { limits: { cpus: "0.5", memory: 128m } }
+    restart: unless-stopped
+    networks: [internal, egress]      # egress: object storage
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$(cat /run/secrets/redis_password)\" --maxmemory 96mb --maxmemory-policy noeviction --appendonly no --save ''"]
+    # noeviction: rate-limit buckets must never be evicted; nothing in Redis is a source of truth (no backup)
+    secrets: [redis_password]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_password)\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    deploy:
+      resources: { limits: { cpus: "0.25", memory: 128m } }
+    restart: unless-stopped
+    networks: [internal]
+    logging: *logging
+
+  # Observability (plan 12 §1). No env_file here: these containers never see the app's settings, and each one gets only its
+  # own secret. No depends_on on the app: starting this profile must not touch api/worker.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.164.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    environment: { GOMEMLIMIT: 100MiB }
+    volumes: [./obs/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro]
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    # no healthcheck: the image has no shell; Prometheus scrapes it and alerts (OtelCollectorDown)
+    deploy:
+      resources: { limits: { cpus: "0.25", memory: 128m } }
+    restart: unless-stopped
+    networks: [internal]              # no published port and no route out: the app reaches it at http://otel-collector:4318
+    logging: *logging
+    profiles: [obs]
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=1GB
+      - --query.max-concurrency=4
+    secrets: [metrics_token]
+    volumes:
+      - ./obs/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources: { limits: { cpus: "0.5", memory: 192m } }
+    restart: unless-stopped
+    ports: ["127.0.0.1:8190:9090"]    # SSH tunnel only; a published port needs a network that is not internal
+    networks: [internal, obs]         # internal: scrapes api:8000
+    logging: *logging
+    profiles: [obs]
+
+  grafana:
+    image: grafana/grafana:13.2.5
+    # An empty password file would make Grafana fall back to admin/admin
+    entrypoint: ["sh", "-c", "[ -s /run/secrets/grafana_admin_password ] || { echo 'grafana_admin_password is empty: refusing to start with the default admin password' >&2; exit 1; }; exec /run.sh"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GOMEMLIMIT: 230MiB
+    secrets: [grafana_admin_password]
+    volumes:
+      - ./obs/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+      - ./obs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./obs/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      prometheus: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+    deploy:
+      resources: { limits: { cpus: "0.5", memory: 288m } }
+    restart: unless-stopped
+    ports: ["127.0.0.1:8130:3000"]    # SSH tunnel only
+    networks: [obs]                   # only reaches Prometheus: no route to Postgres or Redis
+    logging: *logging
+    profiles: [obs]
+
+networks:
+  internal: { internal: true }        # no route to the internet
+  edge: {}
+  egress: {}
+  obs: {}
+
+volumes:
+  pg_data: {}
+  pg_dumps: {}
+  caddy_data: {}
+  caddy_config: {}
+  webhook_spool: {}
+  prometheus_data: {}
+  grafana_data: {}
+
+# One file per secret in docker/secrets/ (mode 0444 inside a 0700 directory owned by the deploy user).
+# Optional integrations (whatsapp_*, smtp_url, connect_webhook_secret) may be empty files.
+# grafana_admin_password is only needed with --profile obs, and must not be empty.
+secrets:
+  app_rw_password: { file: ./secrets/app_rw_password }
+  pg_owner_password: { file: ./secrets/pg_owner_password }
+  redis_password: { file: ./secrets/redis_password }
+  kek_b64: { file: ./secrets/kek_b64 }
+  hash_pepper_b64: { file: ./secrets/hash_pepper_b64 }
+  openrouter_api_key: { file: ./secrets/openrouter_api_key }
+  meta_app_secret: { file: ./secrets/meta_app_secret }
+  meta_verify_token: { file: ./secrets/meta_verify_token }
+  whatsapp_token: { file: ./secrets/whatsapp_token }
+  whatsapp_app_secret: { file: ./secrets/whatsapp_app_secret }
+  smtp_url: { file: ./secrets/smtp_url }
+  console_session_secret: { file: ./secrets/console_session_secret }
+  connect_webhook_secret: { file: ./secrets/connect_webhook_secret }
+  metrics_token: { file: ./secrets/metrics_token }
+  grafana_admin_password: { file: ./secrets/grafana_admin_password }
+  walg_libsodium_key: { file: ./secrets/walg_libsodium_key }
+  walg_s3_access_key: { file: ./secrets/walg_s3_access_key }
+  walg_s3_secret_key: { file: ./secrets/walg_s3_secret_key }

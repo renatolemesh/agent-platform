@@ -1,0 +1,14 @@
+.venv
+.git
+docs/materiais
+var
+**/__pycache__
+.env
+.env.*
+**/*.pdf
+docs/privado
+docker/tenants
+docker/materiais
+config/tenants/*.yaml
+!config/tenants/dev-consortium.yaml
+!config/tenants/*.example.yaml

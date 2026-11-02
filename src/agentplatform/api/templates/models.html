@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block title %}Modelos{% endblock %}{% block body %}
+<a class="crumb" href="/console/assistant">{{ icon('back', 14) }} Assistente</a>
+<div class="page-head"><div><h1>Modelos de IA</h1><p class="sub">Qual modelo faz cada etapa. Trocar cria um rascunho, e em produção ele precisa passar pela avaliação antes de valer. Preços em dólar por milhão de tokens.</p></div></div>
+{% for e in errors or [] %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ e }}</p></div>{% endfor %}
+{% if choices.openai_only %}<div class="alert warn">{{ icon('alert', 16) }}<p>Este ambiente usa a chave de testes: só aparecem modelos que ela alcança. Os de produção ficam disponíveis com o OpenRouter.</p></div>{% endif %}
+<form method="post" action="/console/assistant/models">{{ csrf_input(user) }}
+<div class="card flush"><div class="table-wrap"><table><thead><tr><th>Etapa</th><th>Modelo</th><th>Reserva, se o principal falhar</th></tr></thead><tbody>
+{% for name, spec in nodes %}<tr data-node="{{ name }}"><td><b>{{ labels.get(name, name) }}</b></td>
+<td><select name="{{ name }}_primary">{% for m in choices.chat %}<option value="{{ m.name }}" {{ 'selected' if m.name == spec.primary }}>{{ m.name }} · {{ m.input | usd }} / {{ m.output | usd }}</option>{% endfor %}
+{% if spec.primary not in choices.chat | map(attribute='name') | list %}<option value="{{ spec.primary }}" selected>{{ spec.primary }} (atual)</option>{% endif %}</select></td>
+<td><select name="{{ name }}_fallback"><option value="">Nenhuma</option>{% for m in choices.chat %}<option value="{{ m.name }}" {{ 'selected' if spec.fallbacks and m.name == spec.fallbacks[0] }}>{{ m.name }}</option>{% endfor %}</select></td></tr>{% endfor %}
+<tr><td><b>Transcrição de áudio</b></td><td colspan="2"><select name="transcription">{% for m in choices.transcription %}<option value="{{ m.name }}" {{ 'selected' if m.name == cfg.models.transcription.model }}>{{ m.name }} · {{ m.per_min | usd }} por minuto</option>{% endfor %}
+{% if cfg.models.transcription.model not in choices.transcription | map(attribute='name') | list %}<option value="{{ cfg.models.transcription.model }}" selected>{{ cfg.models.transcription.model }} (atual)</option>{% endif %}</select></td></tr>
+</tbody></table></div></div>
+<p class="muted small">A revisão das respostas precisa ser de outra família que a escrita: um modelo não confere a si mesmo. Modelo sem preço cadastrado não aparece aqui, porque o sistema recusa usar o que não sabe quanto custa.</p>
+<div class="card"><div class="row"><div class="field"><label>O que mudou (anotação)</label><input name="note" maxlength="300" placeholder="ex.: modelo mais barato na escrita"></div><button class="btn-primary">{{ icon('check', 16) }} Criar rascunho</button></div></div>
+</form>
+<div class="card"><h2>Modelo de busca</h2><p class="muted small">Em uso: <span class="mono">{{ cfg.models.embedding.model }}</span>. Trocar exige refazer os vetores de todo o material, e por isso é feito em <a href="/console/documents">Base de conhecimento</a>.</p></div>
+{% endblock %}

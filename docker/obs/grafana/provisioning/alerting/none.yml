@@ -1,0 +1,2 @@
+# Nothing to provision: alert rules live in Prometheus. The file exists so Grafana finds this folder and does not log an error at every start.
+apiVersion: 1

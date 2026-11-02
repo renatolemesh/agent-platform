@@ -1,0 +1,1901 @@
+{
+ "$defs": {
+  "AgentConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "analyze_mode": {
+     "default": "merged",
+     "enum": [
+      "merged",
+      "parallel"
+     ],
+     "title": "Analyze Mode",
+     "type": "string"
+    },
+    "max_llm_calls_per_turn": {
+     "default": 4,
+     "maximum": 6,
+     "minimum": 2,
+     "title": "Max Llm Calls Per Turn",
+     "type": "integer"
+    },
+    "max_tool_calls_per_turn": {
+     "default": 2,
+     "maximum": 4,
+     "minimum": 0,
+     "title": "Max Tool Calls Per Turn",
+     "type": "integer"
+    },
+    "turn_timeout_s": {
+     "default": 40,
+     "exclusiveMinimum": 0,
+     "maximum": 90,
+     "title": "Turn Timeout S",
+     "type": "number"
+    },
+    "slow_after_s": {
+     "default": 15,
+     "exclusiveMinimum": 0,
+     "title": "Slow After S",
+     "type": "number"
+    },
+    "summary_every_n_turns": {
+     "default": 5,
+     "exclusiveMinimum": 0,
+     "title": "Summary Every N Turns",
+     "type": "integer"
+    }
+   },
+   "title": "AgentConfig",
+   "type": "object"
+  },
+  "BudgetConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "day_boundary_tz": {
+     "const": "UTC",
+     "default": "UTC",
+     "title": "Day Boundary Tz",
+     "type": "string"
+    },
+    "pilot_total_cap_usd": {
+     "anyOf": [
+      {
+       "minimum": 0.0,
+       "type": "number"
+      },
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": "4.50",
+     "title": "Pilot Total Cap Usd"
+    },
+    "net_credit_usd": {
+     "anyOf": [
+      {
+       "minimum": 0.0,
+       "type": "number"
+      },
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": "4.74",
+     "title": "Net Credit Usd"
+    },
+    "daily_cap_usd": {
+     "anyOf": [
+      {
+       "minimum": 0.0,
+       "type": "number"
+      },
+      {
+       "type": "string"
+      }
+     ],
+     "default": "2.00",
+     "title": "Daily Cap Usd"
+    },
+    "per_conversation_cap_usd": {
+     "anyOf": [
+      {
+       "minimum": 0.0,
+       "type": "number"
+      },
+      {
+       "type": "string"
+      }
+     ],
+     "default": "0.10",
+     "title": "Per Conversation Cap Usd"
+    },
+    "per_turn_cap_usd": {
+     "anyOf": [
+      {
+       "minimum": 0.0,
+       "type": "number"
+      },
+      {
+       "type": "string"
+      }
+     ],
+     "default": "0.02",
+     "title": "Per Turn Cap Usd"
+    },
+    "alert_thresholds": {
+     "default": [
+      0.5,
+      0.8,
+      1.0
+     ],
+     "items": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+     },
+     "title": "Alert Thresholds",
+     "type": "array"
+    },
+    "degradation_order": {
+     "default": [
+      "cheaper_model",
+      "faq_only",
+      "handoff_short_message"
+     ],
+     "items": {
+      "enum": [
+       "cheaper_model",
+       "faq_only",
+       "handoff_short_message"
+      ],
+      "type": "string"
+     },
+     "title": "Degradation Order",
+     "type": "array"
+    },
+    "experiment_cap_usd": {
+     "anyOf": [
+      {
+       "minimum": 0.0,
+       "type": "number"
+      },
+      {
+       "type": "string"
+      }
+     ],
+     "default": "1.00",
+     "title": "Experiment Cap Usd"
+    },
+    "ci_daily_cap_usd": {
+     "anyOf": [
+      {
+       "minimum": 0.0,
+       "type": "number"
+      },
+      {
+       "type": "string"
+      }
+     ],
+     "default": "0.50",
+     "title": "Ci Daily Cap Usd"
+    },
+    "reservation_ttl_s": {
+     "default": 120,
+     "exclusiveMinimum": 0,
+     "title": "Reservation Ttl S",
+     "type": "integer"
+    },
+    "openrouter_key_limit_usd": {
+     "anyOf": [
+      {
+       "minimum": 0.0,
+       "type": "number"
+      },
+      {
+       "type": "string"
+      }
+     ],
+     "default": "2.50",
+     "title": "Openrouter Key Limit Usd"
+    }
+   },
+   "title": "BudgetConfig",
+   "type": "object"
+  },
+  "Cadence": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "title": "Id",
+     "type": "string"
+    },
+    "trigger": {
+     "additionalProperties": true,
+     "title": "Trigger",
+     "type": "object"
+    },
+    "steps": {
+     "items": {
+      "$ref": "#/$defs/CadenceStep"
+     },
+     "title": "Steps",
+     "type": "array"
+    },
+    "stop_on": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Stop On",
+     "type": "array"
+    },
+    "max_attempts": {
+     "default": 1,
+     "exclusiveMinimum": 0,
+     "title": "Max Attempts",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "id",
+    "trigger",
+    "steps",
+    "stop_on"
+   ],
+   "title": "Cadence",
+   "type": "object"
+  },
+  "CadenceStep": {
+   "additionalProperties": false,
+   "properties": {
+    "delay": {
+     "title": "Delay",
+     "type": "string"
+    },
+    "content_kind": {
+     "enum": [
+      "template",
+      "generated"
+     ],
+     "title": "Content Kind",
+     "type": "string"
+    },
+    "template_key": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Template Key"
+    },
+    "prompt_version": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Prompt Version"
+    },
+    "max_chars": {
+     "default": 200,
+     "exclusiveMinimum": 0,
+     "title": "Max Chars",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "delay",
+    "content_kind"
+   ],
+   "title": "CadenceStep",
+   "type": "object"
+  },
+  "CommentRule": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "title": "Id",
+     "type": "string"
+    },
+    "scope": {
+     "enum": [
+      "account",
+      "media",
+      "ad"
+     ],
+     "title": "Scope",
+     "type": "string"
+    },
+    "scope_ref": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Scope Ref"
+    },
+    "trigger": {
+     "$ref": "#/$defs/CommentTrigger"
+    },
+    "actions": {
+     "items": {
+      "enum": [
+       "public_reply",
+       "private_reply",
+       "register_lead"
+      ],
+      "type": "string"
+     },
+     "title": "Actions",
+     "type": "array"
+    },
+    "public_variants": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "Public Variants",
+     "type": "array"
+    },
+    "private_variants": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "default": {},
+     "title": "Private Variants",
+     "type": "object"
+    },
+    "private_weights": {
+     "additionalProperties": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+     },
+     "default": {},
+     "title": "Private Weights",
+     "type": "object"
+    },
+    "priority": {
+     "default": 100,
+     "title": "Priority",
+     "type": "integer"
+    },
+    "valid_from": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Valid From"
+    },
+    "valid_to": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Valid To"
+    }
+   },
+   "required": [
+    "id",
+    "scope",
+    "trigger",
+    "actions"
+   ],
+   "title": "CommentRule",
+   "type": "object"
+  },
+  "CommentTrigger": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "enum": [
+      "keyword",
+      "regex",
+      "intent"
+     ],
+     "title": "Kind",
+     "type": "string"
+    },
+    "values": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Values",
+     "type": "array"
+    }
+   },
+   "required": [
+    "kind",
+    "values"
+   ],
+   "title": "CommentTrigger",
+   "type": "object"
+  },
+  "CommentsConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "enabled": {
+     "default": true,
+     "title": "Enabled",
+     "type": "boolean"
+    },
+    "private_reply_dedup_window_days": {
+     "default": 7,
+     "maximum": 7,
+     "minimum": 1,
+     "title": "Private Reply Dedup Window Days",
+     "type": "integer"
+    },
+    "sensitive_topics_to_human": {
+     "default": true,
+     "title": "Sensitive Topics To Human",
+     "type": "boolean"
+    },
+    "hide_spam": {
+     "default": false,
+     "title": "Hide Spam",
+     "type": "boolean"
+    },
+    "rules": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/CommentRule"
+     },
+     "title": "Rules",
+     "type": "array"
+    }
+   },
+   "title": "CommentsConfig",
+   "type": "object"
+  },
+  "ComplianceConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "forbidden_phrases": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "Forbidden Phrases",
+     "type": "array"
+    },
+    "required_disclosures": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "default": {},
+     "title": "Required Disclosures",
+     "type": "object"
+    },
+    "never_request": {
+     "default": [
+      "cpf",
+      "rg",
+      "income",
+      "assets",
+      "bank_data",
+      "health_data"
+     ],
+     "items": {
+      "type": "string"
+     },
+     "title": "Never Request",
+     "type": "array"
+    },
+    "opt_out_keywords": {
+     "default": [
+      "parar",
+      "pare",
+      "sair",
+      "stop",
+      "cancelar mensagens",
+      "não quero mais"
+     ],
+     "items": {
+      "type": "string"
+     },
+     "title": "Opt Out Keywords",
+     "type": "array"
+    },
+    "judge_risk_threshold": {
+     "default": 0.5,
+     "maximum": 1,
+     "minimum": 0,
+     "title": "Judge Risk Threshold",
+     "type": "number"
+    },
+    "product_numbers_require_provenance": {
+     "const": true,
+     "default": true,
+     "title": "Product Numbers Require Provenance",
+     "type": "boolean"
+    },
+    "internal_documents_never_cited": {
+     "const": true,
+     "default": true,
+     "title": "Internal Documents Never Cited",
+     "type": "boolean"
+    },
+    "extra_rules": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "Extra Rules",
+     "type": "array"
+    }
+   },
+   "title": "ComplianceConfig",
+   "type": "object"
+  },
+  "ConcurrencyConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "debounce_window_s": {
+     "default": 4,
+     "exclusiveMinimum": 0,
+     "maximum": 30,
+     "title": "Debounce Window S",
+     "type": "number"
+    },
+    "debounce_max_wait_s": {
+     "default": 15,
+     "exclusiveMinimum": 0,
+     "maximum": 60,
+     "title": "Debounce Max Wait S",
+     "type": "number"
+    },
+    "media_max_wait_s": {
+     "default": 25,
+     "exclusiveMinimum": 0,
+     "maximum": 90,
+     "title": "Media Max Wait S",
+     "type": "number"
+    },
+    "new_message_policy": {
+     "default": "cancel_if_unsent_else_next_turn",
+     "enum": [
+      "cancel_if_unsent_else_next_turn",
+      "always_next_turn"
+     ],
+     "title": "New Message Policy",
+     "type": "string"
+    },
+    "max_consecutive_restarts": {
+     "default": 2,
+     "maximum": 5,
+     "minimum": 0,
+     "title": "Max Consecutive Restarts",
+     "type": "integer"
+    },
+    "heartbeat_timeout_s": {
+     "default": 45,
+     "exclusiveMinimum": 0,
+     "title": "Heartbeat Timeout S",
+     "type": "integer"
+    },
+    "max_staleness_reply_s": {
+     "default": 120,
+     "exclusiveMinimum": 0,
+     "title": "Max Staleness Reply S",
+     "type": "integer"
+    },
+    "max_staleness_proactive_s": {
+     "default": 600,
+     "exclusiveMinimum": 0,
+     "title": "Max Staleness Proactive S",
+     "type": "integer"
+    },
+    "echo_grace_s": {
+     "default": 3,
+     "exclusiveMinimum": 0,
+     "maximum": 30,
+     "title": "Echo Grace S",
+     "type": "number"
+    },
+    "echo_reconcile_window_s": {
+     "default": 120,
+     "exclusiveMinimum": 0,
+     "maximum": 600,
+     "title": "Echo Reconcile Window S",
+     "type": "number"
+    },
+    "ambiguous_send_policy": {
+     "const": "check_conversation_api_then_fail",
+     "default": "check_conversation_api_then_fail",
+     "title": "Ambiguous Send Policy",
+     "type": "string"
+    },
+    "turn_lease_s": {
+     "default": 60,
+     "exclusiveMinimum": 0,
+     "title": "Turn Lease S",
+     "type": "integer"
+    }
+   },
+   "title": "ConcurrencyConfig",
+   "type": "object"
+  },
+  "ConversationConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "persona": {
+     "$ref": "#/$defs/PersonaConfig"
+    },
+    "language": {
+     "const": "pt-BR",
+     "default": "pt-BR",
+     "title": "Language",
+     "type": "string"
+    },
+    "max_messages_in_context": {
+     "default": 8,
+     "exclusiveMinimum": 0,
+     "title": "Max Messages In Context",
+     "type": "integer"
+    },
+    "max_questions_per_message": {
+     "const": 1,
+     "default": 1,
+     "title": "Max Questions Per Message",
+     "type": "integer"
+    },
+    "bubble_delay_ms": {
+     "default": 1200,
+     "maximum": 10000,
+     "minimum": 0,
+     "title": "Bubble Delay Ms",
+     "type": "integer"
+    },
+    "waiting_message": {
+     "default": "Só um instante, já te respondo.",
+     "title": "Waiting Message",
+     "type": "string"
+    },
+    "safe_failure_message": {
+     "default": "Vou pedir para {seller} te responder por aqui.",
+     "title": "Safe Failure Message",
+     "type": "string"
+    },
+    "repetition_similarity_block": {
+     "default": 0.9,
+     "maximum": 1,
+     "minimum": 0,
+     "title": "Repetition Similarity Block",
+     "type": "number"
+    }
+   },
+   "required": [
+    "persona"
+   ],
+   "title": "ConversationConfig",
+   "type": "object"
+  },
+  "FollowupsConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "enabled": {
+     "default": true,
+     "title": "Enabled",
+     "type": "boolean"
+    },
+    "cadences": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/Cadence"
+     },
+     "title": "Cadences",
+     "type": "array"
+    }
+   },
+   "title": "FollowupsConfig",
+   "type": "object"
+  },
+  "FunnelConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "stage_confidence_threshold": {
+     "default": 0.7,
+     "maximum": 1,
+     "minimum": 0,
+     "title": "Stage Confidence Threshold",
+     "type": "number"
+    },
+    "slot_confidence_threshold": {
+     "default": 0.6,
+     "maximum": 1,
+     "minimum": 0,
+     "title": "Slot Confidence Threshold",
+     "type": "number"
+    },
+    "max_turns_without_progress_override": {
+     "additionalProperties": {
+      "exclusiveMinimum": 0,
+      "type": "integer"
+     },
+     "default": {},
+     "title": "Max Turns Without Progress Override",
+     "type": "object"
+    }
+   },
+   "title": "FunnelConfig",
+   "type": "object"
+  },
+  "GuidelineOverride": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "title": "Id",
+     "type": "string"
+    },
+    "enabled": {
+     "default": true,
+     "title": "Enabled",
+     "type": "boolean"
+    },
+    "priority": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Priority"
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "title": "GuidelineOverride",
+   "type": "object"
+  },
+  "GuidelinesConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "max_per_turn": {
+     "default": 6,
+     "maximum": 12,
+     "minimum": 1,
+     "title": "Max Per Turn",
+     "type": "integer"
+    },
+    "overrides": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/GuidelineOverride"
+     },
+     "title": "Overrides",
+     "type": "array"
+    }
+   },
+   "title": "GuidelinesConfig",
+   "type": "object"
+  },
+  "HandoffConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "triggers_enabled": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Triggers Enabled",
+     "type": "array"
+    },
+    "routing": {
+     "items": {
+      "$ref": "#/$defs/RoutingRule"
+     },
+     "title": "Routing",
+     "type": "array"
+    },
+    "sla_minutes": {
+     "default": 30,
+     "exclusiveMinimum": 0,
+     "title": "Sla Minutes",
+     "type": "integer"
+    },
+    "expectation_message_in_hours": {
+     "title": "Expectation Message In Hours",
+     "type": "string"
+    },
+    "expectation_message_off_hours": {
+     "title": "Expectation Message Off Hours",
+     "type": "string"
+    },
+    "send_expectation_message": {
+     "default": true,
+     "title": "Send Expectation Message",
+     "type": "boolean"
+    },
+    "return_to_bot_after_inactivity_min": {
+     "anyOf": [
+      {
+       "exclusiveMinimum": 0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Return To Bot After Inactivity Min"
+    },
+    "off_hours_mode": {
+     "default": "bot_keeps_serving",
+     "enum": [
+      "bot_keeps_serving",
+      "await_human"
+     ],
+     "title": "Off Hours Mode",
+     "type": "string"
+    },
+    "notify_off_hours": {
+     "default": "at_open",
+     "enum": [
+      "immediately",
+      "at_open"
+     ],
+     "title": "Notify Off Hours",
+     "type": "string"
+    },
+    "human_unanswered_realert_min": {
+     "default": 30,
+     "exclusiveMinimum": 0,
+     "title": "Human Unanswered Realert Min",
+     "type": "integer"
+    },
+    "closed_reopens_on_inbound": {
+     "default": true,
+     "title": "Closed Reopens On Inbound",
+     "type": "boolean"
+    },
+    "notifier": {
+     "default": "whatsapp_cloud",
+     "enum": [
+      "whatsapp_cloud",
+      "email",
+      "telegram"
+     ],
+     "title": "Notifier",
+     "type": "string"
+    },
+    "notifier_fallback": {
+     "default": "email",
+     "enum": [
+      "email",
+      "none"
+     ],
+     "title": "Notifier Fallback",
+     "type": "string"
+    },
+    "console_links_require_login": {
+     "const": true,
+     "default": true,
+     "title": "Console Links Require Login",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "triggers_enabled",
+    "routing",
+    "expectation_message_in_hours",
+    "expectation_message_off_hours"
+   ],
+   "title": "HandoffConfig",
+   "type": "object"
+  },
+  "InputGuardConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "max_chars": {
+     "default": 4000,
+     "exclusiveMinimum": 0,
+     "title": "Max Chars",
+     "type": "integer"
+    },
+    "opt_out_intent_confirm_threshold": {
+     "default": 0.85,
+     "maximum": 1,
+     "minimum": 0,
+     "title": "Opt Out Intent Confirm Threshold",
+     "type": "number"
+    },
+    "injection_score_threshold": {
+     "default": 0.6,
+     "maximum": 1,
+     "minimum": 0,
+     "title": "Injection Score Threshold",
+     "type": "number"
+    },
+    "per_contact_messages_per_min": {
+     "default": 20,
+     "exclusiveMinimum": 0,
+     "title": "Per Contact Messages Per Min",
+     "type": "integer"
+    }
+   },
+   "title": "InputGuardConfig",
+   "type": "object"
+  },
+  "MediaConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "transcribe_audio": {
+     "default": true,
+     "title": "Transcribe Audio",
+     "type": "boolean"
+    },
+    "images": {
+     "default": "local_ocr_masked",
+     "enum": [
+      "local_ocr_masked",
+      "refuse_and_handoff",
+      "llm_describe"
+     ],
+     "title": "Images",
+     "type": "string"
+    },
+    "documents": {
+     "default": "local_extract_masked",
+     "enum": [
+      "local_extract_masked",
+      "refuse_and_handoff"
+     ],
+     "title": "Documents",
+     "type": "string"
+    },
+    "max_audio_seconds": {
+     "default": 180,
+     "exclusiveMinimum": 0,
+     "title": "Max Audio Seconds",
+     "type": "integer"
+    },
+    "raw_media_retention_days": {
+     "default": 30,
+     "exclusiveMinimum": 0,
+     "title": "Raw Media Retention Days",
+     "type": "integer"
+    }
+   },
+   "title": "MediaConfig",
+   "type": "object"
+  },
+  "MetaConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "graph_api_version": {
+     "default": "v26.0",
+     "title": "Graph Api Version",
+     "type": "string"
+    },
+    "login_kind": {
+     "default": "facebook_login",
+     "enum": [
+      "facebook_login",
+      "instagram_login"
+     ],
+     "title": "Login Kind",
+     "type": "string"
+    }
+   },
+   "title": "MetaConfig",
+   "type": "object"
+  },
+  "ModelRef": {
+   "additionalProperties": false,
+   "description": "Non-chat model (embedding, STT, rerank): provider policy is mandatory too (review #4).",
+   "properties": {
+    "model": {
+     "title": "Model",
+     "type": "string"
+    },
+    "provider": {
+     "$ref": "#/$defs/ProviderPolicy",
+     "default": {
+      "data_collection": "deny",
+      "zdr": true,
+      "require_parameters": true,
+      "allow_fallbacks": false,
+      "order": [],
+      "only": []
+     }
+    },
+    "dims": {
+     "anyOf": [
+      {
+       "exclusiveMinimum": 0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Dims"
+    },
+    "timeout_s": {
+     "default": 10,
+     "exclusiveMinimum": 0,
+     "maximum": 60,
+     "title": "Timeout S",
+     "type": "number"
+    }
+   },
+   "required": [
+    "model"
+   ],
+   "title": "ModelRef",
+   "type": "object"
+  },
+  "ModelsConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "analyze_turn": {
+     "$ref": "#/$defs/NodeModel"
+    },
+    "respond": {
+     "$ref": "#/$defs/NodeModel"
+    },
+    "output_judge": {
+     "$ref": "#/$defs/NodeModel"
+    },
+    "input_classifier": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/NodeModel"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "summarize": {
+     "$ref": "#/$defs/NodeModel"
+    },
+    "comment_intent": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/NodeModel"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "image_describe": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/NodeModel"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "embedding": {
+     "$ref": "#/$defs/ModelRef"
+    },
+    "transcription": {
+     "$ref": "#/$defs/ModelRef"
+    },
+    "rerank": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ModelRef"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [
+    "analyze_turn",
+    "respond",
+    "output_judge",
+    "summarize",
+    "embedding",
+    "transcription"
+   ],
+   "title": "ModelsConfig",
+   "type": "object"
+  },
+  "NodeModel": {
+   "additionalProperties": false,
+   "properties": {
+    "primary": {
+     "title": "Primary",
+     "type": "string"
+    },
+    "fallbacks": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "Fallbacks",
+     "type": "array"
+    },
+    "temperature": {
+     "default": 0.2,
+     "maximum": 2,
+     "minimum": 0,
+     "title": "Temperature",
+     "type": "number"
+    },
+    "max_output_tokens": {
+     "default": 600,
+     "exclusiveMinimum": 0,
+     "title": "Max Output Tokens",
+     "type": "integer"
+    },
+    "timeout_s": {
+     "default": 10,
+     "exclusiveMinimum": 0,
+     "maximum": 60,
+     "title": "Timeout S",
+     "type": "number"
+    },
+    "reasoning_effort": {
+     "default": "minimal",
+     "enum": [
+      "none",
+      "minimal",
+      "low",
+      "medium"
+     ],
+     "title": "Reasoning Effort",
+     "type": "string"
+    },
+    "structured_output": {
+     "default": "json_schema",
+     "enum": [
+      "json_schema",
+      "function_calling",
+      "none"
+     ],
+     "title": "Structured Output",
+     "type": "string"
+    },
+    "prompt_version": {
+     "title": "Prompt Version",
+     "type": "string"
+    },
+    "provider": {
+     "$ref": "#/$defs/ProviderPolicy",
+     "default": {
+      "data_collection": "deny",
+      "zdr": true,
+      "require_parameters": true,
+      "allow_fallbacks": false,
+      "order": [],
+      "only": []
+     }
+    }
+   },
+   "required": [
+    "primary",
+    "prompt_version"
+   ],
+   "title": "NodeModel",
+   "type": "object"
+  },
+  "OperationsConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "feature_flags": {
+     "additionalProperties": {
+      "type": "boolean"
+     },
+     "default": {},
+     "title": "Feature Flags",
+     "type": "object"
+    },
+    "canary_percent": {
+     "default": 0,
+     "maximum": 100,
+     "minimum": 0,
+     "title": "Canary Percent",
+     "type": "integer"
+    },
+    "trace_sampling": {
+     "default": 1.0,
+     "maximum": 1,
+     "minimum": 0,
+     "title": "Trace Sampling",
+     "type": "number"
+    },
+    "retention_days": {
+     "additionalProperties": {
+      "exclusiveMinimum": 0,
+      "type": "integer"
+     },
+     "default": {
+      "inbound_raw": 30,
+      "media": 30,
+      "messages_original": 365,
+      "llm_calls": 365,
+      "checkpoints": 30,
+      "ownership_evidence": 90,
+      "dead_letters": 30,
+      "tool_call_args": 90,
+      "handoff_summaries": 365,
+      "lead_forms": 730,
+      "audit_log": 1825
+     },
+     "title": "Retention Days",
+     "type": "object"
+    }
+   },
+   "title": "OperationsConfig",
+   "type": "object"
+  },
+  "OutputGuardConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "guidance_only_max_ngram": {
+     "default": 12,
+     "exclusiveMinimum": 0,
+     "title": "Guidance Only Max Ngram",
+     "type": "integer"
+    },
+    "numbers_must_appear_in_sources": {
+     "const": true,
+     "default": true,
+     "title": "Numbers Must Appear In Sources",
+     "type": "boolean"
+    },
+    "pii_placeholder_in_output_blocks": {
+     "const": true,
+     "default": true,
+     "title": "Pii Placeholder In Output Blocks",
+     "type": "boolean"
+    }
+   },
+   "title": "OutputGuardConfig",
+   "type": "object"
+  },
+  "PackageRef": {
+   "additionalProperties": false,
+   "properties": {
+    "name": {
+     "title": "Name",
+     "type": "string"
+    },
+    "version": {
+     "title": "Version",
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "version"
+   ],
+   "title": "PackageRef",
+   "type": "object"
+  },
+  "PersonaConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "assistant_name": {
+     "title": "Assistant Name",
+     "type": "string"
+    },
+    "seller_display_name": {
+     "title": "Seller Display Name",
+     "type": "string"
+    },
+    "tone": {
+     "default": "friendly",
+     "enum": [
+      "friendly",
+      "formal",
+      "neutral"
+     ],
+     "title": "Tone",
+     "type": "string"
+    },
+    "disclose_on_first_message": {
+     "default": true,
+     "title": "Disclose On First Message",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "assistant_name",
+    "seller_display_name"
+   ],
+   "title": "PersonaConfig",
+   "type": "object"
+  },
+  "ProviderPolicy": {
+   "additionalProperties": false,
+   "properties": {
+    "data_collection": {
+     "const": "deny",
+     "default": "deny",
+     "title": "Data Collection",
+     "type": "string"
+    },
+    "zdr": {
+     "const": true,
+     "default": true,
+     "title": "Zdr",
+     "type": "boolean"
+    },
+    "require_parameters": {
+     "default": true,
+     "title": "Require Parameters",
+     "type": "boolean"
+    },
+    "allow_fallbacks": {
+     "default": false,
+     "title": "Allow Fallbacks",
+     "type": "boolean"
+    },
+    "order": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "Order",
+     "type": "array"
+    },
+    "only": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "Only",
+     "type": "array"
+    }
+   },
+   "title": "ProviderPolicy",
+   "type": "object"
+  },
+  "QuietHours": {
+   "additionalProperties": false,
+   "properties": {
+    "start": {
+     "default": "22:00:00",
+     "format": "time",
+     "title": "Start",
+     "type": "string"
+    },
+    "end": {
+     "default": "08:00:00",
+     "format": "time",
+     "title": "End",
+     "type": "string"
+    },
+    "timezone": {
+     "default": "America/Sao_Paulo",
+     "title": "Timezone",
+     "type": "string"
+    }
+   },
+   "title": "QuietHours",
+   "type": "object"
+  },
+  "RagConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "active_index_id": {
+     "title": "Active Index Id",
+     "type": "string"
+    },
+    "faq_threshold": {
+     "default": 0.86,
+     "maximum": 1,
+     "minimum": 0,
+     "title": "Faq Threshold",
+     "type": "number"
+    },
+    "min_score": {
+     "default": 0.35,
+     "maximum": 1,
+     "minimum": 0,
+     "title": "Min Score",
+     "type": "number"
+    },
+    "top_k": {
+     "default": 4,
+     "maximum": 12,
+     "minimum": 1,
+     "title": "Top K",
+     "type": "integer"
+    },
+    "pre_rerank_k": {
+     "default": 20,
+     "maximum": 60,
+     "minimum": 4,
+     "title": "Pre Rerank K",
+     "type": "integer"
+    },
+    "rrf_k": {
+     "default": 60,
+     "exclusiveMinimum": 0,
+     "title": "Rrf K",
+     "type": "integer"
+    },
+    "rerank": {
+     "default": false,
+     "title": "Rerank",
+     "type": "boolean"
+    },
+    "max_questions_per_turn": {
+     "default": 2,
+     "maximum": 3,
+     "minimum": 1,
+     "title": "Max Questions Per Turn",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "active_index_id"
+   ],
+   "title": "RagConfig",
+   "type": "object"
+  },
+  "RoutingRule": {
+   "additionalProperties": false,
+   "properties": {
+    "when": {
+     "default": "true",
+     "title": "When",
+     "type": "string"
+    },
+    "seller_ids": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Seller Ids",
+     "type": "array"
+    },
+    "strategy": {
+     "default": "single",
+     "enum": [
+      "single",
+      "round_robin",
+      "least_open"
+     ],
+     "title": "Strategy",
+     "type": "string"
+    }
+   },
+   "required": [
+    "seller_ids"
+   ],
+   "title": "RoutingRule",
+   "type": "object"
+  },
+  "SendingConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "quiet_hours": {
+     "$ref": "#/$defs/QuietHours",
+     "default": {
+      "start": "22:00:00",
+      "end": "08:00:00",
+      "timezone": "America/Sao_Paulo"
+     }
+    },
+    "holidays_national": {
+     "default": true,
+     "title": "Holidays National",
+     "type": "boolean"
+    },
+    "holidays_local_calendar": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Holidays Local Calendar"
+    },
+    "proactive_jitter_s": {
+     "default": [
+      30,
+      300
+     ],
+     "maxItems": 2,
+     "minItems": 2,
+     "prefixItems": [
+      {
+       "exclusiveMinimum": 0,
+       "type": "integer"
+      },
+      {
+       "exclusiveMinimum": 0,
+       "type": "integer"
+      }
+     ],
+     "title": "Proactive Jitter S",
+     "type": "array"
+    },
+    "frequency_cap_per_contact_day": {
+     "default": 2,
+     "exclusiveMinimum": 0,
+     "title": "Frequency Cap Per Contact Day",
+     "type": "integer"
+    },
+    "frequency_cap_per_contact_week": {
+     "default": 4,
+     "exclusiveMinimum": 0,
+     "title": "Frequency Cap Per Contact Week",
+     "type": "integer"
+    },
+    "channel_rate_safety_margin": {
+     "default": 0.2,
+     "maximum": 1,
+     "minimum": 0,
+     "title": "Channel Rate Safety Margin",
+     "type": "number"
+    }
+   },
+   "title": "SendingConfig",
+   "type": "object"
+  },
+  "Subprocessor": {
+   "additionalProperties": false,
+   "description": "LGPD inventory: every external operator that may receive personal data (review #4).",
+   "properties": {
+    "name": {
+     "title": "Name",
+     "type": "string"
+    },
+    "purpose": {
+     "title": "Purpose",
+     "type": "string"
+    },
+    "data_categories": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Data Categories",
+     "type": "array"
+    },
+    "country": {
+     "title": "Country",
+     "type": "string"
+    },
+    "transfer_mechanism": {
+     "enum": [
+      "anpd_scc",
+      "adequacy",
+      "not_applicable",
+      "pending"
+     ],
+     "title": "Transfer Mechanism",
+     "type": "string"
+    },
+    "zdr": {
+     "title": "Zdr",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "name",
+    "purpose",
+    "data_categories",
+    "country",
+    "transfer_mechanism",
+    "zdr"
+   ],
+   "title": "Subprocessor",
+   "type": "object"
+  },
+  "ToolOverride": {
+   "additionalProperties": false,
+   "properties": {
+    "enabled": {
+     "default": true,
+     "title": "Enabled",
+     "type": "boolean"
+    },
+    "allowed_stages": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Allowed Stages"
+    },
+    "timeout_s": {
+     "default": 5,
+     "exclusiveMinimum": 0,
+     "maximum": 30,
+     "title": "Timeout S",
+     "type": "number"
+    }
+   },
+   "title": "ToolOverride",
+   "type": "object"
+  }
+ },
+ "additionalProperties": false,
+ "properties": {
+  "schema_version": {
+   "const": 1,
+   "default": 1,
+   "title": "Schema Version",
+   "type": "integer"
+  },
+  "tenant_slug": {
+   "title": "Tenant Slug",
+   "type": "string"
+  },
+  "segment_package": {
+   "$ref": "#/$defs/PackageRef"
+  },
+  "meta": {
+   "$ref": "#/$defs/MetaConfig",
+   "default": {
+    "graph_api_version": "v26.0",
+    "login_kind": "facebook_login"
+   }
+  },
+  "models": {
+   "$ref": "#/$defs/ModelsConfig"
+  },
+  "budget": {
+   "$ref": "#/$defs/BudgetConfig",
+   "default": {
+    "day_boundary_tz": "UTC",
+    "pilot_total_cap_usd": "4.50",
+    "net_credit_usd": "4.74",
+    "daily_cap_usd": "2.00",
+    "per_conversation_cap_usd": "0.10",
+    "per_turn_cap_usd": "0.02",
+    "alert_thresholds": [
+     0.5,
+     0.8,
+     1.0
+    ],
+    "degradation_order": [
+     "cheaper_model",
+     "faq_only",
+     "handoff_short_message"
+    ],
+    "experiment_cap_usd": "1.00",
+    "ci_daily_cap_usd": "0.50",
+    "reservation_ttl_s": 120,
+    "openrouter_key_limit_usd": "2.50"
+   }
+  },
+  "conversation": {
+   "$ref": "#/$defs/ConversationConfig"
+  },
+  "agent": {
+   "$ref": "#/$defs/AgentConfig",
+   "default": {
+    "analyze_mode": "merged",
+    "max_llm_calls_per_turn": 4,
+    "max_tool_calls_per_turn": 2,
+    "turn_timeout_s": 40.0,
+    "slow_after_s": 15.0,
+    "summary_every_n_turns": 5
+   }
+  },
+  "funnel": {
+   "$ref": "#/$defs/FunnelConfig",
+   "default": {
+    "stage_confidence_threshold": 0.7,
+    "slot_confidence_threshold": 0.6,
+    "max_turns_without_progress_override": {}
+   }
+  },
+  "guidelines": {
+   "$ref": "#/$defs/GuidelinesConfig",
+   "default": {
+    "max_per_turn": 6,
+    "overrides": []
+   }
+  },
+  "tools": {
+   "additionalProperties": {
+    "$ref": "#/$defs/ToolOverride"
+   },
+   "default": {},
+   "title": "Tools",
+   "type": "object"
+  },
+  "rag": {
+   "$ref": "#/$defs/RagConfig"
+  },
+  "concurrency": {
+   "$ref": "#/$defs/ConcurrencyConfig",
+   "default": {
+    "debounce_window_s": 4.0,
+    "debounce_max_wait_s": 15.0,
+    "media_max_wait_s": 25.0,
+    "new_message_policy": "cancel_if_unsent_else_next_turn",
+    "max_consecutive_restarts": 2,
+    "heartbeat_timeout_s": 45,
+    "max_staleness_reply_s": 120,
+    "max_staleness_proactive_s": 600,
+    "echo_grace_s": 3.0,
+    "echo_reconcile_window_s": 120.0,
+    "ambiguous_send_policy": "check_conversation_api_then_fail",
+    "turn_lease_s": 60
+   }
+  },
+  "handoff": {
+   "$ref": "#/$defs/HandoffConfig"
+  },
+  "sending": {
+   "$ref": "#/$defs/SendingConfig",
+   "default": {
+    "quiet_hours": {
+     "end": "08:00:00",
+     "start": "22:00:00",
+     "timezone": "America/Sao_Paulo"
+    },
+    "holidays_national": true,
+    "holidays_local_calendar": null,
+    "proactive_jitter_s": [
+     30,
+     300
+    ],
+    "frequency_cap_per_contact_day": 2,
+    "frequency_cap_per_contact_week": 4,
+    "channel_rate_safety_margin": 0.2
+   }
+  },
+  "comments": {
+   "$ref": "#/$defs/CommentsConfig",
+   "default": {
+    "enabled": true,
+    "private_reply_dedup_window_days": 7,
+    "sensitive_topics_to_human": true,
+    "hide_spam": false,
+    "rules": []
+   }
+  },
+  "followups": {
+   "$ref": "#/$defs/FollowupsConfig",
+   "default": {
+    "enabled": true,
+    "cadences": []
+   }
+  },
+  "compliance": {
+   "$ref": "#/$defs/ComplianceConfig",
+   "default": {
+    "forbidden_phrases": [],
+    "required_disclosures": {},
+    "never_request": [
+     "cpf",
+     "rg",
+     "income",
+     "assets",
+     "bank_data",
+     "health_data"
+    ],
+    "opt_out_keywords": [
+     "parar",
+     "pare",
+     "sair",
+     "stop",
+     "cancelar mensagens",
+     "não quero mais"
+    ],
+    "judge_risk_threshold": 0.5,
+    "product_numbers_require_provenance": true,
+    "internal_documents_never_cited": true,
+    "extra_rules": []
+   }
+  },
+  "media": {
+   "$ref": "#/$defs/MediaConfig",
+   "default": {
+    "transcribe_audio": true,
+    "images": "local_ocr_masked",
+    "documents": "local_extract_masked",
+    "max_audio_seconds": 180,
+    "raw_media_retention_days": 30
+   }
+  },
+  "input_guard": {
+   "$ref": "#/$defs/InputGuardConfig",
+   "default": {
+    "max_chars": 4000,
+    "opt_out_intent_confirm_threshold": 0.85,
+    "injection_score_threshold": 0.6,
+    "per_contact_messages_per_min": 20
+   }
+  },
+  "output_guard": {
+   "$ref": "#/$defs/OutputGuardConfig",
+   "default": {
+    "guidance_only_max_ngram": 12,
+    "numbers_must_appear_in_sources": true,
+    "pii_placeholder_in_output_blocks": true
+   }
+  },
+  "subprocessors": {
+   "items": {
+    "$ref": "#/$defs/Subprocessor"
+   },
+   "title": "Subprocessors",
+   "type": "array"
+  },
+  "operations": {
+   "$ref": "#/$defs/OperationsConfig",
+   "default": {
+    "feature_flags": {},
+    "canary_percent": 0,
+    "trace_sampling": 1.0,
+    "retention_days": {
+     "audit_log": 1825,
+     "checkpoints": 30,
+     "dead_letters": 30,
+     "handoff_summaries": 365,
+     "inbound_raw": 30,
+     "lead_forms": 730,
+     "llm_calls": 365,
+     "media": 30,
+     "messages_original": 365,
+     "ownership_evidence": 90,
+     "tool_call_args": 90
+    }
+   }
+  }
+ },
+ "required": [
+  "tenant_slug",
+  "segment_package",
+  "models",
+  "conversation",
+  "rag",
+  "handoff",
+  "subprocessors"
+ ],
+ "title": "PlatformConfig",
+ "type": "object"
+}

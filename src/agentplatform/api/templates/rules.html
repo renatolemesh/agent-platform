@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% block title %}Regras{% endblock %}{% block body %}
+<a class="crumb" href="/console/assistant">{{ icon('back', 14) }} Assistente</a>
+<div class="page-head"><div><h1>Regras do assistente</h1><p class="sub">O que ele faz em cada situação, quando chama o vendedor e o que nunca diz. Salvar cria um rascunho. As regras de segurança e o que o pacote trava não aparecem para desligar.</p></div></div>
+{% for e in errors or [] %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ e }}</p></div>{% endfor %}
+<form method="post" action="/console/assistant/rules">{{ csrf_input(user) }}
+
+<div class="card flush"><div class="card-head"><div><h2>Diretrizes do pacote</h2><p class="sub">Orientações que entram na resposta quando a situação aparece. Número menor vem primeiro; no máximo {{ cfg.guidelines.max_per_turn }} por mensagem.</p></div></div>
+<div class="table-wrap"><table><thead><tr><th>Ligada</th><th>O que faz</th><th>Quando</th><th class="num">Ordem</th></tr></thead><tbody>
+{% for g in guidelines %}<tr data-guideline="{{ g.spec.id }}"><td><input type="checkbox" name="g_on_{{ g.spec.id }}" aria-label="Ligar {{ g.spec.id }}" {{ 'checked' if g.enabled }}></td>
+<td class="small">{{ g.spec.action }}</td><td class="small muted">{% for i in g.spec.when_intents %}<span class="badge plain" style="margin:0 4px 4px 0">{{ i | humanize }}</span>{% endfor %}{% if g.spec.when_keywords %}<div>{{ g.spec.when_keywords[:4] | join(', ') }}{% if g.spec.when_keywords | length > 4 %}…{% endif %}</div>{% endif %}</td>
+<td class="num"><input type="number" name="g_priority_{{ g.spec.id }}" value="{{ g.priority }}" style="width:76px"></td></tr>{% endfor %}
+</tbody></table></div></div>
+
+<div class="card"><h2>Suas diretrizes</h2><p class="muted small">Diga quando vale (palavras que o cliente usa) e o que o assistente deve fazer. Ele ainda passa por todas as regras: isto orienta, não libera nada.</p>
+{% for g in custom %}<div class="row" data-own-guideline><div class="field" style="flex:3"><label>O que fazer</label><input name="c_action" maxlength="500" value="{{ g.action if g else '' }}" placeholder="ex.: Explique que atendo por videochamada e ofereça um horário"></div>
+<div class="field" style="flex:2"><label>Quando o cliente disser (separe por vírgula)</label><input name="c_words" value="{{ g.when_keywords | join(', ') if g else '' }}" placeholder="visita, presencial, escritório"></div>
+<input type="hidden" name="c_intents" value="{{ g.when_intents | join(', ') if g else '' }}"><input type="hidden" name="c_stages" value="{{ g.stages | join(', ') if g else '' }}"></div>{% endfor %}
+<p class="muted small">Para acrescentar outra, salve e volte: sempre fica uma linha em branco.</p></div>
+
+<div class="card"><h2>Quando chamar o vendedor</h2>
+{% for r in can_turn_off %}<label class="small check"><input type="checkbox" name="reason_{{ r }}" {{ 'checked' if r not in cfg.handoff.disabled_reasons }}> {{ r | reason_label }}</label>{% endfor %}
+<p class="muted small" style="margin-top:8px">Sempre chama, sem opção de desligar: pedido de falar com uma pessoa{% for r in locked_reasons %}, {{ r | reason_label | lower }}{% endfor %}.</p></div>
+
+<div class="card flush"><div class="card-head"><div><h2>Paciência por estágio</h2><p class="sub">Depois de quantas mensagens sem avançar ele muda a abordagem. No dobro, chama o vendedor.</p></div></div>
+<div class="table-wrap"><table><thead><tr><th>Estágio</th><th class="num">Mensagens</th></tr></thead><tbody>{% for st in stages if st.max_turns_without_progress %}<tr><td>{{ st.label or st.name }}</td><td class="num"><input type="number" min="1" name="limit_{{ st.name }}" value="{{ cfg.funnel.max_turns_without_progress_override.get(st.name, st.max_turns_without_progress) }}" style="width:76px"></td></tr>{% endfor %}</tbody></table></div></div>
+
+{% if tools %}<div class="card"><h2>Ferramentas</h2>{% for t in tools %}<label class="small check"><input type="checkbox" name="tool_{{ t.name }}" {{ 'checked' if not cfg.tools.get(t.name) or cfg.tools[t.name].enabled }}> {{ t.description }}</label>{% endfor %}</div>{% endif %}
+
+<div class="card"><h2>Frases que ele nunca diz</h2><p class="muted small">Uma por linha. Uma resposta com alguma delas é barrada antes de sair.</p>
+<div class="field"><textarea name="own_phrases" rows="4" aria-label="Frases proibidas">{{ own_phrases | join('\n') }}</textarea></div>
+{% if package_phrases %}<details><summary class="small">Já proibidas pelo pacote ({{ package_phrases | length }}), sem como tirar</summary><p class="small muted" style="margin-top:8px">{{ package_phrases | join(' · ') }}</p></details>{% endif %}</div>
+
+<div class="card"><div class="row"><div class="field"><label>O que mudou (anotação)</label><input name="note" maxlength="300"></div><button class="btn-primary">{{ icon('check', 16) }} Criar rascunho</button></div></div>
+</form>
+{% endblock %}

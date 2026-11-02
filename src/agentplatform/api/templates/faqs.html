@@ -1,0 +1,32 @@
+{% extends "base.html" %}{% block title %}Perguntas frequentes{% endblock %}{% block body %}
+{% if processing %}<meta http-equiv="refresh" content="5">{% endif %}
+<div class="page-head"><div><h1>Perguntas frequentes</h1><p class="sub">Respostas escritas por você. Quando o cliente pergunta algo parecido, o assistente usa esta resposta antes dos documentos.</p></div></div>
+{% if saved %}<div class="alert ok">{{ icon('check', 16) }}<p>{{ saved }}</p></div>{% endif %}
+{% if error %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ error }}</p></div>{% endif %}
+{% for p in problems %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ p | text_problem }}</p></div>{% endfor %}
+{% if not can_index %}<div class="alert warn">{{ icon('alert', 16) }}<p>Este ambiente usa a chave de testes: dá para salvar rascunhos, mas aprovar só funciona com o provedor de produção.</p></div>{% endif %}
+
+<div class="card"><h2>{{ 'Editar pergunta' if form.id else 'Nova pergunta' }}</h2>
+  {% if form.id %}<p class="muted small">Se mudar o texto de uma pergunta aprovada, ela sai de uso até ser aprovada de novo.</p>{% endif %}
+  <form method="post" action="/console/faqs">{{ csrf_input(user) }}<input type="hidden" name="faq_id" value="{{ form.id or '' }}">
+    <div class="field"><label>Pergunta</label><input name="question" value="{{ form.question }}" maxlength="200" placeholder="Como o cliente costuma perguntar"></div>
+    <div class="field"><label>Resposta</label><textarea name="answer" rows="4" maxlength="1000">{{ form.answer }}</textarea>
+      <span class="help">Pode ter valores: esta resposta passa a ser fonte oficial, então confira antes de aprovar.</span></div>
+    <div class="grid g2">
+      <div class="field"><label>Outras formas de perguntar (uma por linha, opcional)</label><textarea name="variants" rows="3">{{ form.variants | join('\n') }}</textarea></div>
+      <div class="field"><label>Vale até (opcional)</label><input type="date" name="valid_to" value="{{ form.valid_to }}"></div>
+    </div>
+    <div class="actions"><button class="btn-primary" name="action" value="approve">{{ icon('check', 16) }} Aprovar</button><button name="action" value="save">Salvar rascunho</button>
+      {% if form.id %}<a class="btn btn-ghost" href="/console/faqs">Cancelar</a>{% endif %}</div>
+  </form></div>
+
+<div class="card flush"><div class="table-wrap"><table><thead><tr><th>Pergunta</th><th>Resposta</th><th>Situação</th><th>Validade</th><th></th></tr></thead><tbody>
+{% for r in rows %}<tr><td style="min-width:200px"><b>{{ r.canonical_question }}</b>{% if r.variants %}<div class="muted small">{{ r.variants | join(' · ') }}</div>{% endif %}{% if not r.tenant_id %}<div class="muted small">do pacote, só leitura</div>{% endif %}</td>
+<td class="small" style="min-width:260px">{{ r.answer }}</td>
+<td>{% if r.processing == 'indexing' %}<span class="badge info">Preparando para uso</span>{% elif r.processing == 'failed' %}<span class="badge bad" title="{{ KB_ERROR.get(r.processing_error, '') }}">Falhou</span>{% else %}<span class="badge {{ r.status | status_tone }}">{{ r.status | status_label }}</span>{% endif %}</td>
+<td class="muted nowrap">{{ r.valid_to.strftime('%d/%m/%Y') if r.valid_to else '—' }}</td>
+<td class="nowrap">{% if r.tenant_id == tid %}<a class="btn btn-sm" href="/console/faqs?edit={{ r.id }}">Editar</a>
+  {% if r.status != 'retired' %}<form method="post" action="/console/faqs/{{ r.id }}/retire" class="inline">{{ csrf_input(user) }}<button class="btn-sm btn-ghost">Retirar</button></form>{% endif %}{% endif %}</td></tr>
+{% if r.processing == 'failed' %}<tr><td colspan="5"><span class="small bad">{{ KB_ERROR.get(r.processing_error, 'Algo deu errado. Aprove de novo.') }}</span></td></tr>{% endif %}
+{% else %}<tr><td colspan="5"><div class="empty">{{ icon('chat', 28) }}<div>Nenhuma pergunta ainda.</div></div></td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

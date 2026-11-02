@@ -1,0 +1,39 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><title>Pré-cadastro</title>
+<style>
+:root{--bg:#f5f6f8;--surface:#fff;--line:#e5e7eb;--fg:#111827;--muted:#6b7280;--accent:#4f46e5;--accent-soft:#eef2ff;--ok:#047857;--ok-soft:#ecfdf5;--warn:#b45309;--warn-soft:#fffbeb;--input:#d1d5db}
+@media (prefers-color-scheme:dark){:root{--bg:#0b0f17;--surface:#111827;--line:#1f2937;--fg:#f3f4f6;--muted:#9ca3af;--accent:#818cf8;--accent-soft:#1e1b4b;--ok:#34d399;--ok-soft:#052e24;--warn:#fbbf24;--warn-soft:#2b1d05;--input:#374151}}
+*{box-sizing:border-box}body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--fg);-webkit-font-smoothing:antialiased}
+.wrap{max-width:480px;margin:0 auto;padding:28px 16px 40px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:0 10px 30px rgba(16,24,40,.06)}
+.top{display:flex;align-items:center;gap:10px;margin-bottom:18px;color:var(--muted);font-size:14px}
+.dot{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#22d3ee);flex:none}
+h1{font-size:22px;line-height:1.25;margin:0 0 6px;font-weight:650;letter-spacing:-.01em}
+p{margin:0 0 14px}.muted{color:var(--muted);font-size:14px}
+.note{display:flex;gap:10px;background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:13.5px;margin:4px 0 18px}
+label.f{display:block;font-size:14px;font-weight:600;margin:0 0 6px}
+input[type=text],input:not([type]){width:100%;font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--input);border-radius:10px;padding:12px 14px;outline:none;margin-bottom:16px}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.consent{display:flex;gap:10px;align-items:flex-start;font-size:14px;margin:4px 0 20px;cursor:pointer}
+.consent input{width:20px;height:20px;margin:1px 0 0;accent-color:var(--accent);flex:none}
+button{width:100%;font:inherit;font-weight:600;font-size:16px;padding:14px;border-radius:12px;border:0;background:var(--accent);color:#fff;cursor:pointer}
+button:hover{filter:brightness(1.07)}
+.state{text-align:center;padding:12px 0}.icon{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;margin:0 auto 14px;font-size:26px}
+.icon.ok{background:var(--ok-soft);color:var(--ok)}.icon.warn{background:var(--warn-soft);color:var(--warn)}
+.foot{text-align:center;color:var(--muted);font-size:12.5px;margin-top:16px}
+</style></head><body><div class="wrap">
+<div class="top"><span class="dot" aria-hidden="true"></span><span>Atendimento pelo Instagram</span></div>
+<div class="card">
+{% if done %}<div class="state"><div class="icon ok" aria-hidden="true">✓</div><h1>Obrigado!</h1>
+<p class="muted">Recebemos seus dados. O consultor vai continuar o atendimento pela conversa no Instagram.</p></div>
+{% elif expired %}<div class="state"><div class="icon warn" aria-hidden="true">!</div><h1>Link expirado</h1>
+<p class="muted">Este link já foi usado ou venceu. Peça um novo na conversa.</p></div>
+{% else %}<h1>Pré-cadastro</h1><p class="muted">Leva menos de um minuto. Com esses dados o consultor prepara a sua proposta.</p>
+<div class="note"><span aria-hidden="true">🔒</span><span>Não envie CPF, RG, renda ou dados de saúde por aqui. Isso é feito depois, no sistema oficial.</span></div>
+<form method="post"><input type="hidden" name="csrf" value="{{ csrf }}">
+{% for f in fields %}<label class="f" for="f-{{ f }}">{{ labels.get(f, f) }}</label><input id="f-{{ f }}" name="{{ f }}" maxlength="200" autocomplete="off">{% endfor %}
+<label class="consent"><input type="checkbox" name="consent" value="1" required><span>{{ consent_text }}</span></label>
+<button>Enviar</button></form>{% endif %}
+</div>
+<p class="foot">Seus dados são usados só para este atendimento, conforme a LGPD.</p>
+</div></body></html>

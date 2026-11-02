@@ -1,0 +1,83 @@
+{% extends "base.html" %}{% block title %}Posts{% endblock %}{% block body %}
+<div class="page-head">
+  <div><h1>Posts</h1><p class="sub">Escolha o que o assistente faz com os comentários de cada post. Nada é enviado em post inativo.</p></div>
+  <form method="post" action="/console/posts/sync" class="actions">{{ csrf_input(user) }}<button>{{ icon('download', 16) }} Atualizar lista</button></form>
+</div>
+{% if saved %}<div class="alert ok">{{ icon('check', 16) }}<p>{{ saved }}</p></div>{% endif %}
+{% if notice %}<div class="alert warn">{{ icon('alert', 16) }}<p>{{ notice }}</p></div>{% endif %}
+{% if not account %}<div class="alert warn">{{ icon('alert', 16) }}<p>Conecte uma conta em Canais para listar os posts.</p></div>{% endif %}
+
+{% if account %}
+<div class="card"><h2>Quem o assistente atende no direct</h2>
+  <p class="muted small">Quem está fora fica com você, como é hoje: o assistente não responde e nada dessas conversas é guardado.</p>
+  {% if dm.contacts_synced_at %}<p class="small"><span class="badge ok">Lista pronta</span> <span class="muted">{{ dm.contacts_count }} pessoas que já conversam com a conta ficam fora, salvo se você liberar. Concluída em {{ dm.contacts_synced_at | dt }}. Se o número parecer baixo (a Meta pode mostrar só parte da lista antes da aprovação do app), refaça a lista.</span></p>
+  {% else %}<div class="alert warn">{{ icon('alert', 16) }}<p><b>O assistente ainda não atende ninguém novo.</b> Falta terminar a lista de quem já conversa com a conta. Ela é montada sozinha em até 5 minutos, e Atualizar lista adianta.</p></div>{% endif %}
+  {% if dm.contacts_synced_at and user.role == 'tenant_owner' %}<form method="post" action="/console/posts/direct/relist" style="margin:0 0 10px">{{ csrf_input(user) }}<button class="btn-sm btn-ghost">Refazer lista</button></form>{% endif %}
+  <form method="post" action="/console/posts/direct">{{ csrf_input(user) }}
+    {% for key, label in DM_SCOPE.items() %}<label class="small" style="display:flex;gap:8px;align-items:flex-start;margin:6px 0"><input type="radio" name="scope" value="{{ key }}" {{ 'checked' if dm.scope == key }} style="width:auto"> <span>{{ label }}{% if key == 'all' %} <span class="warn">(inclui amigos e família, se a conta for usada para isso)</span>{% endif %}</span></label>{% endfor %}
+    <button class="btn-primary" style="margin-top:8px">{{ icon('check', 16) }} Salvar</button>
+  </form>
+</div>
+
+<div class="card"><h2>Perguntas prontas no início do direct</h2>
+  <p class="muted small">Aparecem para quem abre uma conversa nova com a conta, só no app do celular. Quando a pessoa toca em uma, o assistente responde como se ela tivesse escrito a pergunta.</p>
+  <p class="small">{% if dm.quick_questions_published_at %}<span class="badge ok">Publicadas</span> <span class="muted">em {{ dm.quick_questions_published_at | dt }}</span>{% else %}<span class="badge muted">Não publicadas</span>{% endif %}</p>
+  {% for p in question_problems %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ p | text_problem }}</p></div>{% endfor %}
+  <form method="post" action="/console/posts/direct/questions">{{ csrf_input(user) }}
+    <div class="field"><label>Uma pergunta por linha (até {{ q_max }})</label><textarea name="questions" rows="4">{{ questions | join('\n') }}</textarea>
+      <span class="help">Até {{ q_chars }} caracteres cada, sem valores e sem promessas. Mudar aqui não muda nada no Instagram até você publicar.</span></div>
+    <div class="actions"><button class="btn-primary" name="action" value="publish">{{ icon('check', 16) }} Publicar no Instagram</button>
+      {% if dm.quick_questions_published_at %}<button class="btn-ghost" name="action" value="remove" formnovalidate>Retirar do Instagram</button>{% endif %}</div>
+  </form>
+</div>
+
+<div class="card"><div class="row" style="justify-content:space-between;align-items:center">
+  <div><h2 style="margin:0">Padrão para todos os posts</h2>
+    <p class="muted small" style="margin:4px 0 0">Vale para os posts sem escolha própria, inclusive os próximos que você publicar.</p></div>
+  <span class="badge {{ 'ok' if form.default_active else 'muted' }}">{{ 'Ativo' if form.default_active else 'Inativo' }}</span>
+</div>
+{% for p in problems %}<div class="alert bad" style="margin-top:12px">{{ icon('alert', 16) }}<p>{{ p | text_problem }}</p></div>{% endfor %}
+<form method="post" action="/console/posts/settings" style="margin-top:14px">{{ csrf_input(user) }}
+  <div class="row">
+    <div class="field"><label>Situação</label><select name="default_active">
+      <option value="0" {{ 'selected' if not form.default_active }}>Inativo: não envia nada</option>
+      <option value="1" {{ 'selected' if form.default_active }}>Ativo</option></select></div>
+    <div class="field"><label>Quando ativo, fazer</label><select name="default_mode">
+      {% for m in ('both', 'private', 'public', 'register') %}<option value="{{ m }}" {{ 'selected' if form.default_mode == m }}>{{ m | mode_label }}</option>{% endfor %}</select></div>
+    <div class="field"><label>Agir em</label><select name="trigger_kind">
+      {% for k in ('keyword', 'any', 'intent') %}<option value="{{ k }}" {{ 'selected' if form.trigger_kind == k }}>{{ k | trigger_label }}</option>{% endfor %}</select></div>
+  </div>
+  {% if templates %}<div class="actions" style="margin:12px 0"><span class="small muted">Preencher com um modelo:</span>
+    {% for t in templates %}<button class="btn-sm" name="use_template" value="{{ t.id }}" formnovalidate>{{ t.label }}</button>{% endfor %}</div>{% endif %}
+  <div class="field" style="margin-top:12px"><label>Palavras que acionam</label><input name="keywords" value="{{ form.keywords | join(', ') }}" placeholder="quero, valor, info">
+    <span class="help">Separadas por vírgula. Comentários com spam ou reclamação nunca recebem resposta automática.</span></div>
+  <div class="grid g2">
+    <div class="field"><label>Respostas no comentário (uma por linha)</label><textarea name="public_variants" rows="7">{{ form.public_variants | join('\n') }}</textarea>
+      <span class="help">Pelo menos {{ min_public }}, para não repetir a mesma frase. Sem valores. Quem não segue a conta recebe o direct em Solicitações: vale avisar.</span></div>
+    <div><div class="field"><label>Direct: texto A</label><textarea name="private_a" rows="4">{{ form.private_variants.get('A', '') }}</textarea></div>
+      <div class="field"><label>Direct: texto B (opcional, para comparar)</label><textarea name="private_b" rows="4">{{ form.private_variants.get('B', '') }}</textarea>
+      <span class="help">Diga que é o assistente virtual, faça uma pergunta só e não use valores: eles saem da tabela quando o cliente responder. <code>{seller}</code> vira o nome do vendedor.</span></div></div>
+  </div>
+  <div class="field"><label>Resposta no comentário de quem já está em conversa (uma por linha)</label><textarea name="repeat_variants" rows="2">{{ form.repeat_variants | join('\n') }}</textarea>
+    <span class="help">Nesses casos não sai outro direct. Sem texto aqui, o comentário não recebe resposta pública.</span></div>
+  <label class="small" style="display:flex;gap:8px;align-items:center;margin-bottom:12px"><input type="checkbox" name="hide_spam" value="1" {{ 'checked' if form.hide_spam }} style="width:auto"> Ocultar comentários identificados como spam</label>
+  <button class="btn-primary" name="save" value="1">{{ icon('check', 16) }} Salvar padrão</button>
+</form></div>
+{% endif %}
+
+<div class="card flush">
+  <div class="card-head"><div><h2>Publicações</h2><p class="sub">Atualizadas a cada 5 minutos. Anúncios e lives aparecem quando recebem o primeiro comentário.</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th style="min-width:300px">Publicação</th><th>O que faz</th><th class="num">Comentários</th><th class="num">Directs</th><th class="num" title="Responderam ao direct">Resp.</th><th class="num" title="Pré-cadastros">Pré-cad.</th><th class="num">Vendas</th></tr></thead>
+    <tbody>{% for m in media %}<tr>
+      <td style="min-width:300px"><div class="who-cell">{% if m.image_url %}<img src="{{ m.image_url }}" alt="" width="44" height="44" style="object-fit:cover;border-radius:6px">{% else %}<span class="avatar">{{ icon('chat', 16) }}</span>{% endif %}
+        <div><a href="/console/posts/{{ m.id }}">{{ (m.caption_masked or m.ad_title or 'Sem legenda') | truncate(70) }}</a>
+        <div class="muted small">{{ m.media_kind | media_kind_label }} · {{ m.posted_at | dt }}</div></div></div></td>
+      <td><span class="badge {{ 'muted' if m.effective.mode == 'off' else 'ok' }}">{{ m.effective.mode | mode_label }}</span>
+        <div class="muted small">{{ 'escolha do post' if m.effective.source == 'post' else 'padrão' }}</div></td>
+      <td class="num">{{ m.funnel.comments }}{% if m.funnel.attention %} <a class="small warn" href="/console/comments?f=attention&media={{ m.external_media_id }}">({{ m.funnel.attention }} p/ ver)</a>{% endif %}</td>
+      <td class="num">{{ m.funnel.directs }}</td><td class="num">{{ m.funnel.replied }}</td><td class="num">{{ m.funnel.forms }}</td><td class="num">{{ m.funnel.won }}</td>
+    </tr>{% else %}<tr><td colspan="7"><div class="empty">{{ icon('chat', 28) }}<div>Nenhuma publicação ainda.</div><div class="small">Clique em Atualizar lista.</div></div></td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endblock %}

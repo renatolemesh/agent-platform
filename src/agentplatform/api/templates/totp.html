@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block title %}Verificação em duas etapas{% endblock %}{% block body %}
+{% if not user.must_enroll %}<div class="page-head"><div><h1>Verificação em duas etapas</h1><p class="sub">Um código do celular, além da senha, para entrar no console.</p></div></div>{% else %}
+<h1 style="margin-bottom:4px">Ative a verificação em duas etapas</h1>{% endif %}
+<div class="{{ 'card' if not user.must_enroll }}" style="max-width:560px">
+{% if enabled %}<div class="alert ok">{{ icon('check', 16) }}<p>A verificação em duas etapas está ativa nesta conta.</p></div>
+<p class="muted small">Para trocar de aparelho, peça ao administrador da plataforma para redefinir o 2FA.</p>
+{% else %}
+{% if required %}<div class="alert warn">{{ icon('shield', 16) }}<p>Seu perfil exige verificação em duas etapas. Configure para continuar.</p></div>{% endif %}
+{% if error %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ error }} <a href="/console/totp">Gerar novo QR</a></p></div>{% endif %}
+{% if qr %}<ol class="steps"><li>Abra um aplicativo autenticador (Google Authenticator, Microsoft Authenticator, 1Password…).</li>
+<li>Leia o QR abaixo ou digite a chave manualmente.</li><li>Confirme com o código de 6 dígitos.</li></ol>
+<div class="qr" style="margin-bottom:10px">{{ qr }}</div><p class="muted small">Chave: <code>{{ secret }}</code></p>
+<form method="post" action="/console/totp/verify">{{ csrf_input(user) }}
+  <div class="field"><label>Código</label><input name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="000 000" required style="max-width:200px;letter-spacing:.2em"></div>
+  <button class="btn-primary">Ativar verificação</button></form>{% endif %}
+{% endif %}</div>
+{% endblock %}

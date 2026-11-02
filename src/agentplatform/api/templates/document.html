@@ -1,0 +1,57 @@
+{% extends "base.html" %}{% block title %}Documento{% endblock %}{% block body %}
+{% if processing %}<meta http-equiv="refresh" content="5">{% endif %}
+<a class="crumb" href="/console/documents">{{ icon('back', 14) }} Base de conhecimento</a>
+<div class="page-head"><div><h1>{{ doc.title }}</h1>
+  <p class="sub">{% if doc.processing == 'queued' %}<span class="badge info" data-state="reading">Lendo o arquivo</span>{% elif doc.processing == 'indexing' %}<span class="badge info" data-state="indexing">Preparando para uso</span>{% elif doc.processing == 'failed' %}<span class="badge bad" data-state="failed">Falhou</span>{% else %}<span class="badge {{ doc.status | status_tone }}" data-state="{{ doc.status }}">{{ doc.status | status_label }}</span>{% endif %}
+  <span class="muted small">{{ doc.file_name }}{% if doc.pages %} · {{ doc.pages }} página(s){% endif %}{% if doc.approved_at and doc.status == 'approved' %} · aprovado em {{ doc.approved_at | dt }}{% if doc.approver %} por {{ doc.approver }}{% endif %}{% endif %}</span></p></div>
+  {% if own and doc.status != 'do_not_use' and doc.processing != 'queued' %}<form method="post" action="/console/documents/{{ doc.id }}/retire" class="actions">{{ csrf_input(user) }}<button class="btn-ghost">Não usar este documento</button></form>{% endif %}
+</div>
+{% if error %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ error }}</p></div>{% endif %}
+{% if not own %}<div class="alert warn">{{ icon('alert', 16) }}<p>Este documento vem do pacote do segmento: aqui é só leitura.</p></div>{% endif %}
+{% if doc.processing == 'failed' %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ KB_ERROR.get(doc.processing_error, 'Algo deu errado. Tente de novo.') }}</p></div>{% endif %}
+{% if doc.processing == 'queued' %}<div class="alert ok">{{ icon('check', 16) }}<p>Estou lendo o arquivo. Esta página atualiza sozinha.</p></div>{% endif %}
+{% if doc.processing == 'indexing' %}<div class="alert ok">{{ icon('check', 16) }}<p>Aprovado. Estou preparando os trechos para a busca, e em seguida o assistente passa a usar. Esta página atualiza sozinha.</p></div>{% endif %}
+{% if doc.status == 'blocked_pii' %}<div class="alert bad">{{ icon('alert', 16) }}<div><p><b>Bloqueado: tem dados de pessoas.</b> Encontrei {% for k, n in doc.pii_scan.blocking.items() %}{{ n }} {{ KB_PII.get(k, k) }}{{ ', ' if not loop.last }}{% endfor %}. Nenhum texto deste arquivo foi guardado.</p><p class="small">Envie uma cópia sem esses dados. Se forem só o telefone, o e-mail ou o CNPJ da própria empresa, <a href="/console/documents">envie de novo</a> marcando a opção de substituir.</p></div></div>{% endif %}
+{% if doc.pii_scan and doc.pii_scan.masked %}<div class="alert warn">{{ icon('alert', 16) }}<p>Substituí por marcadores, a seu pedido: {% for k, n in doc.pii_scan.masked.items() %}{{ n }} {{ KB_PII.get(k, k) }}{{ ', ' if not loop.last }}{% endfor %}. Confira nos trechos se não havia dado de cliente.</p></div>{% endif %}
+{% if doc.ocr and doc.ocr.ocr_pages %}<div class="alert warn">{{ icon('alert', 16) }}<p>{{ doc.ocr.ocr_pages | length }} página(s) eram imagem e foram lidas por OCR. Confira os trechos com atenção: o OCR erra letras e números.</p></div>{% endif %}
+{% if doc.ocr and (doc.ocr.skipped_pages or doc.ocr.ocr_unavailable) %}<div class="alert warn">{{ icon('alert', 16) }}<p>Parte das páginas é imagem e não foi lida. Elas ficam de fora do que o assistente sabe.</p></div>{% endif %}
+{% if doc.pii_scan and doc.pii_scan.found and not doc.pii_scan.blocking and not doc.pii_scan.masked %}<p class="small muted">Menções encontradas, para conferir: {% for k, n in doc.pii_scan.found.items() %}{{ n }} {{ KB_PII.get(k, k) }}{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
+
+{% if conflicts %}<div class="card" style="border-color:color-mix(in srgb,var(--warn) 40%,var(--line))" data-conflicts><h2>Pode contradizer outro documento</h2>
+<p class="muted small">Estes trechos falam da mesma coisa com números diferentes, e os dois documentos estão em uso. O assistente pode usar qualquer um. Retire o que estiver errado, ou dispense o aviso se os dois valem.</p>
+{% for k in conflicts %}<div class="g2" style="margin-bottom:10px"><div><div class="small"><b>Este documento</b>{% if k.page %} · p. {{ k.page }}{% endif %}</div><div class="muted small">{{ k.text[:320] }}</div></div>
+<div><div class="small"><a href="/console/documents/{{ k.other_id }}"><b>{{ k.other_title }}</b></a>{% if k.other_page %} · p. {{ k.other_page }}{% endif %}</div><div class="muted small">{{ k.other_text[:320] }}</div></div></div>
+<form method="post" action="/console/documents/conflicts/{{ k.id }}/dismiss" style="margin-bottom:14px">{{ csrf_input(user) }}<input type="hidden" name="back" value="/console/documents/{{ doc.id }}"><button class="btn-sm">Os dois valem: dispensar aviso</button></form>{% endfor %}</div>{% endif %}
+
+{% if own and doc.status in ('in_review', 'do_not_use', 'superseded') and doc.processing in ('done', 'failed') and total %}
+<div class="card"><h2>Aprovar para uso</h2>
+  {% if not can_index %}<div class="alert warn">{{ icon('alert', 16) }}<p>Este ambiente usa a chave de testes, que não recebe material real: aprovar só funciona com o provedor de produção.</p></div>{% endif %}
+  <p class="muted small">Só aprove depois de ler os trechos abaixo. Ao aprovar, o texto vai ao provedor de IA para preparar a busca, com retenção zero.</p>
+  <form method="post" action="/console/documents/{{ doc.id }}/approve">{{ csrf_input(user) }}
+    <div class="field"><label>Nome do documento</label><input name="title" value="{{ doc.title }}" maxlength="200"></div>
+    <div class="row">
+      <div class="field"><label>Como o assistente usa</label><select name="visibility" required><option value="">Escolha</option>{% for k, v in KB_USE.items() %}<option value="{{ k }}" {{ 'selected' if doc.status != 'draft' and doc.visibility == k }}>{{ v }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Para quem foi feito</label><select name="audience" required><option value="">Escolha</option>{% for k, v in KB_AUDIENCE.items() %}<option value="{{ k }}" {{ 'selected' if doc.status != 'draft' and doc.audience == k }}>{{ v }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Versão (opcional)</label><input name="version_label" value="{{ doc.version_label or '' }}" maxlength="60" placeholder="mar/2026"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Vale a partir de (opcional)</label><input type="date" name="effective_from" value="{{ doc.effective_from.isoformat() if doc.effective_from else '' }}"></div>
+      <div class="field"><label>Vale até (opcional)</label><input type="date" name="effective_to" value="{{ doc.effective_to.isoformat() if doc.effective_to else '' }}"></div>
+      {% if others %}<div class="field"><label>Substitui (opcional)</label><select name="supersedes"><option value="">Nenhum</option>{% for o in others %}<option value="{{ o.id }}">{{ o.title }}</option>{% endfor %}</select></div>{% endif %}
+    </div>
+    <button class="btn-primary">{{ icon('check', 16) }} Aprovar para uso</button>
+  </form></div>
+{% endif %}
+
+{% if total %}<div class="card flush"><div class="card-head"><div><h2>Trechos que o assistente vai consultar</h2>
+  <p class="sub">{{ total }} trecho(s){% if excluded %}, {{ excluded }} fora de uso{% endif %}.{% if alerts %} <b class="warn">{{ alerts }} com alerta.</b>{% endif %}
+  {% if only_alerts %}<a href="/console/documents/{{ doc.id }}">Ver todos</a>{% elif alerts %}<a href="/console/documents/{{ doc.id }}?f=alert">Ver só os com alerta</a>{% endif %}</p></div></div>
+  {% for c in chunks %}<div id="c{{ c.id }}" data-chunk style="padding:14px 18px;border-top:1px solid var(--line){% if c.excluded_at %};opacity:.55{% endif %}">
+    <div class="muted small">{% if c.page %}Página {{ c.page }}{% endif %}{% if c.heading_path %} · {{ c.heading_path | join(' / ') }}{% endif %}{% if c.excluded_at %} · <b>fora de uso</b>{% endif %}</div>
+    <p class="small" style="white-space:pre-wrap;margin:6px 0">{{ c.text }}</p>
+    {% for f in c.flags %}<span class="badge warn" data-flag="{{ f }}">{{ KB_FLAG.get(f, KB_PII.get(f, f)) }}</span> {% endfor %}
+    {% if own %}<form method="post" action="/console/documents/{{ doc.id }}/chunks/{{ c.id }}" style="margin-top:6px">{{ csrf_input(user) }}<input type="hidden" name="f" value="{{ 'alert' if only_alerts }}">
+      {% if c.excluded_at %}<button class="btn-sm" name="excluded" value="0">Voltar a usar</button>{% else %}<button class="btn-sm btn-ghost" name="excluded" value="1">Tirar este trecho</button>{% endif %}</form>{% endif %}
+  </div>{% endfor %}</div>
+{% elif doc.processing == 'done' and doc.status == 'in_review' %}<div class="card"><div class="empty">{{ icon('alert', 28) }}<div>Não encontrei texto legível neste arquivo.</div></div></div>{% endif %}
+{% endblock %}

@@ -1,0 +1,104 @@
+[project]
+name = "agentplatform"
+version = "0.1.0"
+description = "Multi-tenant, multi-segment sales/service agent platform (first tenant: consortium consultant on Instagram)"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.5",
+  "sqlalchemy>=2.0",
+  "psycopg[binary,pool]>=3.2",
+  "alembic>=1.13",
+  "procrastinate>=3.0",
+  "redis>=5.0",
+  "httpx>=0.27",
+  "langgraph>=1.0",
+  "langgraph-checkpoint-postgres>=3.0",
+  "cryptography>=43",
+  "jinja2>=3.1",
+  "pyyaml>=6.0",
+  "pypdf>=5.0",
+  "pdfplumber>=0.11",
+  "python-multipart>=0.0.9",
+  "prometheus-client>=0.21",
+  "phonenumbers>=8.13",
+  "openpyxl>=3.1",
+  "pyotp>=2.10.0",
+  "segno>=1.6.6",
+  "opentelemetry-sdk>=1.45.1",
+  "opentelemetry-exporter-otlp-proto-http>=1.45.1",
+]
+
+[dependency-groups]
+dev = [
+  "mypy>=2.4.0",
+  "playwright>=1.50",
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "respx>=0.21",
+  "ruff>=0.7",
+  "types-pyyaml>=6.0.12.20260906",
+]
+
+[project.scripts]
+agentplatform = "agentplatform.cli:main"
+
+[project.entry-points."agent_platform.segment_packages"]
+consortium = "agentplatform_packages.consortium:package"
+auto_insurance = "agentplatform_packages.auto_insurance:package"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentplatform", "packages/agentplatform_packages"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+markers = [
+  "db: needs the dev Postgres (docker compose --profile dev up)",
+  "redis: needs the dev Redis",
+  "live: calls a real LLM provider and spends budget",
+  "e2e: real browser against a real server process; skipped without a browser unless E2E_REQUIRED is set",
+]
+addopts = "-m 'not live'"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [".venv", "docs"]          # docs/plan/anexos holds plan artifacts, not product code
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+# E501: the code base favours dense lines (no formatter yet); E731/E741: deliberate short lambdas/names;
+# B905: zip() over equal-length sequences built together.
+ignore = ["E501", "E731", "E741", "B905"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/agentplatform/cli.py" = ["E402"]      # imports after the Windows event-loop policy
+"tests/**" = ["B017"]                      # pytest.raises(Exception) is intentional in guard tests
+
+[tool.ruff.lint.isort]
+known-first-party = ["agentplatform", "agentplatform_packages"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src,packages"
+explicit_package_bases = true
+# Lenient start (CI checks only the modules listed in the workflow); tighten module by module.
+ignore_missing_imports = true
+follow_imports = "silent"
+check_untyped_defs = false
+warn_unused_ignores = false
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# psycopg connections use row_factory=dict_row but are annotated as plain AsyncConnection (TupleRow), so row["col"]
+# looks like tuple indexing to mypy. Remove once the pool hands out AsyncConnection[DictRow].
+module = ["agentplatform.core.config.registry", "agentplatform.core.security.keys"]
+disable_error_code = ["call-overload", "index", "assignment"]

@@ -1,0 +1,30 @@
+{"id": "q_hours_saturday", "question": "Em que horário o coworking abre no sábado?", "expect": "chunks", "doc": "regulamento-membros.pdf", "contains": "sábados"}
+{"id": "q_guests", "question": "Quantos convidados posso levar por dia?", "expect": "chunks", "doc": "regulamento-membros.pdf", "contains": "convidados"}
+{"id": "q_lunch_at_desk", "question": "Posso almoçar na minha mesa de trabalho?", "expect": "chunks", "doc": "regulamento-membros.pdf", "contains": "refeições"}
+{"id": "q_locker_deposit", "question": "Qual é o valor da caução do armário?", "expect": "chunks", "doc": "regulamento-membros.pdf", "contains": "caução"}
+{"id": "q_vape", "question": "É permitido usar cigarro eletrônico no terraço?", "expect": "chunks", "doc": "regulamento-membros.pdf", "contains": "cigarro"}
+{"id": "q_day_pass", "question": "Quanto custa passar um dia só no espaço, sem contrato?", "expect": "chunks", "doc": "planos-e-precos.pdf", "contains": "diária avulsa"}
+{"id": "q_fixed_desk", "question": "Qual plano me dá uma mesa fixa com gaveteiro?", "expect": "chunks", "doc": "planos-e-precos.pdf", "contains": "gaveteiro"}
+{"id": "q_meeting_hours", "question": "Os membros têm horas grátis na sala de reunião?", "expect": "chunks", "doc": "planos-e-precos.pdf", "contains": "gratuitas"}
+{"id": "q_annual_discount", "question": "Existe desconto para quem paga o ano inteiro à vista?", "expect": "chunks", "doc": "planos-e-precos.pdf", "contains": "12%"}
+{"id": "q_due_date", "question": "Em que dia vence a mensalidade?", "expect": "chunks", "doc": "planos-e-precos.pdf", "contains": "vencem"}
+{"id": "q_internet_speed", "question": "Qual é a velocidade da internet?", "expect": "chunks", "doc": "infraestrutura.pdf", "contains": "megas"}
+{"id": "q_printing", "question": "Quantas páginas posso imprimir por mês?", "expect": "chunks", "doc": "infraestrutura.pdf", "contains": "páginas"}
+{"id": "q_phone_booth", "question": "Por quanto tempo posso reservar uma cabine telefônica?", "expect": "chunks", "doc": "infraestrutura.pdf", "contains": "45 minutos"}
+{"id": "q_accessibility", "question": "O prédio é acessível para quem usa cadeira de rodas?", "expect": "chunks", "doc": "infraestrutura.pdf", "contains": "cadeirantes"}
+{"id": "q_auditorium", "question": "Quantas pessoas cabem no auditório?", "expect": "chunks", "doc": "infraestrutura.pdf", "contains": "auditório"}
+{"id": "q_faq_pets", "question": "Vocês aceitam animal de estimação no coworking?", "expect": "faq"}
+{"id": "q_faq_visit", "question": "Posso visitar o coworking antes de contratar o plano?", "expect": "faq"}
+{"id": "q_faq_visit_order", "question": "Antes de contratar um plano, posso visitar o coworking?", "expect": "faq"}
+{"id": "q_faq_parking", "question": "Tem estacionamento para carros no coworking?", "expect": "faq"}
+{"id": "q_faq_fiscal_address", "question": "Posso usar o endereço do coworking como endereço fiscal da empresa?", "expect": "faq"}
+{"id": "q_faq_cancel", "question": "Como faço para cancelar o meu plano mensal?", "expect": "faq"}
+{"id": "q_none_capital", "question": "Qual é a capital da Austrália?", "expect": "no_basis"}
+{"id": "q_none_cake", "question": "Como fazer bolo de cenoura com cobertura de chocolate?", "expect": "no_basis"}
+{"id": "q_none_novel", "question": "Quem escreveu o romance Dom Casmurro?", "expect": "no_basis"}
+{"id": "q_none_roses", "question": "Como podar uma roseira no inverno?", "expect": "no_basis"}
+{"id": "q_none_moon", "question": "Qual é a distância entre a Terra e a Lua?", "expect": "no_basis"}
+{"id": "q_none_volleyball", "question": "Quantos jogadores tem um time de vôlei de praia?", "expect": "no_basis"}
+{"id": "q_none_fishing", "question": "Qual a melhor isca para pescar tilápia?", "expect": "no_basis"}
+{"id": "q_none_war", "question": "Em que ano terminou a Segunda Guerra Mundial?", "expect": "no_basis"}
+{"id": "q_none_guitar", "question": "Como aprender a tocar violão sozinho?", "expect": "no_basis"}

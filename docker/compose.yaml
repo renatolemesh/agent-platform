@@ -1,0 +1,136 @@
+# Profiles: dev (data stores only, local ports), app (api + workers), obs (collector, Prometheus, Grafana).
+# Dev:   docker compose -f docker/compose.yaml --profile dev up -d
+# Full:  docker compose -f docker/compose.yaml --profile dev --profile app up -d --build
+# Obs:   docker compose --env-file .env -f docker/compose.yaml --profile obs up -d     (docs/runbooks/observabilidade.md)
+name: agentplatform
+
+x-app: &app
+  build: { context: .., dockerfile: docker/Dockerfile }
+  image: agentplatform:dev
+  env_file: [../.env]
+  environment:
+    # app role (RLS enforced); the owner role is only for migrations
+    DATABASE_URL: postgresql://app_rw:app_rw@postgres:5432/agentplatform
+    MIGRATION_DATABASE_URL: postgresql://agentplatform:agentplatform@postgres:5432/agentplatform
+    REDIS_URL: redis://:agentplatform@redis:6379/0
+  restart: unless-stopped
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  networks: [internal, egress]
+  profiles: [app]
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: agentplatform
+      POSTGRES_PASSWORD: agentplatform        # dev only; prod uses Docker secrets (plan 12)
+      POSTGRES_DB: agentplatform
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=80"]
+    volumes: [pg_data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U agentplatform"], interval: 5s, retries: 10 }
+    mem_limit: 1024m
+    restart: unless-stopped                  # back by itself after the machine restarts, like the app containers
+    ports: ["127.0.0.1:55432:5432"]
+    networks: [internal]
+    profiles: [dev, app]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "agentplatform", "--maxmemory", "96mb", "--maxmemory-policy", "noeviction", "--appendonly", "no"]
+    healthcheck: { test: ["CMD", "redis-cli", "-a", "agentplatform", "ping"], interval: 5s, retries: 10 }
+    mem_limit: 128m
+    restart: unless-stopped
+    ports: ["127.0.0.1:56379:6379"]
+    networks: [internal]
+    profiles: [dev, app]
+
+  api:
+    <<: *app
+    command: ["uvicorn", "agentplatform.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    volumes: [webhook_spool:/var/spool/agentplatform]
+    ports: ["127.0.0.1:8100:8000"]
+    mem_limit: 320m
+
+  worker:
+    <<: *app
+    command: ["procrastinate", "--app=agentplatform.jobs.app.app", "worker", "--queues=turns,comments,media,dispatch,echo,ingress", "--concurrency=8"]
+    mem_limit: 640m
+
+  worker-bg:
+    <<: *app
+    command: ["procrastinate", "--app=agentplatform.jobs.app.app", "worker", "--queues=followups,ingest,lab,maintenance", "--concurrency=2"]
+    volumes: [webhook_spool:/var/spool/agentplatform:ro]      # read-only: the spool alert measures its size
+    mem_limit: 512m
+
+  # Observability. No env_file here: these containers never see the app's secrets, only the two below. No depends_on on the
+  # app either: starting this profile must not start or recreate api/worker.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.164.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    environment: { GOMEMLIMIT: 100MiB }
+    volumes: [./obs/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro]
+    # no healthcheck: the image has no shell; Prometheus scrapes it and alerts (OtelCollectorDown)
+    mem_limit: 128m
+    restart: unless-stopped
+    ports: ["127.0.0.1:8143:4318"]      # OTLP/HTTP for an app running on the host; containers use http://otel-collector:4318
+    networks: [internal]
+    profiles: [obs]
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=1GB
+      - --query.max-concurrency=4
+    secrets: [metrics_token]
+    volumes:
+      - ./obs/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    healthcheck: { test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"], interval: 15s, retries: 5 }
+    mem_limit: 192m
+    restart: unless-stopped
+    ports: ["127.0.0.1:8190:9090"]
+    networks: [internal, obs]           # internal: scrapes api:8000
+    profiles: [obs]
+
+  grafana:
+    image: grafana/grafana:13.2.5
+    # An empty password file would make Grafana fall back to admin/admin
+    entrypoint: ["sh", "-c", "[ -s /run/secrets/grafana_admin_password ] || { echo 'grafana_admin_password is empty: refusing to start with the default admin password' >&2; exit 1; }; exec /run.sh"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GOMEMLIMIT: 230MiB
+    secrets: [grafana_admin_password]
+    volumes:
+      - ./obs/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+      - ./obs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./obs/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      prometheus: { condition: service_healthy }
+    healthcheck: { test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"], interval: 15s, retries: 8 }
+    mem_limit: 288m
+    restart: unless-stopped
+    ports: ["127.0.0.1:8130:3000"]
+    networks: [obs]                     # only reaches Prometheus: no route to Postgres or Redis
+    profiles: [obs]
+
+networks:
+  internal: {}
+  egress: {}
+  obs: {}
+
+volumes:
+  pg_data: {}
+  webhook_spool: {}
+  prometheus_data: {}
+  grafana_data: {}
+
+# Read when a service that uses them is created: pass the repo's .env with --env-file, or export them in the shell.
+secrets:
+  metrics_token: { environment: METRICS_TOKEN }
+  grafana_admin_password: { environment: GRAFANA_ADMIN_PASSWORD }

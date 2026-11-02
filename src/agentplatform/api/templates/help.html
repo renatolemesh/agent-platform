@@ -1,0 +1,73 @@
+{% extends "base.html" %}{% block title %}Guia{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Guia do vendedor</h1><p class="sub">O que o assistente faz sozinho e o que fica com você.</p></div></div>
+
+<div class="card"><h2>Como funciona</h2>
+  <p class="small">O assistente responde no direct e nos comentários dos posts que você ativou. Ele chama você quando o cliente pede um vendedor, quando o assunto precisa de uma pessoa ou quando algo falha. Você continua respondendo pelo Instagram, como sempre.</p>
+</div>
+
+<div class="card"><h2>Quando chega um aviso</h2>
+  <ol class="small" style="margin:0;padding-left:18px">
+    <li>O aviso chega por WhatsApp ou e-mail, com um link para abrir a conversa aqui.</li>
+    <li><b>Responda pelo Instagram.</b> Assim que sua mensagem sai, o assistente fica calado nessa conversa.</li>
+    <li>Se ainda não puder responder, toque em <b>Assumi</b> no aviso: a conversa fica marcada como sua.</li>
+    {% if handoff %}<li>Sem resposta em {{ handoff.sla_minutes }} minutos, você recebe outro aviso.{% if handoff.escalate_to_owner_after_min %} Depois de {{ (handoff.escalate_to_owner_after_min / 60) | round | int }} horas, o responsável pela conta também é avisado.{% endif %}</li>{% endif %}
+  </ol>
+</div>
+
+<div class="card"><h2>Os botões da conversa</h2>
+  <dl class="kv">
+    <dt>Assumir conversa</dt><dd>O assistente sai e a conversa fica com você. Responder pelo Instagram faz o mesmo.</dd>
+    <dt>Retomar assistente</dt><dd>Devolve a conversa: ele responde o que ficou sem resposta e volta a atender. Uma conversa que você assumiu só volta se você pedir.</dd>
+    <dt>Pausar assistente nesta conversa</dt><dd>Ele para só nessa conversa, e ninguém é avisado. Serve para olhar com calma.</dd>
+    <dt>Encerrar</dt><dd>Fecha a conversa. Se o cliente escrever de novo, o assistente volta a responder.</dd>
+    <dt>Nunca atender esta pessoa</dt><dd>Para amigos, família e fornecedores: o assistente nunca fala com ela, nem por comentário.</dd>
+    <dt>Marcar venda</dt><dd>Marque quando o cliente fechar. É assim que dá para medir a conversão.</dd>
+  </dl>
+</div>
+
+<div class="card"><h2>Situações que pedem atenção</h2>
+  <dl class="kv">
+    <dt>O cliente pediu para parar</dt><dd>Nada automático sai para ele. Se voltar a escrever, o assistente fica calado e você é avisado: responda você mesmo.</dd>
+    <dt>Falha no assistente</dt><dd>O cliente recebe uma mensagem curta e você é avisado.{% if handoff and handoff.auto_return_after_min %} Se ninguém assumir, a conversa volta sozinha ao assistente em {{ handoff.auto_return_after_min }} minutos.{% endif %} Se você responder antes, ela fica com você.</dd>
+    {% if quiet %}<dt>Fora do horário</dt><dd>Das {{ quiet.start.strftime('%H:%M') }} às {{ quiet.end.strftime('%H:%M') }} o assistente continua respondendo quem escreve, e o aviso de atendimento chega quando o horário começa. Mensagens que ele mesmo puxaria não saem nesse período nem em feriados.</dd>{% endif %}
+    <dt>Ele não sabe responder</dt><dd>Ele não inventa: diz que vai confirmar com você, e você é avisado. Responda o cliente pelo Instagram. Quanto mais material aprovado, menos isso acontece.</dd>
+    <dt>Canal pausado</dt><dd>O acesso à Meta expirou. O responsável pela conta reconecta em Canais. As mensagens ficam guardadas e são respondidas depois.</dd>
+  </dl>
+</div>
+
+<div class="card"><h2>Posts e direct</h2>
+  <dl class="kv">
+    <dt>Comentários</dt><dd>Nenhum post responde sozinho até você ativar. Em Posts, escolha o padrão e o que cada post faz.</dd>
+    <dt>Quem é atendido no direct</dt><dd>Também em Posts. Quem já conversava com a conta antes fica com você, salvo se você liberar.</dd>
+    <dt>Perguntas prontas</dt><dd>Aparecem no celular para quem abre uma conversa nova. Você escreve e publica em Posts.</dd>
+  </dl>
+</div>
+
+{% if user.role in ('tenant_owner', 'reviewer', 'platform_admin') %}<div class="card"><h2>O que o assistente sabe</h2>
+  <dl class="kv">
+    <dt><a href="/console/documents">Base de conhecimento</a></dt><dd>Envie o PDF, leia os trechos, tire o que não deve ser usado e aprove. Ele só usa o que estiver aprovado.</dd>
+    <dt><a href="/console/faqs">Perguntas frequentes</a></dt><dd>Respostas prontas escritas por você. Têm prioridade sobre os documentos.</dd>
+    <dt><a href="/console/curation">Curadoria</a></dt><dd>O que ele não soube responder. Escreva a resposta uma vez, e da próxima ele responde sozinho.</dd>
+  </dl>
+</div>
+
+{% endif %}{% if user.role in ('tenant_owner', 'platform_admin') %}<div class="card"><h2>Para ajustar o assistente</h2>
+<ol class="steps">
+<li><a href="/console/setup">Preparação</a> mostra o que ainda falta para ele atender de verdade.</li>
+<li>Em <a href="/console/assistant">Assistente</a> você muda o nome, o tom, as instruções, as mensagens prontas e os horários, sem mexer em código. Em <a href="/console/assistant/rules">Regras</a>, o que ele faz em cada situação e quando chama o vendedor.</li>
+<li>Toda mudança vira um rascunho em <a href="/console/config">Configuração</a>, com a lista do que muda. Nada muda para os clientes até outra pessoa aprovar.</li>
+<li>Antes de aprovar, teste no <a href="/console/simulator">Simulador</a> e clique em <b>Avaliação completa</b>: são conversas simuladas, e nenhum cliente recebe nada. Em produção, só aprova se passar.</li>
+<li>Em <a href="/console/knowledge/test">Testar a base</a>, escreva uma pergunta e veja o que a busca acha, antes de um cliente perguntar.</li>
+</ol></div>{% endif %}<div class="card"><h2>Revisão do dia</h2>
+  <p class="small">Em <a href="/console/reviews">Revisão</a>, abra as conversas do dia e marque <b>Tudo certo</b> ou <b>Tem problema</b>. Se o assistente disse algo errado, anote o que foi: é assim que ele é corrigido. Não copie CPF, telefone ou outros dados do cliente na observação.</p>
+</div>
+
+<div class="card"><h2>O que o assistente nunca faz</h2>
+  <ul class="small" style="margin:0;padding-left:18px">
+    <li>Pedir CPF, RG, renda, patrimônio, dados bancários ou de saúde.</li>
+    <li>Inventar valores: números só saem das tabelas e dos materiais aprovados.</li>
+    <li>Dizer que é uma pessoa: ele se apresenta como assistente virtual.</li>
+  </ul>
+  <p class="small" style="margin-top:10px">Se algo parecer errado numa conversa, pause o assistente nela e avise o responsável pela conta.</p>
+</div>
+{% endblock %}

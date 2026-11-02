@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% block title %}Canais{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Canais conectados</h1><p class="sub">Contas por onde o assistente conversa. Se o token da Meta expirar, o canal pausa sozinho até ser reconectado.</p></div></div>
+{% if ok %}<div class="alert ok">{{ icon('check', 16) }}<p>Instagram conectado. O acesso foi validado e o canal está liberado para o assistente.</p></div>{% endif %}
+{% if warn == 'subscribe_failed' %}<div class="alert warn">{{ icon('alert', 16) }}<p>A Meta ainda não confirmou a inscrição da Página nos avisos de mensagens, então as mensagens podem não chegar. O sistema tenta de novo a cada 10 minutos; se o aviso continuar, reconecte com o Facebook.</p></div>{% endif %}
+{% if error %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ error | oauth_error }}</p></div>{% endif %}
+{% for k in ks if k.is_on %}<div class="alert warn">{{ icon('pause', 16) }}<p>Canal <b>{{ k.scope_ref | humanize }}</b> pausado: {{ k.reason | pause_reason }}</p></div>{% endfor %}
+<div class="grid g2">
+{% for a in accounts %}<div class="card">
+  <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+    <h2 style="margin:0">{{ a.channel | humanize }}</h2>
+    {% if not a.has_token %}<span class="badge bad">Sem token</span>{% else %}<span class="badge {{ a.token_status | status_tone }}">Token {{ (a.token_status | status_label) | lower }}</span>{% endif %}
+  </div>
+  <dl class="kv">
+    <dt>Conta</dt><dd class="mono">{{ a.external_account_id }}</dd>
+    <dt>Página</dt><dd class="mono">{{ a.external_page_id or '—' }}</dd>
+    <dt>Última validação</dt><dd>{{ a.token_last_validated_at | dt }}</dd>
+    <dt>Permissões</dt><dd class="small">{% for s in (a.scopes or []) %}<span class="badge plain" style="margin:0 4px 4px 0">{{ s }}</span>{% else %}—{% endfor %}</dd>
+  </dl>
+  {% if a.channel == 'instagram' %}<div style="margin-top:14px">{% if app_configured %}
+    <form method="post" action="/console/channels/{{ a.id }}/reconnect">{{ csrf_input(user) }}<button class="btn-primary">{{ icon('plug', 16) }} Reconectar com o Facebook</button></form>
+  {% else %}<p class="muted small">Para reconectar, configure <code>META_APP_ID</code> e <code>META_APP_SECRET</code> no servidor.</p>{% endif %}</div>{% endif %}
+</div>{% else %}<div class="card"><div class="empty">Nenhum canal configurado.</div></div>{% endfor %}
+</div>
+{% endblock %}

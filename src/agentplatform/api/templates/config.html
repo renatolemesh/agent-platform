@@ -1,0 +1,62 @@
+{% extends "base.html" %}{% block title %}Configuração{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Configuração do assistente <span class="badge plain">{{ env }}</span></h1>
+<p class="sub">Toda mudança vira um rascunho e segue a regra de duas pessoas: quem propõe não aprova. Com canário, a nova versão vale só para uma fatia estável das conversas até ser promovida.</p></div>
+<div class="actions"><a class="btn" href="/console/assistant">{{ icon('settings', 16) }} Ajustar o assistente</a>
+<form method="post" action="/console/config/rollback" class="inline">{{ csrf_input(user) }}<button>{{ icon('back', 16) }} Voltar para a versão anterior</button></form></div></div>
+
+{% if failure %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ failure }}</p></div>{% endif %}
+{% if proposed %}<div class="alert ok">{{ icon('check', 16) }}<div style="flex:1"><p><b>Rascunho criado.</b> Nada mudou para os clientes. Teste, e depois outra pessoa aprova abaixo.</p>
+<div class="actions" style="margin-top:10px"><a class="btn btn-primary btn-sm" href="/console/simulator?v={{ proposed }}">{{ icon('sparkle', 14) }} Testar no simulador</a></div></div></div>{% endif %}
+{% if same %}<div class="alert info">{{ icon('check', 16) }}<p>Nada mudou em relação à versão atual: nenhum rascunho foi criado.</p></div>{% endif %}
+
+{% if canary %}<div class="alert warn">{{ icon('sparkle', 16) }}<div style="flex:1"><p><b>Canário em andamento: v{{ canary.version }}</b> em {{ canary.canary_percent }}% das conversas.</p>
+<div class="actions" style="margin-top:10px">
+<form method="post" action="/console/config/canary/promote" class="inline">{{ csrf_input(user) }}<button class="btn-primary btn-sm">Promover para 100%</button></form>
+<form method="post" action="/console/config/canary/abort" class="inline">{{ csrf_input(user) }}<button class="btn-sm">Abortar canário</button></form></div></div></div>{% endif %}
+
+{% for d in drafts %}<div class="card" data-draft="{{ d.id }}" data-stale="{{ 'yes' if d.stale else 'no' }}">
+  <div class="row" style="justify-content:space-between;align-items:flex-start">
+    <div><h2 style="margin:0">Rascunho v{{ d.version }}</h2><p class="muted small" style="margin:2px 0 0">{% if d.author %}Proposto por {{ d.author }}, {% endif %}{{ d.created_at | dt }}{% if d.note %} · {{ d.note }}{% endif %}</p></div>
+    <div class="actions"><a class="btn btn-sm" href="/console/simulator?v={{ d.id }}">{{ icon('sparkle', 14) }} Testar</a>
+    <form method="post" action="/console/config/{{ d.id }}/discard" class="inline">{{ csrf_input(user) }}<button class="btn-sm">Descartar</button></form></div>
+  </div>
+  {% if d.stale %}<div class="alert warn" style="margin-top:10px">{{ icon('alert', 16) }}<div style="flex:1"><p><b>Feito a partir de outra versão.</b> Aprovar agora desfaria o que foi ativado depois. Atualize: a mesma mudança é refeita sobre a versão atual, e a nova versão precisa ser avaliada de novo.</p>
+    <form method="post" action="/console/config/{{ d.id }}/rebase" style="margin-top:8px">{{ csrf_input(user) }}<button class="btn-primary btn-sm">Atualizar rascunho</button></form></div></div>{% endif %}
+  <h3 style="margin-top:12px">O que muda</h3>
+  {% if d.changes %}<div class="table-wrap"><table class="small" data-changes><thead><tr><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead><tbody>{% for c in d.changes %}<tr><td>{{ c.label }}</td><td class="muted" style="white-space:pre-wrap">{{ c.before }}</td><td style="white-space:pre-wrap">{{ c.after }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="muted small">Nenhuma diferença em relação à versão de origem.</p>{% endif %}
+
+  <h3 style="margin-top:14px">Avaliação</h3>
+  {% if d.evaluation %}{% set e = d.evaluation %}<p class="small" data-evaluation="{{ e.status }}"><span class="badge {{ EVAL_TONE.get(e.status, 'muted') }}">{{ EVAL_STATUS.get(e.status, e.status) }}</span> {{ EVAL_LEVEL.get(e.level, e.level) }}{% if e.cost_usd %} · custou {{ e.cost_usd | usd }}{% endif %}{% if e.finished_at %} · {{ e.finished_at | dt }}{% endif %}</p>
+    {% if e.scores %}<div class="table-wrap"><table class="small"><tbody>{% for s in e.scores %}<tr><td>{{ EVAL_SCORE.get(s.name, s.name) }}</td><td class="num">{{ s.passed }} de {{ s.total }}</td><td class="num muted">precisa de {{ (s.need * 100) | int }}%</td><td>{% if s.ok %}<span class="badge ok">Passou</span>{% else %}<span class="badge bad">Não passou</span>{% endif %}</td></tr>
+    {% if not s.ok and s.failures %}<tr><td colspan="4" class="muted">{{ s.failures[:5] | join(' · ') }}</td></tr>{% endif %}{% endfor %}</tbody></table></div>{% endif %}
+    {% if e.status in ('queued', 'running') %}<meta http-equiv="refresh" content="10">{% endif %}
+  {% else %}<p class="muted small">Ainda não avaliado.</p>{% endif %}
+  {% if not evaluating %}<form method="post" action="/console/config/{{ d.id }}/evaluate" class="row" style="margin-top:8px;align-items:center">{{ csrf_input(user) }}
+    <button class="btn-sm" name="level" value="fast">Checagem rápida (grátis)</button>
+    <button class="btn-sm" name="level" value="full" onclick="return confirm('A avaliação completa usa a IA de verdade e custa até {{ budget_cap | usd }}. Continuar?')">Avaliação completa (até {{ budget_cap | usd }})</button>
+    <span class="muted small">{% if env == 'prod' %}Em produção, só a completa libera a aprovação.{% else %}Conversas simuladas: nada chega a clientes.{% endif %}</span></form>{% endif %}
+
+  <div style="margin-top:14px">{% if d.created_by and d.created_by | string != user.id and not d.stale %}
+    <form method="post" action="/console/config/{{ d.id }}/approve" class="inline">{{ csrf_input(user) }}<button class="btn-primary">{{ icon('check', 16) }} Aprovar{% if d.canary_percent %} para {{ d.canary_percent }}% das conversas{% endif %}</button></form>
+    {% elif not d.stale %}<span class="muted small">Aguardando outra pessoa aprovar. <a href="/console/users">Convide um segundo aprovador</a> se ainda não houver.</span>{% endif %}</div>
+</div>{% endfor %}
+
+<div class="card flush"><div class="card-head"><h2>Versões</h2></div>
+<div class="table-wrap"><table><thead><tr><th>Versão</th><th>Status</th><th class="num">Canário</th><th>Criada em</th><th>Anotação</th><th class="num">Aprovações</th></tr></thead><tbody>
+{% for v in versions %}<tr><td><b>v{{ v.version }}</b></td><td><span class="badge {{ v.status | status_tone }}">{{ v.status | status_label }}</span></td>
+<td class="num">{{ v.canary_percent }}%</td><td class="muted">{{ v.created_at | dt }}</td><td class="muted small">{{ v.note or '' }}</td><td class="num">{{ v.approved_by | length }}</td></tr>{% endfor %}</tbody></table></div></div>
+
+<div class="card"><details {{ 'open' if candidate or error }}><summary>Editar o YAML completo (avançado)</summary><div style="margin-top:12px">
+{% if error %}<div class="alert bad">{{ icon('alert', 16) }}<div style="flex:1"><p><b>Config inválida</b></p><pre style="margin-top:8px">{{ error }}</pre></div></div>{% endif %}
+<form method="post" action="/console/config/preview" enctype="multipart/form-data">{{ csrf_input(user) }}
+<div class="field"><label>YAML completo da configuração</label><textarea name="yaml_text" rows="18" placeholder="cole o YAML aqui">{{ candidate or active_yaml }}</textarea></div>
+<div class="row" style="align-items:center"><div class="field"><label>ou envie o arquivo</label><input type="file" name="file" accept=".yaml,.yml"></div>
+<button class="btn-primary">Validar e ver diferenças</button></div></form>
+{% if diff and not error %}<h3 style="margin-top:20px">Diferenças em relação à versão ativa <span class="muted small">(já com o compliance do pacote)</span></h3>
+<pre>{% for line in diff.splitlines() %}<span class="{{ 'diff-add' if line.startswith('+') else ('diff-del' if line.startswith('-') else '') }}">{{ line }}</span>
+{% endfor %}</pre>
+<form method="post" action="/console/config/propose" style="margin-top:14px">{{ csrf_input(user) }}<textarea name="yaml_text" hidden>{{ candidate }}</textarea>
+<div class="row"><div class="field" style="max-width:220px"><label>Canário (% das conversas)</label><input name="canary_percent" type="number" min="0" max="100" value="0">
+<span class="help">0 = ativa direto quando aprovada</span></div><button class="btn-primary">Propor versão</button></div></form>{% endif %}
+</div></details></div>
+{% endblock %}

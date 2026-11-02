@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% block title %}Orçamento de IA{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Orçamento de IA</h1><p class="sub">Quanto o assistente gastou com modelos de IA e quanto ainda pode gastar. Valores em reais pela cotação {{ fx_note() }}; passe o mouse sobre um valor para ver em dólar, a moeda em que o provedor cobra.</p></div></div>
+<div class="kpis">
+  <div class="kpi"><div class="label">Crédito registrado</div><div class="value">{{ u.credit | money(2) }}</div></div>
+  <div class="kpi"><div class="label">Gasto real</div><div class="value">{{ u.spent | money }}</div><div class="hint">todas as chamadas</div></div>
+  <div class="kpi {{ 'bad' if u.balance < 0 else 'ok' }}"><div class="label">Saldo</div><div class="value">{{ u.balance | money }}</div></div>
+  <div class="kpi"><div class="label">Teto diário</div><div class="value">{{ cfg.daily_cap_usd | money(2) }}</div></div>
+  <div class="kpi"><div class="label">Teto total do piloto</div><div class="value">{% if cfg.pilot_total_cap_usd is not none %}{{ cfg.pilot_total_cap_usd | money(2) }}{% else %}sem teto{% endif %}</div></div>
+</div>
+
+<div class="grid g-side">
+<div>
+<div class="card flush"><div class="card-head"><div><h2>Chave do provedor</h2>
+<p class="sub">Teto rígido definido no servidor (<code>LLM_TOTAL_CAP_USD</code> / <code>LLM_DAILY_CAP_USD</code>); não muda pelo console.</p></div></div>
+<div class="table-wrap"><table><thead><tr><th>Escopo</th><th style="width:34%">Uso</th><th class="num">Gasto</th><th class="num">Reservado</th><th class="num">Teto</th></tr></thead><tbody>
+{% for k in key %}{% set used = (100 * k.spent_usd / k.cap_usd) if k.cap_usd else 0 %}<tr><td class="mono">{{ k.scope }}</td>
+<td><div class="bar {{ 'bad' if used >= 90 else ('warn' if used >= 70) }}"><span style="width:{{ [used, 100] | min }}%"></span></div></td>
+<td class="num">{{ k.spent_usd | money }}</td><td class="num">{{ k.reserved_usd | money }}</td><td class="num">{{ k.cap_usd | money(2) }} <span class="muted small">({{ k.cap_usd | usd }})</span></td></tr>
+{% else %}<tr><td colspan="5"><div class="empty">Sem uso.</div></td></tr>{% endfor %}</tbody></table></div></div>
+
+<div class="card flush"><div class="card-head"><h2>Uso diário do tenant</h2></div>
+<div class="table-wrap"><table><thead><tr><th>Dia (UTC)</th><th class="num">Gasto</th><th class="num">Teto</th></tr></thead><tbody>
+{% for d in u.daily %}<tr><td>{{ d.scope[4:] }}</td><td class="num">{{ d.spent_usd | money }}</td><td class="num">{{ d.cap_usd | money(2) }}</td></tr>
+{% else %}<tr><td colspan="3"><div class="empty">Sem uso.</div></td></tr>{% endfor %}</tbody></table></div></div>
+
+<div class="card flush"><div class="card-head"><h2>Custo por dia, etapa e modelo</h2></div>
+<div class="table-wrap"><table><thead><tr><th>Dia</th><th>Etapa</th><th>Modelo</th><th class="num">Chamadas</th><th class="num">Custo</th></tr></thead><tbody>
+{% for c in u.cost %}<tr><td>{{ c.day | dt('%d/%m') }}</td><td>{{ c.node | humanize }}</td><td class="mono">{{ c.model_used or '—' }}</td><td class="num">{{ c.calls }}</td><td class="num">{{ (c.cost_usd or 0) | money }}</td></tr>
+{% else %}<tr><td colspan="5"><div class="empty">Sem chamadas.</div></td></tr>{% endfor %}</tbody></table></div></div>
+</div>
+
+<div>
+<div class="card"><h2>Registrar recarga</h2>
+<p class="muted small">Informe em dólar, como na fatura do provedor. Registra a compra de crédito e cria uma proposta de configuração que aumenta o teto total pelo valor líquido. Outra pessoa aprova na tela Configuração.</p>
+<form method="post" action="/console/budget/topup">{{ csrf_input(user) }}
+  <div class="field"><label>Valor pago (US$)</label><input name="gross_usd" inputmode="decimal" placeholder="10.00" required></div>
+  <div class="field"><label>Taxa (US$)</label><input name="fee_usd" inputmode="decimal" value="0"></div>
+  <div class="field"><label>Observação</label><input name="note" placeholder="opcional"></div>
+  <button class="btn-primary">Registrar recarga</button></form></div>
+<div class="card flush"><div class="card-head"><h2>Recargas</h2></div>
+<div class="table-wrap"><table><thead><tr><th>Data</th><th class="num">Líquido</th><th>Obs.</th></tr></thead><tbody>
+{% for t in u.topups %}<tr><td>{{ t.created_at | dt('%d/%m/%Y') }}</td>
+<td class="num mono" title="bruto {{ t.gross_usd | usd }} · taxa {{ t.fee_usd | usd }}">{{ t.net_usd | usd }} <span class="muted small">≈ {{ t.net_usd | money(2) }}</span></td><td class="muted">{{ t.note or '' }}</td></tr>
+{% else %}<tr><td colspan="3"><div class="empty">Nenhuma recarga.</div></td></tr>{% endfor %}</tbody></table></div></div>
+</div>
+</div>
+{% endblock %}

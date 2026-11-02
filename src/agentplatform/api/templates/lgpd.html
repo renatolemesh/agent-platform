@@ -1,0 +1,57 @@
+{% extends "base.html" %}{% block title %}LGPD{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Direitos do titular</h1><p class="sub">Atenda pedidos de acesso, correção e eliminação de dados (LGPD). Toda busca, exportação, correção e eliminação fica registrada na auditoria.</p></div></div>
+{% if error %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ error }}</p></div>{% endif %}
+{% if erased %}<div class="alert ok">{{ icon('check', 16) }}<p>Dados eliminados: <span class="mono">{{ erased | tojson }}</span>. O contato foi colocado na lista de supressão.</p></div>{% endif %}
+
+{% if corrected is defined and corrected is not none %}<div class="alert ok">{{ icon('check', 16) }}<p>{% if corrected %}Dados corrigidos ({{ corrected | length }} campo(s)).{% else %}Nada mudou: os valores são os mesmos.{% endif %}</p></div>{% endif %}
+
+<div class="card"><h2>Buscar titular</h2><p class="muted small">Informe pelo menos um identificador.</p>
+<form method="post" action="/console/lgpd/search">{{ csrf_input(user) }}
+  <div class="row">
+    <div class="field"><label>ID no canal</label><input name="channel_user_id" placeholder="ID ou @ do Instagram, ou WhatsApp"></div>
+    <div class="field"><label>Telefone</label><input name="phone" placeholder="+55 11 9..."></div>
+    <div class="field"><label>E-mail</label><input name="email" type="email" placeholder="nome@exemplo.com"></div>
+    <button class="btn-primary">{{ icon('search', 16) }} Buscar</button>
+  </div></form></div>
+
+{% if comment_author %}<div class="card" style="border-color:color-mix(in srgb,var(--bad) 35%,var(--line))"><h2 class="bad">Pessoa que só comentou</h2>
+  <p class="small">Sem conversa nem cadastro, mas com <b>{{ comment_author.comments }}</b> comentário(s) registrado(s). A eliminação é <b>irreversível</b>.</p>
+  <form method="post" action="/console/lgpd/comments/erase">{{ csrf_input(user) }}<input type="hidden" name="author" value="{{ comment_author.author_external_id }}">
+    <div class="field"><label>Para confirmar, digite <code>{{ confirm_word }}</code></label><input name="confirm" required autocomplete="off"></div>
+    <button class="btn-danger">Eliminar comentários</button></form></div>
+{% elif searched and not subject %}<div class="card"><div class="empty">{{ icon('search', 28) }}<div>Nenhum titular encontrado.</div></div></div>{% endif %}
+{% if subject %}<div class="grid g2">
+<div class="card"><h2>Titular encontrado</h2>
+  <dl class="kv">
+    <dt>Primeiro nome</dt><dd>{{ subject.first_name or '—' }}</dd>
+    <dt>Estágio</dt><dd>{{ subject.stage | humanize }}</dd>
+    <dt>Canais</dt><dd>{{ (subject.channels or []) | join(', ') or '—' }}</dd>
+    <dt>Conversas</dt><dd>{{ subject.conversations }}</dd>
+    <dt>Mensagens</dt><dd>{{ subject.messages }}</dd>
+    <dt>Opt-out</dt><dd>{% if subject.opted_out_at %}<span class="badge warn">sim</span>{% else %}não{% endif %}</dd>
+  </dl>
+  <form method="post" action="/console/lgpd/{{ subject.id }}/export" style="margin-top:16px">{{ csrf_input(user) }}<button>{{ icon('download', 16) }} Exportar dados (JSON)</button></form>
+</div>
+<div class="card" style="border-color:color-mix(in srgb,var(--bad) 35%,var(--line))"><h2 class="bad">Eliminar dados</h2>
+  <p class="small">A eliminação é <b>irreversível</b>: anonimiza as mensagens, apaga os dados pessoais e coloca o contato na lista de supressão.</p>
+  <form method="post" action="/console/lgpd/{{ subject.id }}/erase">{{ csrf_input(user) }}
+    <div class="field"><label>Para confirmar, digite <code>{{ confirm_word }}</code></label><input name="confirm" required autocomplete="off"></div>
+    <button class="btn-danger">Eliminar dados</button></form>
+</div></div>
+{% if details %}<div class="card"><h2>Corrigir dados</h2>
+  <p class="muted small">Campo vazio apaga o valor. As mensagens antigas não mudam, porque são o registro do que foi dito; o resumo da conversa é refeito. Para apagar as mensagens, use a eliminação.</p>
+  <form method="post" action="/console/lgpd/{{ subject.id }}/correct">{{ csrf_input(user) }}
+    <div class="row">
+      <div class="field"><label>Primeiro nome</label><input name="first_name" value="{{ details.first_name }}" autocomplete="off"></div>
+      <div class="field"><label>Nome completo</label><input name="name" value="{{ details.name }}" autocomplete="off"></div>
+      <div class="field"><label>Telefone</label><input name="phone" value="{{ details.phone }}" autocomplete="off"></div>
+      <div class="field"><label>E-mail</label><input name="email" type="email" value="{{ details.email }}" autocomplete="off"></div>
+    </div>
+    {% if slots %}<h3 class="small" style="margin:14px 0 6px">O que o assistente anotou</h3><div class="row">
+    {% for s in slots %}{% set cur = details.profile.get(s.name) %}<div class="field"><label>{{ s.label or (s.name | humanize) }}</label>
+      {% if s.type == 'enum' %}<select name="slot:{{ s.name }}"><option value="">Não informado</option>{% for v in s['values'] %}<option value="{{ v }}" {{ 'selected' if cur == v }}>{{ s.value_labels.get(v, v) }}</option>{% endfor %}</select>
+      {% else %}<input name="slot:{{ s.name }}" value="{{ cur if cur is not none else '' }}" autocomplete="off">{% endif %}</div>{% endfor %}</div>{% endif %}
+    <button class="btn-primary">{{ icon('check', 16) }} Salvar correção</button>
+  </form></div>{% endif %}
+{% endif %}
+{% endblock %}

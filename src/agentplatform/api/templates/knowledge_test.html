@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% block title %}Testar a base{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Testar a base</h1><p class="sub">Escreva uma pergunta como um cliente escreveria e veja o que a busca encontra, sem conversa e sem gerar resposta. Custa só a busca, frações de centavo. Nada fica registrado.</p></div></div>
+{% if error %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ error }}</p></div>{% endif %}
+<form method="post" action="/console/knowledge/test" class="card">{{ csrf_input(user) }}
+  <div class="field"><label>Pergunta</label><input name="question" maxlength="500" required autofocus value="{{ question or '' }}" placeholder="ex.: como funciona o pagamento?"></div>
+  <details {{ 'open' if found }}><summary class="small">Ajustar o rigor da busca</summary>
+    <div class="row" style="margin-top:10px">
+      <div class="field"><label>Pronto</label><select name="preset"><option value="">Usar os números ao lado</option>{% for k in presets %}<option value="{{ k }}">{{ preset_labels.get(k, k) }}</option>{% endfor %}</select></div>
+      <div class="field"><label>FAQ: quão parecida a pergunta precisa ser (0 a 1)</label><input name="faq_threshold" inputmode="decimal" value="{{ values.faq_threshold }}"><span class="help">Em uso: {{ current.faq_threshold }}</span></div>
+      <div class="field"><label>Trecho: nota mínima (0 a 1)</label><input name="min_score" inputmode="decimal" value="{{ values.min_score }}"><span class="help">Em uso: {{ current.min_score }}</span></div>
+      <div class="field"><label>Quantos trechos entram</label><input type="number" min="1" max="12" name="top_k" value="{{ values.top_k }}"><span class="help">Em uso: {{ current.top_k }}</span></div>
+    </div></details>
+  <button class="btn-primary">{{ icon('sparkle', 16) }} Testar</button>
+</form>
+
+{% if found %}
+{% if not found.index_ok %}<div class="alert bad">{{ icon('alert', 16) }}<p>O modelo de busca da configuração não é o que gerou os vetores desta base. O assistente só usa perguntas frequentes pelas palavras até isso ser corrigido em Base de conhecimento.</p></div>{% endif %}
+<div class="card" data-outcome="{{ found.outcome }}"><h2>O que o assistente faria</h2>
+{% if found.outcome == 'faq' %}<div class="alert ok">{{ icon('check', 16) }}<p>Responde com a <b>pergunta frequente</b> abaixo.</p></div>
+{% elif found.outcome == 'chunks' %}<div class="alert ok">{{ icon('check', 16) }}<p>Escreve a resposta usando os <b>trechos</b> abaixo.</p></div>
+{% else %}<div class="alert warn">{{ icon('alert', 16) }}<p><b>Não tem base para responder.</b> Diz que vai confirmar com o vendedor, e a pergunta vai para a <a href="/console/curation">Curadoria</a>.</p></div>{% endif %}
+
+{% if found.faq %}<h3>Pergunta frequente mais parecida</h3>
+<dl class="kv"><dt>Pergunta</dt><dd><a href="/console/faqs">{{ found.faq.canonical_question }}</a></dd><dt>Parecida com</dt><dd>{{ found.faq.question }}</dd>
+<dt>Semelhança</dt><dd><b>{{ '%.2f' | format(found.faq.sim) }}</b> <span class="muted small">precisa de {{ found.rag.faq_threshold }}{% if not found.faq_used %}: não chegou, então não é usada{% endif %}</span></dd>
+<dt>Resposta</dt><dd>{{ found.faq.answer }}</dd></dl>{% else %}<p class="muted small">Nenhuma pergunta frequente aprovada ainda.</p>{% endif %}
+</div>
+
+<div class="card"><h2>Trechos encontrados</h2>
+<p class="muted small">Maior semelhança: <b>{{ '%.2f' | format(found.best_sim) }}</b>, nota mínima {{ found.rag.min_score }}. Um trecho também passa se tiver as mesmas palavras da pergunta.{% if found.faq_used %} Como a pergunta frequente foi usada, estes trechos não entram.{% endif %}</p>
+{% for k in found.chunks %}<div style="margin-bottom:12px" data-found-chunk><div class="small"><a href="/console/documents/{{ k.document_id }}"><b>{{ k.file_name }}</b></a>{% if k.page %} <span class="muted">· p. {{ k.page }}</span>{% endif %}
+ <span class="badge plain">{{ KB_USE.get(k.visibility, k.visibility) }}</span> <span class="muted">semelhança {{ '%.2f' | format(k.sim) }}{% if k.fts_hit %} · mesmas palavras{% endif %}</span></div>
+<div class="muted small">{{ k.text[:400] }}{% if k.text | length > 400 %}…{% endif %}</div></div>
+{% else %}<p class="muted small">Nada encontrado no material aprovado.</p>{% endfor %}</div>
+
+{% if user.role in ('tenant_owner', 'platform_admin') %}<form method="post" action="/console/knowledge/settings" class="card">{{ csrf_input(user) }}
+<input type="hidden" name="faq_threshold" value="{{ values.faq_threshold }}"><input type="hidden" name="min_score" value="{{ values.min_score }}"><input type="hidden" name="top_k" value="{{ values.top_k }}">
+<div class="row"><div class="field"><label>Ficou melhor com estes números? Anotação</label><input name="note" maxlength="300" placeholder="ex.: mais rigoroso, para não responder com trecho fraco"></div>
+<button>{{ icon('check', 16) }} Criar rascunho com estes números</button></div></form>{% endif %}
+{% endif %}
+{% endblock %}

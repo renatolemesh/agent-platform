@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% block title %}Campanhas{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Campanhas</h1><p class="sub">Envios de template no WhatsApp para contatos com consentimento de marketing. A campanha pausa sozinha se opt-outs ou falhas passarem do limite.</p></div></div>
+{% for c in camps %}<div class="card flush">
+  <div class="card-head"><div><h2>{{ c.name }}</h2>
+    <p class="sub">Template <span class="mono">{{ c.template.name }}</span> · até {{ c.limits.daily_limit }} por dia · pausa se opt-out &gt; {{ "%.0f"|format(100 * c.limits.max_optout_rate) }}% ou falha &gt; {{ "%.0f"|format(100 * c.limits.max_block_rate) }}%</p></div>
+    <span class="badge {{ c.status | status_tone }}">{{ c.status | status_label }}</span></div>
+  <div class="table-wrap"><table><thead><tr><th>Variante</th><th class="num">Público</th><th class="num">Pendentes</th><th class="num">Enviadas</th><th class="num">Falhas</th><th class="num">Responderam</th><th class="num">Opt-out</th></tr></thead><tbody>
+  {% for s in stats.get(c.id, []) %}<tr><td class="mono">{{ s.variant }}</td><td class="num">{{ s.targets }}</td><td class="num">{{ s.pending }}</td><td class="num">{{ s.sent }}</td>
+  <td class="num">{% if s.failed %}<span class="bad">{{ s.failed }}</span>{% else %}0{% endif %}</td>
+  <td class="num">{{ s.replied }} <span class="muted small">({{ pct(s.replied, s.sent) }})</span></td><td class="num">{{ s.opted_out }}</td></tr>
+  {% else %}<tr><td colspan="7"><div class="empty">Sem público.</div></td></tr>{% endfor %}</tbody></table></div>
+</div>{% else %}
+<div class="card"><div class="empty">{{ icon('megaphone', 28) }}<div>Nenhuma campanha.</div></div></div>{% endfor %}
+{% endblock %}

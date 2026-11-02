@@ -1,0 +1,16 @@
+<div class="table-wrap"><table>
+  <thead><tr><th>Quando</th><th>Quem</th><th>Comentário</th><th>O que aconteceu</th><th></th></tr></thead>
+  <tbody>{% for c in comments %}<tr>
+    <td class="muted nowrap">{{ (c.comment_ts or c.created_at) | dt }}</td>
+    <td class="nowrap">{% if c.author_username %}@{{ c.author_username }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td><div class="clip">{{ c.text_masked or '—' }}</div>{% if c.caption_masked is defined and c.caption_masked %}<div class="muted small clip">em: {{ c.caption_masked | truncate(60) }}</div>{% endif %}</td>
+    <td><span class="badge {{ c.decision | decision_tone }}">{{ c.decision | decision_label }}</span>
+      {% if c.no_reply %}<div class="muted small">recebeu o direct e ainda não respondeu</div>{% endif %}</td>
+    <td style="text-align:right" class="nowrap">
+      {% if c.conversation_id %}<a class="small" href="/console/conversations/{{ c.conversation_id }}">conversa</a>{% endif %}
+      {% if c.decision in ('known_contact', 'blocked_contact') %}<form method="post" action="/console/comments/{{ c.id }}/allow" class="inline">{{ csrf_input(user) }}
+        <input type="hidden" name="next" value="{{ back }}"><button class="btn-sm" title="O assistente passa a atender esta pessoa e este comentário é respondido">{{ icon('play', 14) }} Atender esta pessoa</button></form>{% endif %}
+      {% if c.attention and not c.resolved_at %}<form method="post" action="/console/comments/{{ c.id }}/resolve" class="inline">{{ csrf_input(user) }}
+        <input type="hidden" name="next" value="{{ back }}"><button class="btn-sm btn-ghost">{{ icon('check', 14) }} Visto</button></form>{% endif %}</td>
+  </tr>{% else %}<tr><td colspan="5"><div class="empty">{{ icon('chat', 28) }}<div>Nenhum comentário aqui.</div></div></td></tr>{% endfor %}</tbody>
+</table></div>

@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% block title %}Revisão{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Revisão das conversas</h1><p class="sub">Leia as conversas que o assistente atendeu e anote o que achou. As que tiveram bloqueio de segurança ou pedido de vendedor vêm primeiro.</p></div>
+  <div class="actions"><a class="btn btn-ghost" href="/console/reviews?day={{ prev_day.isoformat() }}">{{ icon('back', 14) }} Dia anterior</a>
+    {% if day < today %}<a class="btn btn-ghost" href="/console/reviews?day={{ next_day.isoformat() }}">Dia seguinte</a>{% endif %}</div></div>
+<div class="kpis">
+  <div class="kpi"><div class="label">{{ icon('chat', 15) }} Conversas em {{ day.strftime('%d/%m') }}</div><div class="value" data-kpi="total">{{ sample.total }}</div></div>
+  <div class="kpi"><div class="label">{{ icon('check', 15) }} Revisadas</div><div class="value" data-kpi="reviewed">{{ sample.reviewed }}</div><div class="hint">{{ pct(sample.reviewed, sample.total) }} do dia</div></div>
+  <div class="kpi"><div class="label">{{ icon('alert', 15) }} Com problema</div><div class="value" data-kpi="problems">{{ sample.problems }}</div></div>
+  <div class="kpi"><div class="label">{{ icon('shield', 15) }} Violações em {{ cfg.findings_window_days }} dias</div><div class="value" data-kpi="violations">{{ found.violations }}</div><div class="hint">A meta é zero</div></div>
+</div>
+
+<div class="card flush"><div class="card-head"><div><h2>Para revisar</h2><p class="sub">Até {{ cfg.daily_sample }} por dia.</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Conversa</th><th>Situação</th><th class="num">Respostas</th><th>Sinal</th><th>Revisão</th></tr></thead>
+    <tbody>{% for r in sample.rows %}<tr>
+      <td><a href="/console/conversations/{{ r.id }}">{{ r | contact_name }}</a></td>
+      <td><span class="badge {{ r.ownership | owner_tone }}">{{ r.ownership | owner_label }}</span></td>
+      <td class="num">{{ r.bot_messages }}</td>
+      <td>{% if r.guard_flag %}<span class="badge warn">Bloqueio de segurança</span>{% endif %}{% if r.handoff_flag %} <span class="badge info">Vendedor chamado</span>{% endif %}{% if not r.guard_flag and not r.handoff_flag %}<span class="muted">—</span>{% endif %}</td>
+      <td class="nowrap">{% if r.verdict == 'ok' %}<span class="badge ok">Tudo certo</span>{% elif r.verdict == 'problem' %}<span class="badge warn">Tem problema</span>{% else %}<span class="muted">Pendente</span>{% endif %}</td>
+    </tr>{% else %}<tr><td colspan="5"><div class="empty">{{ icon('chat', 28) }}<div>O assistente não respondeu ninguém neste dia.</div></div></td></tr>{% endfor %}</tbody>
+  </table></div></div>
+
+<div class="card flush"><div class="card-head"><div><h2>Problemas anotados</h2><p class="sub">Últimos {{ cfg.findings_window_days }} dias.</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Quando</th><th>Conversa</th><th>Tipo</th><th>Observação</th></tr></thead>
+    <tbody>{% for r in found.rows %}<tr>
+      <td class="muted nowrap">{{ r.created_at | dt }}</td>
+      <td><a href="/console/conversations/{{ r.conversation_id }}">{{ r | contact_name }}</a></td>
+      <td><span class="badge {{ 'bad' if r.category in cfg.violation_categories else 'warn' }}">{{ cfg.categories.get(r.category, r.category) }}</span></td>
+      <td class="small">{{ r.note_masked or '—' }}</td>
+    </tr>{% else %}<tr><td colspan="4"><div class="empty">Nenhum problema anotado.</div></td></tr>{% endfor %}</tbody>
+  </table></div></div>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% block title %}Entrar{% endblock %}{% block body %}
+<h1 style="margin-bottom:4px">Entrar</h1>
+<p class="muted">Use o e-mail e a senha do seu usuário do console.</p>
+{% if error %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ error }}</p></div>{% endif %}
+<form method="post" action="/console/login">
+  <div class="field"><label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="username" required autofocus></div>
+  <div class="field"><label for="password">Senha</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
+  <button class="btn-primary">Entrar</button>
+</form>
+{% endblock %}

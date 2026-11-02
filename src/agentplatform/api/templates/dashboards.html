@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% block title %}Painéis{% endblock %}{% block body %}
+{% set total = funnel | sum(attribute='leads') %}
+{% set qualified = funnel | sum(attribute='qualified') %}
+{% set handoffs = sla | sum(attribute='handoffs') %}
+{% set cost30 = cost | sum(attribute='cost_usd') %}
+<div class="page-head"><div><h1>Painéis</h1><p class="sub">Funil, origem dos leads, atendimento humano e custo de IA.</p></div></div>
+<div class="kpis">
+  <div class="kpi"><div class="label">{{ icon('users', 15) }} Leads</div><div class="value">{{ total }}</div></div>
+  <div class="kpi"><div class="label">{{ icon('check', 15) }} Qualificados</div><div class="value">{{ qualified }}</div><div class="hint">{{ pct(qualified, total) }} do total</div></div>
+  <div class="kpi"><div class="label">{{ icon('chat', 15) }} Handoffs</div><div class="value">{{ handoffs }}</div></div>
+  <div class="kpi"><div class="label">{{ icon('wallet', 15) }} Custo de IA (30 dias)</div><div class="value">{{ (cost30 or 0) | money(2) }}</div><div class="hint">{{ fx_note() }}</div></div>
+</div>
+
+<div class="card flush"><div class="card-head"><h2>Funil por estágio</h2></div>
+<div class="table-wrap"><table><thead><tr><th>Estágio</th><th class="num">Leads</th><th style="width:30%">Participação</th><th class="num">Qualificados</th><th class="num">Opt-out</th></tr></thead><tbody>
+{% for f in funnel %}{% set share = (100 * f.leads / total) if total else 0 %}<tr>
+<td>{{ stage_label(f.stage, labels) }}</td><td class="num">{{ f.leads }}</td>
+<td><div class="row" style="align-items:center;flex-wrap:nowrap"><div class="bar" style="flex:1"><span style="width:{{ share }}%"></span></div><span class="small muted nowrap">{{ "%.0f"|format(share) }}%</span></div></td>
+<td class="num">{{ f.qualified }}</td><td class="num">{{ f.opted_out }}</td></tr>
+{% else %}<tr><td colspan="5"><div class="empty">Sem leads ainda.</div></td></tr>{% endfor %}</tbody></table></div></div>
+
+<div class="grid g2">
+<div class="card flush"><div class="card-head"><div><h2>Origem dos leads</h2><p class="sub">Primeiro contato de cada lead.</p></div></div>
+<div class="table-wrap"><table><thead><tr><th>Entrada</th><th>Referência</th><th class="num">Leads</th><th class="num">Qualif.</th><th class="num">Pré-cad.</th></tr></thead><tbody>
+{% for a in attribution %}<tr><td>{{ a.entrypoint | entry_label }}</td><td class="muted">{{ a.source_ref or '—' }}</td><td class="num">{{ a.leads }}</td><td class="num">{{ a.qualified }}</td><td class="num">{{ a.pre_registrations }}</td></tr>
+{% else %}<tr><td colspan="5"><div class="empty">Sem dados.</div></td></tr>{% endfor %}</tbody></table></div></div>
+
+<div class="card flush"><div class="card-head"><div><h2>Handoffs e SLA</h2><p class="sub">Tempo até um vendedor assumir.</p></div></div>
+<div class="table-wrap"><table><thead><tr><th>Motivo</th><th class="num">Handoffs</th><th class="num">Mediana (min)</th><th class="num">SLA estourado</th></tr></thead><tbody>
+{% for s in sla %}<tr><td>{{ s.reason | reason_label }}</td><td class="num">{{ s.handoffs }}</td>
+<td class="num">{{ "%.0f"|format(s.p50_minutes_to_take) if s.p50_minutes_to_take is not none else '—' }}</td>
+<td class="num">{% if s.sla_breached %}<span class="badge bad">{{ s.sla_breached }}</span>{% else %}0{% endif %}</td></tr>
+{% else %}<tr><td colspan="4"><div class="empty">Sem handoffs.</div></td></tr>{% endfor %}</tbody></table></div></div>
+</div>
+
+<div class="grid g2">
+<div class="card flush"><div class="card-head"><div><h2>Respostas privadas a comentários</h2><p class="sub">Variantes A/B e quantos responderam em 7 dias.</p></div></div>
+<div class="table-wrap"><table><thead><tr><th>Variante</th><th class="num">Enviadas</th><th class="num">Responderam</th><th class="num">Taxa</th></tr></thead><tbody>
+{% for v in variants %}<tr><td>{{ v.private_variant }}</td><td class="num">{{ v.sent }}</td><td class="num">{{ v.replied }}</td><td class="num">{{ pct(v.replied, v.sent) }}</td></tr>
+{% else %}<tr><td colspan="4"><div class="empty">Sem dados.</div></td></tr>{% endfor %}</tbody></table></div></div>
+
+<div class="card flush"><div class="card-head"><h2>Custo de IA por dia</h2></div>
+<div class="table-wrap"><table><thead><tr><th>Dia</th><th class="num">Chamadas</th><th class="num">Custo</th></tr></thead><tbody>
+{% for c in cost %}<tr><td>{{ c.day | dt('%d/%m') }}</td><td class="num">{{ c.calls }}</td><td class="num">{{ (c.cost_usd or 0) | money }}</td></tr>
+{% else %}<tr><td colspan="3"><div class="empty">Sem chamadas.</div></td></tr>{% endfor %}</tbody></table></div></div>
+</div>
+{% endblock %}

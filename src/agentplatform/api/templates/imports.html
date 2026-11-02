@@ -1,0 +1,32 @@
+{% extends "base.html" %}{% block title %}Importar leads{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Importar leads</h1><p class="sub">CSV ou XLSX. Cada linha precisa de telefone ou e-mail, base legal (consent, legitimate_interest ou contract_preliminary), origem e finalidade. Com base em consentimento, a evidência é obrigatória. Contatos suprimidos nunca voltam.</p></div></div>
+
+{% if report %}<div class="card"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:14px">
+  <h2 style="margin:0">Simulação: {{ file_name }} <span class="muted small">({{ total }} linhas)</span></h2><span class="badge info">Nada foi gravado ainda</span></div>
+  <div class="kpis" style="margin-bottom:12px">
+    <div class="kpi ok"><div class="label">Novos</div><div class="value" data-imported="{{ report.imported }}">{{ report.imported }}</div></div>
+    <div class="kpi"><div class="label">Atualizados</div><div class="value">{{ report.updated }}</div></div>
+    <div class="kpi {{ 'bad' if report.rejected }}"><div class="label">Rejeitados</div><div class="value">{{ report.rejected | length }}</div></div>
+  </div>
+  {% if report.rejected %}<details style="margin-bottom:12px"><summary>Ver linhas rejeitadas</summary><div class="table-wrap" style="margin-top:10px"><table><thead><tr><th class="num">Linha</th><th>Motivo</th></tr></thead><tbody>
+  {% for r in report.rejected[:200] %}<tr><td class="num">{{ r[0] }}</td><td class="mono">{{ r[1] }}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
+  <p class="muted small">Colunas usadas: <span class="mono">{{ mapping | tojson }}</span></p>
+  <form method="post" action="/console/imports/commit" class="actions">{{ csrf_input(user) }}<input type="hidden" name="file_b64" value="{{ file_b64 }}">
+    <input type="hidden" name="file_name" value="{{ file_name }}"><input type="hidden" name="mapping" value="{{ mapping | tojson | forceescape }}">
+    <button class="btn-primary">{{ icon('check', 16) }} Confirmar importação</button><a class="btn btn-ghost" href="/console/imports">Cancelar</a></form>
+</div>{% endif %}
+
+<div class="card"><h2>1. Envie o arquivo e indique as colunas</h2>
+<form method="post" action="/console/imports/preview" enctype="multipart/form-data">{{ csrf_input(user) }}
+  <div class="field"><label>Arquivo</label><input type="file" name="file" accept=".csv,.xlsx" required></div>
+  <p class="muted small">Nome da coluna no arquivo para cada campo. Deixe em branco se a coluna tiver o mesmo nome do campo.</p>
+  <div class="form-grid">{% for f in fields %}<div class="field"><label class="mono">{{ f }}</label><input name="map_{{ f }}" placeholder="{{ f }}"></div>{% endfor %}</div>
+  <button class="btn-primary">{{ icon('upload', 16) }} Simular importação</button></form></div>
+
+{% if batches %}<div class="card flush"><div class="card-head"><h2>Lotes importados</h2></div>
+<div class="table-wrap"><table><thead><tr><th>Data</th><th>Status</th><th>Resultado</th><th></th></tr></thead><tbody>
+{% for b in batches %}<tr><td>{{ b.created_at | dt('%d/%m/%Y %H:%M') }}</td><td><span class="badge {{ 'ok' if b.status == 'committed' else 'muted' }}">{{ 'Importado' if b.status == 'committed' else (b.status | status_label) }}</span></td>
+<td class="muted mono small">{{ b.counts | tojson }}</td>
+<td style="text-align:right">{% if b.status == 'committed' %}<form method="post" action="/console/imports/{{ b.id }}/rollback" class="inline">{{ csrf_input(user) }}
+<button class="btn-sm">Desfazer lote</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div></div>{% endif %}
+{% endblock %}

@@ -1,0 +1,8 @@
+# Optional. Saved as knowledge_inventory.yaml in the same folder as the PDFs, it proposes their metadata to `agentplatform ingest`.
+# It stays with the material, out of git. Whatever it proposes, a person still approves in the console.
+# never_import_name_hashes: [sha256 of the lowercase name]    # files of this folder that must never come in
+documents:
+  - {file: "guia-do-produto.pdf", title: "Guia do produto", status: in_review, visibility: citable, audience: customer,
+     segment: general, version_label: "2026", effective_from: "2026-01-01"}
+  - {file: "manual-interno.pdf", title: "Manual interno", status: in_review, visibility: guidance_only, audience: internal,
+     exclude_pages: [12, 13]}

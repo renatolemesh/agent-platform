@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Exclusão de dados</title>
+<style>:root{color-scheme:light dark}body{font-family:system-ui,sans-serif;line-height:1.55;max-width:720px;margin:32px auto;padding:0 16px}h1{font-size:1.5rem}</style>
+</head><body>
+<h1>Exclusão de dados</h1>
+{% if code %}
+<p>Recebemos o pedido de exclusão em {{ received_at.strftime('%d/%m/%Y') }}. Código de confirmação: <code>{{ code }}</code>.</p>
+<p>O pedido é concluído em até 15 dias. Dúvidas: <a href="mailto:{{ contact }}">{{ contact }}</a>.</p>
+{% else %}
+<p>Para pedir a exclusão dos dados que {{ controller }} guarda sobre você, use uma destas opções:</p>
+<ol>
+<li>Envie um e-mail para <a href="mailto:{{ contact }}">{{ contact }}</a> informando o seu nome de usuário na rede social.</li>
+<li>Peça na própria conversa com a empresa que uma pessoa da equipe apague os seus dados.</li>
+</ol>
+<p>A exclusão remove suas mensagens, comentários e dados de perfil. Guardamos apenas um código irreversível que impede que você volte a ser contatado, e os registros que a lei obriga a manter. O pedido é concluído em até 15 dias.</p>
+{% endif %}
+</body></html>

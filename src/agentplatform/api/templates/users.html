@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block title %}Usuários{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Usuários do console</h1><p class="sub">Quem acessa, com que perfil. Mudanças no assistente precisam de duas pessoas: quem propõe não aprova.</p></div></div>
+{% if error %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ error }}</p></div>{% endif %}
+{% if invite_link %}<div class="alert ok">{{ icon('check', 16) }}<div style="flex:1"><p><b>Convite criado para {{ invited }}.</b> Envie este link por um canal seu. Ele só aparece agora, funciona uma vez e expira.</p>
+<input readonly value="{{ invite_link }}" data-invite-link aria-label="Link do convite" style="margin-top:8px"></div></div>{% endif %}
+
+<div class="card flush"><div class="table-wrap"><table><thead><tr>{% if user.role == 'platform_admin' %}<th>Tenant</th>{% endif %}<th>Nome</th><th>Perfil</th><th>2FA</th><th>Bloqueio</th><th></th></tr></thead><tbody>
+{% for r in rows %}<tr data-user="{{ r.display_name }}">{% if user.role == 'platform_admin' %}<td class="muted">{{ r.slug or 'plataforma' }}</td>{% endif %}
+<td><div class="who-cell"><span class="avatar">{{ r.display_name | initials }}</span><b>{{ r.display_name }}</b></div></td>
+<td>{% if invite_roles and r.tenant_id and r.id | string != user.id %}<form method="post" action="/console/users/{{ r.id }}/role" class="row" style="align-items:center;flex-wrap:nowrap">{{ csrf_input(user) }}
+<select name="role" aria-label="Perfil de {{ r.display_name }}" style="min-width:150px">{% for k in invite_roles %}<option value="{{ k }}" {{ 'selected' if k == r.role }}>{{ ROLE.get(k, k) }}</option>{% endfor %}</select><button class="btn-sm">Mudar</button></form>{% else %}{{ ROLE.get(r.role, r.role) }}{% endif %}</td>
+<td>{% if r.totp_enabled_at %}<span class="badge ok">Ativo</span>{% else %}<span class="badge muted">Desligado</span>{% endif %}</td>
+<td>{% if r.locked_until %}<span class="badge bad">até {{ r.locked_until | dt }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+<td style="text-align:right" class="actions">{% if user.role == 'platform_admin' %}<form method="post" action="/console/users/{{ r.id }}/totp-reset" class="inline">{{ csrf_input(user) }}<button class="btn-sm">Redefinir 2FA</button></form>{% endif %}
+{% if invite_roles and r.tenant_id and r.id | string != user.id %}<form method="post" action="/console/users/{{ r.id }}/deactivate" class="inline" data-name="{{ r.display_name }}" onsubmit="return confirm('Desativar ' + this.dataset.name + '? O acesso termina na hora.')">{{ csrf_input(user) }}<button class="btn-sm">Desativar</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div></div>
+
+{% if invite_roles %}<div class="card"><h2>Convidar alguém</h2>
+<form method="post" action="/console/users/invite" class="row">{{ csrf_input(user) }}
+<div class="field"><label>Nome</label><input name="name" maxlength="100" required></div>
+<div class="field"><label>E-mail (será o login)</label><input name="email" type="email" maxlength="200" required></div>
+<div class="field"><label>Perfil</label><select name="role" required>{% for k in invite_roles %}<option value="{{ k }}">{{ ROLE.get(k, k) }}</option>{% endfor %}</select></div>
+<button class="btn-primary">Criar convite</button></form>
+<p class="muted small" style="margin-top:8px">Dono: tudo. Revisor: conversas, material e testes, sem mudar a configuração. Vendedor: atendimento.</p>
+{% if invites %}<h3 style="margin-top:14px">Convites em aberto</h3>{% for i in invites %}<div class="row" style="align-items:center;justify-content:space-between" data-invite><span class="small">{{ i.display_name }} · {{ ROLE.get(i.role, i.role) }} · vale até {{ i.expires_at | dt }}</span>
+<form method="post" action="/console/users/invites/{{ i.id }}/revoke" class="inline">{{ csrf_input(user) }}<button class="btn-sm">Cancelar</button></form></div>{% endfor %}{% endif %}
+</div>{% endif %}
+{% endblock %}

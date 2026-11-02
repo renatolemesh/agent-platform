@@ -1,0 +1,158 @@
+# Unit tests for the alert rules. Run inside the container:
+#   promtool test rules /etc/prometheus/tests/agentplatform.test.yml
+rule_files:
+  - ../rules/agentplatform.yml
+
+evaluation_interval: 1m
+
+tests:
+  # The target goes down: nothing before 5 min, firing after.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="agentplatform-api",instance="api:8000"}'
+        values: "1x5 0x10"
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: AgentMetricsTargetDown
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: AgentMetricsTargetDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: agentplatform-api, instance: "api:8000" }
+            exp_annotations:
+              summary: "Prometheus não consegue ler /metrics do api"
+              description: "Há mais de 5 min sem coleta de api:8000. Api fora, Postgres fora (a coleta consulta o banco) ou METRICS_TOKEN diferente nos dois lados. Sem coleta, todos os outros alertas deste arquivo ficam mudos."
+              runbook: docs/runbooks/observabilidade.md#agentmetricstargetdown
+
+  # Thresholds of the mirror group, one step on each side.
+  - interval: 1m
+    input_series:
+      - series: 'agent_inbound_oldest_pending_seconds{tenant="t1"}'
+        values: "200x4 400x4"
+      - series: 'agent_outbox_oldest_pending_seconds{tenant="t1"}'
+        values: "500x4 700x4"
+      - series: 'agent_turns_last_hour{tenant="t1",status="failed"}'
+        values: "4x4 5x4"
+      - series: 'agent_dead_letters_last_hour{tenant="platform"}'
+        values: "0x4 1x4"
+      - series: "agent_spool_bytes"
+        values: "999999x4 1000000x4"
+      - series: 'agent_channel_token_invalid{tenant="t1",channel="instagram"}'
+        values: "0x4 1x4"
+    alert_rule_test:
+      - { eval_time: 4m, alertname: InboundBacklog, exp_alerts: [] }
+      - { eval_time: 4m, alertname: OutboxStuck, exp_alerts: [] }
+      - { eval_time: 4m, alertname: TurnFailures, exp_alerts: [] }
+      - { eval_time: 4m, alertname: DeadLetters, exp_alerts: [] }
+      - { eval_time: 4m, alertname: SpoolGrowing, exp_alerts: [] }
+      - { eval_time: 4m, alertname: ChannelTokenInvalid, exp_alerts: [] }
+    promql_expr_test:
+      - expr: ALERTS{alertstate="firing",alertname!="AgentMetricsTargetMissing"}   # no up series in this test
+        eval_time: 7m
+        exp_samples:
+          - { labels: 'ALERTS{alertname="ChannelTokenInvalid",alertstate="firing",channel="instagram",severity="critical",tenant="t1"}', value: 1 }
+          - { labels: 'ALERTS{alertname="DeadLetters",alertstate="firing",severity="warning",tenant="platform"}', value: 1 }
+          - { labels: 'ALERTS{alertname="InboundBacklog",alertstate="firing",severity="critical",tenant="t1"}', value: 1 }
+          - { labels: 'ALERTS{alertname="OutboxStuck",alertstate="firing",severity="critical",tenant="t1"}', value: 1 }
+          - { labels: 'ALERTS{alertname="SpoolGrowing",alertstate="firing",severity="critical"}', value: 1 }
+          - { labels: 'ALERTS{alertname="TurnFailures",alertstate="firing",severity="warning",status="failed",tenant="t1"}', value: 1 }
+
+  # Turn p95: needs a full 10 min above 20 s.
+  - interval: 1m
+    input_series:
+      - series: 'agent_turn_p95_seconds{tenant="t1"}'
+        values: "15x2 25x20"
+    promql_expr_test:
+      - expr: ALERTS{alertname="TurnLatencyHigh",alertstate="firing"}
+        eval_time: 10m
+        exp_samples: []
+      - expr: ALERTS{alertname="TurnLatencyHigh",alertstate="firing"}
+        eval_time: 14m
+        exp_samples:
+          - { labels: 'ALERTS{alertname="TurnLatencyHigh",alertstate="firing",severity="warning",tenant="t1"}', value: 1 }
+
+  # Budget: today's and the key caps fire; 80% and 100% do not overlap. /metrics only exposes the standing caps.
+  - interval: 1m
+    input_series:
+      - series: 'agent_budget_used_ratio{tenant="t1",scope="day:2026-01-02"}'
+        values: "0.5+0.001x600"
+      - series: 'agent_budget_used_ratio{tenant="key",scope="key:total"}'
+        values: "0.85x600"
+      - series: 'agent_budget_used_ratio{tenant="t2",scope="total"}'
+        values: "1x600"
+    promql_expr_test:
+      - expr: ALERTS{alertname=~"Budget.*",alertstate="firing"}
+        eval_time: 400m
+        exp_samples:
+          - { labels: 'ALERTS{alertname="BudgetExhausted",alertstate="firing",severity="critical",scope="total",tenant="t2"}', value: 1 }
+          - { labels: 'ALERTS{alertname="BudgetHigh",alertstate="firing",severity="warning",scope="day:2026-01-02",tenant="t1"}', value: 1 }
+          - { labels: 'ALERTS{alertname="BudgetHigh",alertstate="firing",severity="warning",scope="key:total",tenant="key"}', value: 1 }
+
+  # Failed jobs: a large old total stays quiet, growth fires, and so does the first failure ever seen on a queue.
+  - interval: 1m
+    input_series:
+      - series: 'agent_jobs{queue="dispatch",status="failed"}'
+        values: "1158x300"
+      - series: 'agent_jobs{queue="ingress",status="failed"}'
+        values: "121x90 122x210"
+      - series: 'agent_jobs{queue="turns",status="failed"}'
+        values: "_x100 1x200"
+      - series: 'up{job="agentplatform-api",instance="api:8000"}'
+        values: "1x300"
+    promql_expr_test:
+      # Fresh install: old failures are there, but there is no history an hour back
+      - expr: ALERTS{alertname="JobsFailed",alertstate="firing"}
+        eval_time: 30m
+        exp_samples: []
+      - expr: ALERTS{alertname="JobsFailed",alertstate="firing"}
+        eval_time: 95m
+        exp_samples:
+          - { labels: 'ALERTS{alertname="JobsFailed",alertstate="firing",queue="ingress",severity="warning",status="failed"}', value: 1 }
+      - expr: ALERTS{alertname="JobsFailed",alertstate="firing"}
+        eval_time: 105m
+        exp_samples:
+          - { labels: 'ALERTS{alertname="JobsFailed",alertstate="firing",queue="ingress",severity="warning",status="failed"}', value: 1 }
+          - { labels: 'ALERTS{alertname="JobsFailed",alertstate="firing",queue="turns",severity="warning",status="failed"}', value: 1 }
+      - expr: ALERTS{alertname="JobsFailed",alertstate="firing"}
+        eval_time: 200m
+        exp_samples: []
+
+  # The collector refuses spans for 10 min. Real series name, without _total: the collector 0.164 exposes it this way.
+  - interval: 1m
+    input_series:
+      - series: 'otelcol_receiver_refused_spans{job="otel-collector",receiver="otlp",transport="http"}'
+        values: "0x10 0+5x30"
+    promql_expr_test:
+      - expr: ALERTS{alertname=~"OtelCollectorRefusingSpans|AgentMetricsTargetMissing",alertstate="firing"}
+        eval_time: 25m
+        exp_samples:
+          - { labels: 'ALERTS{alertname="AgentMetricsTargetMissing",alertstate="firing",job="agentplatform-api",severity="critical"}', value: 1 }
+          - { labels: 'ALERTS{alertname="OtelCollectorRefusingSpans",alertstate="firing",job="otel-collector",receiver="otlp",severity="warning",transport="http"}', value: 1 }
+
+  # worker-bg stopped: a maintenance job stays in todo. A job seen in passing at a few scrapes does not count.
+  - interval: 1m
+    input_series:
+      - series: 'agent_jobs{queue="maintenance",status="todo"}'
+        values: "1 _ _ 1 _ _ 1 _ _ 1 _ _ 1x20"
+    promql_expr_test:
+      - expr: ALERTS{alertname="MaintenanceQueueNotConsumed",alertstate="firing"}
+        eval_time: 11m
+        exp_samples: []
+      - expr: ALERTS{alertname="MaintenanceQueueNotConsumed",alertstate="firing"}
+        eval_time: 25m
+        exp_samples:
+          - { labels: 'ALERTS{alertname="MaintenanceQueueNotConsumed",alertstate="firing",queue="maintenance",severity="critical",status="todo"}', value: 1 }
+
+  # Disk: nothing at 79%, an alert at 85% once it stays there
+  - interval: 1m
+    input_series:
+      - series: 'agent_disk_used_ratio'
+        values: "0.79x30 0.85x30"
+    promql_expr_test:
+      - expr: ALERTS{alertname="DiskAlmostFull",alertstate="firing"}
+        eval_time: 25m
+        exp_samples: []
+      - expr: ALERTS{alertname="DiskAlmostFull",alertstate="firing"}
+        eval_time: 50m
+        exp_samples:
+          - { labels: 'ALERTS{alertname="DiskAlmostFull",alertstate="firing",severity="critical"}', value: 1 }

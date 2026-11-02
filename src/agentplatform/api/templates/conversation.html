@@ -1,0 +1,107 @@
+{% extends "base.html" %}{% block title %}Conversa{% endblock %}{% block body %}
+<a class="crumb" href="/console/">{{ icon('back', 14) }} Conversas</a>
+<div class="page-head">
+  <div><h1>{{ c | contact_name }}</h1>
+    <p class="sub"><span class="badge {{ c.ownership | owner_tone }}" data-ownership="{{ c.ownership }}">{{ c.ownership | owner_label }}</span>
+    <span class="badge plain">{{ stage_label(c.stage, labels) }}</span>
+    <span class="muted small">· última mensagem {{ c.last_inbound_at | dt }}</span></p></div>
+  <form method="post" action="/console/conversations/{{ c.id }}/ownership" class="actions">{{ csrf_input(user) }}
+    {% if c.ownership != 'HUMAN' %}<button name="to" value="HUMAN" class="btn-primary">{{ icon('users', 16) }} Assumir conversa</button>{% endif %}
+    {% if c.ownership != 'CLOSED' %}<button name="to" value="CLOSED" class="btn-ghost">Encerrar</button>{% endif %}
+  </form>
+</div>
+
+<div class="grid g-side">
+  <div>
+    <div class="card flush">
+      <div class="card-head"><div><h2>Mensagens</h2><p class="sub">Dados pessoais aparecem mascarados.</p></div></div>
+      <div class="chat">
+        {% for m in msgs %}<div class="bubble {{ m.direction }}"><span class="meta">{{ DIRECTION.get(m.direction, m.direction) }}{% if m.kind in MESSAGE_KIND %} · {{ MESSAGE_KIND[m.kind] }}{% endif %} · {{ m.provider_ts | dt }}</span>{{ m.text_masked or '(mídia)' }}</div>
+        {% else %}<div class="empty">Sem mensagens.</div>{% endfor %}
+      </div>
+    </div>
+
+    <div class="card flush">
+      <div class="card-head"><div><h2>Turnos do assistente</h2><p class="sub">O que ele entendeu, consultou e decidiu em cada resposta.</p></div></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Quando</th><th>Resultado</th><th>Estágio</th><th class="num">Chamadas</th><th class="num">Custo</th><th>Detalhes</th></tr></thead>
+        <tbody>{% for t in turns %}<tr>
+          <td class="muted nowrap">{{ t.started_at | dt('%d/%m %H:%M:%S') }}</td>
+          <td><span class="badge {{ t.status | status_tone }}">{{ t.status | status_label }}</span></td>
+          <td class="nowrap">{{ stage_label(t.stage_before, labels) }} → {{ stage_label(t.stage_after, labels) if t.stage_after else '—' }}</td>
+          <td class="num">{{ t.llm_calls }}</td><td class="num">{{ t.cost_usd | money }}</td>
+          <td><details data-why><summary>por que respondeu isso</summary>{% set e = explained.get(t.id) %}{% if e %}<div style="margin-top:8px">{% include "_turn_explain.html" %}</div>{% endif %}
+<details style="margin-top:8px"><summary class="small">ver trace</summary><pre>{{ t.trace | tojson(indent=1) }}</pre></details></details></td>
+        </tr>{% else %}<tr><td colspan="6"><div class="empty">Nenhum turno ainda.</div></td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card" style="border-color:color-mix(in srgb,var(--{{ 'accent' if c.ownership == 'BOT' else 'warn' }}) 40%,var(--line))">
+      <h2>Assistente nesta conversa</h2>
+      {% if contact_flag == 'blocked' %}
+        <p class="small"><span class="badge muted">Marcado para não atender</span></p>
+        <p class="muted small">O assistente nunca fala com esta pessoa, nem por comentário.</p>
+      {% elif c.opted_out_at %}
+        <p class="small"><span class="badge warn">Não envia mensagens</span></p>
+        <p class="muted small">O cliente pediu para não receber mensagens em {{ c.opted_out_at | dt }}. Nada automático sai para ele. Se ele voltar a escrever, responda você mesmo.</p>
+      {% elif c.ownership == 'BOT' %}
+        <p class="small"><span class="badge accent">Respondendo</span></p>
+        <p class="muted small">O assistente responde sozinho. Pause para ele parar só nesta conversa; as outras continuam normais.</p>
+      {% elif c.ownership == 'PAUSED' %}
+        <p class="small"><span class="badge muted">Pausado</span></p>
+        <p class="muted small">O assistente não responde nesta conversa e nenhum vendedor é avisado. As mensagens do cliente continuam chegando aqui.</p>
+      {% elif c.ownership in ('HUMAN', 'AWAITING_HUMAN') %}
+        <p class="small"><span class="badge {{ c.ownership | owner_tone }}">{{ c.ownership | owner_label }}</span></p>
+        <p class="muted small">O assistente está fora desta conversa enquanto ela está com o vendedor.</p>
+      {% else %}
+        <p class="small"><span class="badge muted">{{ c.ownership | owner_label }}</span></p>
+        <p class="muted small">Conversa encerrada. Se o cliente escrever de novo, o assistente volta a responder.</p>
+      {% endif %}
+      {% if contact_flag != 'blocked' %}<form method="post" action="/console/conversations/{{ c.id }}/ownership">{{ csrf_input(user) }}
+        {% if c.ownership == 'BOT' %}<button name="to" value="PAUSED" style="width:100%">{{ icon('pause', 16) }} Pausar assistente nesta conversa</button>
+        {% else %}<button name="to" value="BOT" class="btn-primary" style="width:100%">{{ icon('play', 16) }} Retomar assistente</button>
+        <p class="muted small" style="margin:8px 0 0">Ao retomar, ele responde o que ficou sem resposta e volta a atender.</p>{% endif %}
+      </form>{% endif %}
+      <form method="post" action="/console/conversations/{{ c.id }}/contact" style="margin-top:8px">{{ csrf_input(user) }}
+        {% if contact_flag == 'blocked' %}<button name="status" value="allowed" class="btn-primary" style="width:100%">{{ icon('play', 16) }} Voltar a atender esta pessoa</button>
+        {% else %}<button name="status" value="blocked" class="btn-ghost" style="width:100%">Nunca atender esta pessoa</button>{% endif %}
+      </form>
+    </div>
+    <div class="card"><h2>De onde veio</h2>
+      <p class="small"><span class="badge plain">{{ c.entrypoint | entry_label }}</span>{% if c.username %} <span class="muted">@{{ c.username }}</span>{% endif %}</p>
+      {% for o in origin %}<div class="small" style="margin-top:8px">
+        {% if o.comment %}Comentou “{{ o.comment }}”{% elif o.kind == 'ad_referral' %}Veio de um anúncio{% else %}Respondeu a um story{% endif %}
+        {% if o.note %}<div class="muted">Assunto: {{ o.note }}</div>{% endif %}
+        {% if o.ad_title %}<div class="muted">Anúncio: {{ o.ad_title }}</div>{% endif %}
+        {% if o.caption %}<div class="muted clip">Legenda: {{ o.caption }}</div>{% endif %}</div>{% endfor %}
+    </div>
+    <div class="card"><h2>Perfil do lead</h2>
+      {% if c.profile %}<dl class="kv">{% for k, v in c.profile.items() %}<dt>{{ slot_label(k, labels) }}</dt>
+        <dd>{{ slot_value(k, v, labels) }}{% if slot_confidence(v) %} <span class="muted small" title="confiança da extração">· {{ slot_confidence(v) }}</span>{% endif %}</dd>{% endfor %}</dl>
+      {% else %}<p class="muted">Ainda sem informações coletadas.</p>{% endif %}
+    </div>
+    <div class="card"><h2>Venda</h2>
+      <p class="muted small">Marque quando o cliente fechar, para medir a conversão do assistente.</p>
+      <form method="post" action="/console/conversations/{{ c.id }}/won">{{ csrf_input(user) }}<button>{{ icon('check', 16) }} Marcar venda</button></form>
+    </div>
+    <div class="card"><h2>Revisão</h2>
+      <p class="muted small">Anote o que achou da conversa: é o que mede se o assistente está acertando.</p>
+      {% for r in reviews %}<div class="small" style="margin-bottom:8px"><span class="badge {{ 'ok' if r.verdict == 'ok' else 'warn' }}">{{ 'Tudo certo' if r.verdict == 'ok' else review_cfg.categories.get(r.category, 'Problema') }}</span>
+        <span class="muted">{{ r.created_at | dt }}</span>{% if r.note_masked %}<div class="muted">{{ r.note_masked }}</div>{% endif %}</div>{% endfor %}
+      <form method="post" action="/console/conversations/{{ c.id }}/review">{{ csrf_input(user) }}
+        <div class="field"><label>Resultado</label><select name="verdict"><option value="ok">Tudo certo</option><option value="problem">Tem problema</option></select></div>
+        <div class="field"><label>Se tem problema, qual</label><select name="category"><option value="">Escolha</option>{% for k, v in review_cfg.categories.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Observação (opcional)</label><textarea name="note" rows="2" maxlength="{{ review_cfg.note_max_chars }}"></textarea></div>
+        <button>{{ icon('check', 16) }} Salvar revisão</button>
+      </form>
+    </div>
+    <div class="card"><h2>Histórico de posse</h2>
+      {% if events %}<ul class="timeline">{% for e in events %}<li><b>{{ e.from_state | owner_label }} → {{ e.to_state | owner_label }}</b>
+        <div class="muted small">{{ e.at | dt }} · <span class="mono">{{ e.cause }}</span></div></li>{% endfor %}</ul>
+      {% else %}<p class="muted">Sem mudanças de posse.</p>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

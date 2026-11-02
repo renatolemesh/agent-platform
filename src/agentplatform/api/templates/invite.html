@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% block title %}Convite{% endblock %}{% block body %}
+{% if invite %}
+<h1 style="margin-bottom:4px">Olá, {{ invite.display_name }}</h1>
+<p class="muted">Você foi convidado para o console de {{ invite.tenant }}, como {{ ROLE.get(invite.role, invite.role) }}. Crie a sua senha para entrar.{% if two_factor %} No primeiro acesso, você também configura a verificação em duas etapas.{% endif %}</p>
+{% if error %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ error }}</p></div>{% endif %}
+<form method="post" action="/console/invite/{{ token }}" autocomplete="off">
+  <div class="field"><label for="password">Senha (pelo menos {{ min_len }} caracteres)</label><input id="password" name="password" type="password" autocomplete="new-password" required minlength="{{ min_len }}"></div>
+  <div class="field"><label for="confirm">Repita a senha</label><input id="confirm" name="confirm" type="password" autocomplete="new-password" required></div>
+  <button class="btn-primary">Criar acesso</button>
+</form>
+{% else %}
+<h1 style="margin-bottom:4px">Este convite não vale mais</h1>
+<p class="muted">Ele já foi usado, foi cancelado ou expirou. Peça um novo a quem convidou você.</p>
+{% endif %}
+{% endblock %}

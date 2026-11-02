@@ -1,0 +1,198 @@
+# Alert rules for the obs profile. What to do for each one: docs/runbooks/observabilidade.md.
+#
+# The app already alerts the operator every minute (operations.alerts, core/ops/observability.py). These rules add what it
+# cannot say about itself (group agentplatform-stack) and repeat its key thresholds from outside (group
+# agentplatform-mirror), which keeps working when worker-bg, where the in-app alerts run, is down.
+#
+# The numbers in the mirror group are the defaults of OpsAlertsConfig (core/config/schema.py), budget.alert_thresholds and
+# plan 10 §1. Prometheus cannot read the tenant config: if one of those changes, change it here too.
+groups:
+  - name: agentplatform-stack
+    rules:
+      - alert: AgentMetricsTargetDown
+        expr: up{job="agentplatform-api"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus não consegue ler /metrics do api"
+          description: "Há mais de 5 min sem coleta de {{ $labels.instance }}. Api fora, Postgres fora (a coleta consulta o banco) ou METRICS_TOKEN diferente nos dois lados. Sem coleta, todos os outros alertas deste arquivo ficam mudos."
+          runbook: docs/runbooks/observabilidade.md#agentmetricstargetdown
+
+      - alert: AgentMetricsTargetMissing
+        expr: absent(up{job="agentplatform-api"})
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "O alvo do api sumiu da configuração do Prometheus"
+          description: "O job agentplatform-api não existe na configuração carregada. Nenhuma métrica do app está sendo coletada."
+          runbook: docs/runbooks/observabilidade.md#agentmetricstargetmissing
+
+      # The in-app alerts and the heartbeat run on worker-bg, so they stop with it. Every worker queues the periodic jobs but only
+      # worker-bg takes the maintenance queue: when it stops, a job stays in todo. Normally a job leaves todo within seconds, so a
+      # series present in nearly every scrape of 10 min is the signal (it does not exist at all when the queue is empty).
+      - alert: MaintenanceQueueNotConsumed
+        expr: count_over_time(agent_jobs{queue="maintenance",status="todo"}[10m]) >= 9
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "worker-bg não está consumindo a fila maintenance"
+          description: "Há mais de 10 min com job parado em todo. Sem worker-bg, os alertas do app, o heartbeat, os follow-ups e a retenção não rodam."
+          runbook: docs/runbooks/observabilidade.md#maintenancequeuenotconsumed
+
+      - alert: OtelCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "otel-collector fora do ar"
+          description: "Os spans enviados pelo app estão se perdendo. O atendimento não é afetado."
+          runbook: docs/runbooks/observabilidade.md#otelcollectordown
+
+      - alert: OtelCollectorRefusingSpans
+        expr: rate(otelcol_receiver_refused_spans[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "otel-collector recusando spans"
+          description: "O memory_limiter está recusando dados: os números de latência por span ficam incompletos. O atendimento não é afetado."
+          runbook: docs/runbooks/observabilidade.md#otelcollectorrefusingspans
+
+      - alert: PrometheusRuleEvaluationFailing
+        expr: increase(prometheus_rule_evaluation_failures_total[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Regra de alerta falhando no Prometheus"
+          description: "O grupo {{ $labels.rule_group }} está falhando ao avaliar: um alerta pode estar mudo sem ninguém saber."
+          runbook: docs/runbooks/observabilidade.md#prometheusruleevaluationfailing
+
+  - name: agentplatform-mirror
+    rules:
+      # operations.alerts.inbound_backlog_minutes = 5
+      - alert: InboundBacklog
+        expr: agent_inbound_oldest_pending_seconds > 300
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Mensagens recebidas sem processar"
+          description: "Tenant {{ $labels.tenant }}: o evento mais antigo está parado há {{ $value | humanizeDuration }}."
+          runbook: docs/runbooks/fila-travada-dlq.md
+
+      # operations.alerts.outbox_stuck_minutes = 10
+      - alert: OutboxStuck
+        expr: agent_outbox_oldest_pending_seconds > 600
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Envios parados no outbox"
+          description: "Tenant {{ $labels.tenant }}: o item mais antigo está parado há {{ $value | humanizeDuration }}. Não reenvie à mão."
+          runbook: docs/runbooks/fila-travada-dlq.md
+
+      # operations.alerts.turn_failures_per_hour = 5
+      - alert: TurnFailures
+        expr: agent_turns_last_hour{status="failed"} >= 5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Turnos falhando"
+          description: "Tenant {{ $labels.tenant }}: {{ $value }} turno(s) com falha na última hora."
+          runbook: docs/runbooks/fila-travada-dlq.md
+
+      # plan 10 §1: turn p95 above 20 s for 10 min. The metric is the p95 of the last hour, so it reacts slowly.
+      - alert: TurnLatencyHigh
+        expr: agent_turn_p95_seconds > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Turnos lentos"
+          description: "Tenant {{ $labels.tenant }}: p95 da última hora em {{ $value | humanizeDuration }}."
+          runbook: docs/runbooks/observabilidade.md#turnlatencyhigh
+
+      # operations.alerts.dead_letters_per_hour = 1
+      - alert: DeadLetters
+        expr: agent_dead_letters_last_hour >= 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dead letters novas"
+          description: "{{ $labels.tenant }}: {{ $value }} na última hora."
+          runbook: docs/runbooks/fila-travada-dlq.md
+
+      # The in-app jobs_failed looks at failures of the last hour. agent_jobs{status="failed"} is a running total that only
+      # falls when someone retries or deletes jobs, so this fires on growth. The second branch covers a queue's first failure,
+      # as long as Prometheus was collecting an hour ago: old failures must not fire on a fresh install or after an outage.
+      - alert: JobsFailed
+        expr: |
+          agent_jobs{status="failed"} - agent_jobs{status="failed"} offset 1h > 0
+          or
+          (agent_jobs{status="failed"} unless agent_jobs{status="failed"} offset 1h) and on() (up{job="agentplatform-api"} offset 1h == 1)
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Jobs novos falhando na fila"
+          description: "Fila {{ $labels.queue }}: mais jobs falhos do que há 1 h."
+          runbook: docs/runbooks/fila-travada-dlq.md
+
+      # operations.alerts.spool_bytes = 1000000. While Postgres is down /metrics also fails: AgentMetricsTargetDown fires first.
+      - alert: SpoolGrowing
+        expr: agent_spool_bytes >= 1000000
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Spool de webhooks crescendo"
+          description: "{{ $value | humanize1024 }}B aguardando replay. Não apague arquivos do spool: são mensagens de clientes."
+          runbook: docs/runbooks/spool-crescendo.md
+
+      # budget.alert_thresholds = [0.5, 0.8, 1.0]; plan 10 §1 alerts at 80%.
+      - alert: BudgetHigh
+        expr: agent_budget_used_ratio >= 0.8 < 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Orçamento acima de 80%"
+          description: "{{ $labels.tenant }}, escopo {{ $labels.scope }}: {{ $value | humanizePercentage }} usado."
+          runbook: docs/runbooks/orcamento-esgotado.md
+
+      - alert: DiskAlmostFull
+        expr: agent_disk_used_ratio >= 0.8
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disco quase cheio"
+          description: "{{ $value | humanizePercentage }} usado. Com o disco cheio o banco para e nenhuma mensagem é gravada."
+          runbook: docs/runbooks/postgres-redis-fora.md
+
+      - alert: BudgetExhausted
+        expr: agent_budget_used_ratio >= 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Orçamento esgotado"
+          description: "{{ $labels.tenant }}, escopo {{ $labels.scope }}: {{ $value | humanizePercentage }} usado. O agente deve estar em modo degradado."
+          runbook: docs/runbooks/orcamento-esgotado.md
+
+      - alert: ChannelTokenInvalid
+        expr: agent_channel_token_invalid > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Token do canal inválido"
+          description: "Tenant {{ $labels.tenant }}, canal {{ $labels.channel }}: reconecte pelo console."
+          runbook: docs/runbooks/token-meta-invalido.md

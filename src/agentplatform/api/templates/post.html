@@ -1,0 +1,63 @@
+{% extends "base.html" %}{% block title %}Post{% endblock %}{% block body %}
+<a class="crumb" href="/console/posts">{{ icon('back', 14) }} Posts</a>
+<div class="page-head">
+  <div><h1>{{ m.media_kind | media_kind_label }} de {{ m.posted_at | dt }}</h1>
+    <p class="sub"><span class="badge {{ 'muted' if eff.mode == 'off' else 'ok' }}">{{ eff.mode | mode_label }}</span>
+    <span class="muted small">· {{ 'escolha deste post' if eff.source == 'post' else 'segue o padrão' }}{% if m.permalink %} · <a href="{{ m.permalink }}" target="_blank" rel="noopener noreferrer">abrir no Instagram</a>{% endif %}</span></p></div>
+</div>
+{% if saved %}<div class="alert ok">{{ icon('check', 16) }}<p>{{ saved }}</p></div>{% endif %}
+{% for p in problems %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ p | text_problem }}</p></div>{% endfor %}
+
+<div class="grid g-side">
+  <div>
+    <div class="card"><h2>O que fazer com os comentários</h2>
+    <form method="post" action="/console/posts/{{ m.id }}">{{ csrf_input(user) }}
+      <div class="row">
+        <div class="field"><label>Este post</label><select name="mode">
+          <option value="default" {{ 'selected' if form.mode == 'default' }}>Seguir o padrão ({{ default_label }})</option>
+          {% for x in ('off', 'register', 'private', 'public', 'both') %}<option value="{{ x }}" {{ 'selected' if form.mode == x }}>{{ x | mode_label }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Agir em</label><select name="trigger_kind">
+          <option value="" {{ 'selected' if not form.trigger_kind }}>Como no padrão</option>
+          {% for k in ('keyword', 'any', 'intent') %}<option value="{{ k }}" {{ 'selected' if form.trigger_kind == k }}>{{ k | trigger_label }}</option>{% endfor %}</select></div>
+      </div>
+      {% if templates %}<div class="actions" style="margin:12px 0"><span class="small muted">Preencher com um modelo:</span>
+        {% for t in templates %}<button class="btn-sm" name="use_template" value="{{ t.id }}" formnovalidate>{{ t.label }}</button>{% endfor %}</div>{% endif %}
+      <p class="muted small" style="margin:12px 0">Deixe em branco para usar os textos do padrão.</p>
+      <div class="field"><label>Palavras que acionam</label><input name="keywords" value="{{ form.keywords | join(', ') }}" placeholder="{{ inherited.keywords | join(', ') }}"></div>
+      <div class="field"><label>Respostas no comentário (uma por linha)</label><textarea name="public_variants" rows="3" placeholder="{{ inherited.public_variants | join('\n') }}">{{ form.public_variants | join('\n') }}</textarea></div>
+      <div class="grid g2">
+        <div class="field"><label>Direct: texto A</label><textarea name="private_a" rows="3" placeholder="{{ inherited.private_variants.get('A', '') }}">{{ form.private_variants.get('A', '') }}</textarea></div>
+        <div class="field"><label>Direct: texto B (opcional)</label><textarea name="private_b" rows="3" placeholder="{{ inherited.private_variants.get('B', '') }}">{{ form.private_variants.get('B', '') }}</textarea></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Válido a partir de</label><input type="date" name="valid_from" value="{{ form.valid_from }}"></div>
+        <div class="field"><label>Válido até</label><input type="date" name="valid_to" value="{{ form.valid_to }}"></div>
+      </div>
+      <h2 style="margin-top:18px">Do que se trata</h2>
+      <p class="muted small">O assistente recebe a legenda e esta nota para continuar a conversa no assunto do post. Valores escritos aqui não são usados com o cliente: eles saem da tabela.</p>
+      <div class="field"><label>Nota sobre o post</label><textarea name="context_note" rows="2" maxlength="400" placeholder="Ex.: chamada para quem quer trocar de carro neste ano">{{ form.context_note }}</textarea></div>
+      {% for s in context_slots %}<div class="field"><label>{{ s.label or (s.name | humanize) }} deste post</label><select name="slot_{{ s.name }}">
+        <option value="">Não definir</option>
+        {% for v in s.values %}<option value="{{ v }}" {{ 'selected' if form.context_slots.get(s.name) == v }}>{{ s.value_labels.get(v, v | humanize) }}</option>{% endfor %}</select>
+        <span class="help">Já entra no perfil de quem comentar. Se o cliente disser outra coisa, vale o que ele disser.</span></div>{% endfor %}
+      <button class="btn-primary" name="save" value="1">{{ icon('check', 16) }} Salvar</button>
+    </form></div>
+  </div>
+  <div>
+    <div class="card">{% if m.image_url %}<img src="{{ m.image_url }}" alt="" style="width:100%;border-radius:8px;margin-bottom:10px">{% endif %}
+      <p class="small">{{ m.caption_masked or m.ad_title or 'Sem legenda.' }}</p></div>
+    <div class="card"><h2>Resultado deste post</h2>
+      <dl class="kv"><dt>Comentários</dt><dd>{{ funnel.comments }}</dd><dt>Directs enviados</dt><dd>{{ funnel.directs }}</dd>
+        <dt>Responderam</dt><dd>{{ funnel.replied }}</dd><dt>Pré-cadastros</dt><dd>{{ funnel.forms }}</dd><dt>Vendas</dt><dd>{{ funnel.won }}</dd></dl></div>
+    <div class="card"><h2>Comentários já feitos</h2>
+      <p class="muted small">Por padrão, só comentários feitos depois de ativar recebem resposta. A Meta permite responder até {{ backfill_days }} dias depois do comentário.</p>
+      <form method="post" action="/console/posts/{{ m.id }}/backfill">{{ csrf_input(user) }}
+        <button {{ 'disabled' if eff.mode == 'off' }}>{{ icon('play', 16) }} Responder comentários dos últimos {{ backfill_days }} dias</button></form>
+      {% if eff.mode == 'off' %}<p class="muted small" style="margin:8px 0 0">Ative este post para usar.</p>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card flush"><div class="card-head"><div><h2>Últimos comentários</h2></div></div>
+  {% include "_comments_table.html" %}</div>
+{% endblock %}

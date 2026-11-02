@@ -1,0 +1,29 @@
+# pre-commit install   (then every `git commit` runs these; CI runs ruff/mypy/pytest anyway)
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      # ruff-format is intentionally off until the code base is formatted in one dedicated commit
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: end-of-file-fixer
+        exclude: ^(evals/datasets/.*\.jsonl|uv\.lock)$
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+  - repo: local
+    hooks:
+      - id: forbid-sensitive-files
+        name: forbid .env, secrets, client material and PDFs
+        entry: scripts/hooks/forbid_sensitive.sh
+        language: script
+        pass_filenames: true
+        always_run: false
+        files: ".*"

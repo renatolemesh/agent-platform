@@ -1,0 +1,31 @@
+# Client material: never versioned (LGPD / confidential)
+docs/materiais/
+docs/privado/
+**/knowledge_inventory.yaml
+.claude/
+.mcp.json
+CLAUDE.local.md
+# An account's own file and material: on the server, never in the repository (ADR-023)
+config/tenants/*.yaml
+!config/tenants/dev-consortium.yaml
+!config/tenants/*.example.yaml
+docker/tenants/
+docker/materiais/
+*.pdf
+# Secrets
+.env
+.env.*
+!.env.example
+# Python
+__pycache__/
+.venv/
+*.pyc
+# Production deploy secrets / state (scripts/deploy)
+docker/secrets/
+docker/prod.env
+docker/.deploy.env
+docker/.deployed
+.playwright-mcp/
+
+# Webhook spool: may hold customer messages in clear
+var/

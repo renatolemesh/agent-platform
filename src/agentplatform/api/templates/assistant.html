@@ -1,0 +1,59 @@
+{% extends "base.html" %}{% block title %}Assistente{% endblock %}{% block body %}
+{% set v = form.get('values', {}) %}{% set c = cfg.conversation %}{% set h = cfg.handoff %}{% set s = cfg.sending %}
+{% macro val(name, current) %}{{ v.get(name, current) }}{% endmacro %}
+<div class="page-head"><div><h1>Assistente</h1><p class="sub">Quem ele é, como responde e quando fala. Salvar cria um <b>rascunho</b>: nada muda para os clientes até outra pessoa aprovar em <a href="/console/config">Configuração</a>, e você pode testar antes no simulador.</p></div>
+<div class="actions"><a class="btn" href="/console/assistant/rules">Regras</a><a class="btn" href="/console/assistant/models">Modelos</a><a class="btn" href="/console/prompts">Prompts (avançado)</a></div></div>
+{% for e in errors or [] %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ e }}</p></div>{% endfor %}
+<form method="post" action="/console/assistant">{{ csrf_input(user) }}
+
+<div class="card"><h2>Quem é</h2><div class="row">
+  <div class="field"><label>Nome de quem atende</label><input name="seller_display_name" maxlength="100" required value="{{ val('seller_display_name', c.persona.seller_display_name) }}"><span class="help">Aparece nas mensagens, como “vou pedir para … te responder”.</span></div>
+  <div class="field"><label>Nome do assistente</label><input name="assistant_name" maxlength="100" required value="{{ val('assistant_name', c.persona.assistant_name) }}"><span class="help">Ele sempre confirma que é um assistente virtual.</span></div>
+  <div class="field"><label>Empresa que representa (opcional)</label><input name="company_name" maxlength="100" value="{{ val('company_name', c.persona.company_name) }}"></div>
+  <div class="field"><label>Tom</label><select name="tone">{% for k, label in TONE.items() %}<option value="{{ k }}" {{ 'selected' if v.get('tone', c.persona.tone) == k }}>{{ label }}</option>{% endfor %}</select></div></div>
+  <label class="small check"><input type="checkbox" name="disclose" {{ 'checked' if (v.get('disclose') if v else c.persona.disclose_on_first_message) }}> Na primeira mensagem, dizer que é um assistente virtual</label>
+</div>
+
+<div class="card"><h2>Jeito de responder</h2>
+  <div class="field"><label>Instruções do negócio</label><textarea name="business_instructions" rows="7" maxlength="3000" placeholder="Ex.: Atendo a minha cidade e a região. Quando perguntarem sobre visita, diga que atendo por videochamada. Prefiro que explique primeiro o crédito para imóvel.">{{ val('business_instructions', c.business_instructions) }}</textarea>
+  <span class="help">Escreva como explicaria para alguém novo na equipe. As regras de segurança valem acima disto, e números e prazos só saem do material aprovado e das tabelas: instrução não é fonte.</span></div>
+  <div class="field"><label>Links que ele pode enviar (um por linha, com https://)</label><textarea name="allowed_urls" rows="2">{{ val('allowed_urls', c.allowed_urls | join('\n')) }}</textarea><span class="help">Qualquer outro link numa resposta é barrado.</span></div>
+  <h3>Exemplos de resposta</h3><p class="muted small">Mostram o tom e o tamanho, não fatos. Não coloque valores nem promessas aqui.</p>
+  {% for e in examples %}<div class="row"><div class="field"><label>Cliente escreve</label><input name="example_customer" maxlength="300" value="{{ e.customer }}"></div>
+  <div class="field" style="flex:2"><label>Assistente responde</label><input name="example_reply" maxlength="500" value="{{ e.reply }}"></div></div>{% endfor %}
+  {% if package_examples %}<details><summary class="small">Exemplos que já vêm com o pacote ({{ package_examples | length }})</summary><ul class="steps small" style="margin-top:8px">{% for e in package_examples %}<li>{{ e.customer }} → {{ e.reply }}</li>{% endfor %}</ul></details>{% endif %}
+</div>
+
+<div class="card"><h2>Mensagens prontas</h2><p class="muted small">Use <code>{seller}</code> para o nome de quem atende. Passam pelas mesmas regras das respostas.</p>
+  <div class="field"><label>Quando demora a responder</label><input name="waiting_message" maxlength="300" value="{{ val('waiting_message', c.waiting_message) }}"><span class="help">Sai uma vez, se a resposta passar de {{ cfg.agent.slow_after_s | int }} segundos. Em branco: não envia.</span></div>
+  <div class="field"><label>Se a primeira resposta esquecer de dizer que é assistente</label><input name="first_message_disclosure" maxlength="300" required value="{{ val('first_message_disclosure', c.first_message_disclosure) }}"></div>
+  <div class="field"><label>Quando algo dá errado</label><input name="safe_failure_message" maxlength="300" required value="{{ val('safe_failure_message', c.safe_failure_message) }}"></div>
+  <div class="field"><label>Quando pedem para parar</label><input name="opt_out_confirmation" maxlength="300" required value="{{ val('opt_out_confirmation', c.opt_out_confirmation) }}"></div>
+  <label class="small check"><input type="checkbox" name="send_expectation" {{ 'checked' if (v.get('send_expectation') if v else h.send_expectation_message) }}> Avisar o cliente quando passar para {{ c.persona.seller_display_name }}</label>
+  <div class="field"><label>Aviso em horário de atendimento</label><input name="expectation_in" maxlength="300" required value="{{ val('expectation_in', h.expectation_message_in_hours) }}"></div>
+  <div class="field"><label>Aviso fora do horário</label><input name="expectation_off" maxlength="300" required value="{{ val('expectation_off', h.expectation_message_off_hours) }}"></div>
+</div>
+
+<div class="card"><h2>Horários e limites</h2>
+  <div class="row"><div class="field"><label>Silêncio começa às</label><input type="time" name="quiet_start" required value="{{ val('quiet_start', s.quiet_hours.start.strftime('%H:%M')) }}"></div>
+  <div class="field"><label>Silêncio termina às</label><input type="time" name="quiet_end" required value="{{ val('quiet_end', s.quiet_hours.end.strftime('%H:%M')) }}"></div>
+  <div class="field"><label>Fuso horário</label><input name="timezone" required value="{{ val('timezone', s.quiet_hours.timezone) }}"></div></div>
+  <p class="muted small">Respostas a quem escreveu saem a qualquer hora. O silêncio vale para mensagens que o assistente inicia.</p>
+  <label class="small check"><input type="checkbox" name="holidays_national" {{ 'checked' if (v.get('holidays_national') if v else s.holidays_national) }}> Respeitar feriados nacionais</label>
+  <div class="field"><label>Feriados da cidade (um por linha: MM-DD todo ano, AAAA-MM-DD uma vez)</label><textarea name="holidays_local" rows="3">{{ val('holidays_local', s.holidays_local | join('\n')) }}</textarea></div>
+  <div class="row"><div class="field"><label>Mensagens iniciadas por pessoa, por dia</label><input type="number" min="1" name="cap_day" required value="{{ val('cap_day', s.frequency_cap_per_contact_day) }}"></div>
+  <div class="field"><label>Por semana</label><input type="number" min="1" name="cap_week" required value="{{ val('cap_week', s.frequency_cap_per_contact_week) }}"></div></div>
+  <label class="small check"><input type="checkbox" name="followups_enabled" {{ 'checked' if (v.get('followups_enabled') if v else cfg.followups.enabled) }}> Enviar lembretes automáticos a quem parou de responder</label>
+</div>
+
+<div class="card"><h2>Passagem para o vendedor</h2><div class="row">
+  <div class="field"><label>Prazo para responder (minutos)</label><input type="number" min="1" name="sla_minutes" required value="{{ val('sla_minutes', h.sla_minutes) }}"></div>
+  <div class="field"><label>Avisar de novo depois de (minutos)</label><input type="number" min="1" name="realert_min" required value="{{ val('realert_min', h.human_unanswered_realert_min) }}"></div></div>
+  <div class="row"><div class="field"><label>Fora do horário, o assistente</label><select name="off_hours_mode">{% for k, label in OFF_HOURS_MODE.items() %}<option value="{{ k }}" {{ 'selected' if v.get('off_hours_mode', h.off_hours_mode) == k }}>{{ label }}</option>{% endfor %}</select></div>
+  <div class="field"><label>O vendedor é avisado</label><select name="notify_off_hours">{% for k, label in NOTIFY_OFF_HOURS.items() %}<option value="{{ k }}" {{ 'selected' if v.get('notify_off_hours', h.notify_off_hours) == k }}>{{ label }}</option>{% endfor %}</select></div></div>
+</div>
+
+<div class="card"><div class="row"><div class="field"><label>O que mudou (anotação)</label><input name="note" maxlength="300" value="{{ v.get('note', '') }}" placeholder="ex.: tom mais formal para o público empresarial"></div>
+<button class="btn-primary">{{ icon('check', 16) }} Criar rascunho</button></div></div>
+</form>
+{% endblock %}

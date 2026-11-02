@@ -1,0 +1,16 @@
+{# Why the assistant said that: one turn, in words. `e` comes from core/ops/turn_explain.py. #}
+<dl class="kv" data-explain>
+  <dt>Resultado</dt><dd><span class="badge {{ e.status | status_tone }}">{{ e.status | status_label }}</span>{% if e.failed_with %} <span class="muted small">{{ e.failed_with }}</span>{% endif %}</dd>
+  <dt>Entendeu</dt><dd>{% for i in e.intents %}<span class="badge plain" style="margin:0 4px 4px 0">{{ i | humanize }}</span>{% else %}—{% endfor %}</dd>
+  <dt>Estágio</dt><dd>{{ stage_label(e.stage_before, labels) }} → {{ stage_label(e.stage_after, labels) if e.stage_after else '—' }}</dd>
+  {% if e.handoff %}<dt>Chamou o vendedor</dt><dd><span class="badge warn">{{ e.handoff | reason_label }}</span></dd>{% endif %}
+  {% if e.tools %}<dt>Ferramentas</dt><dd>{% for x in e.tools %}<span class="badge info plain" style="margin:0 4px 4px 0">{{ x }}</span>{% endfor %}</dd>{% endif %}
+  <dt>Base usada</dt><dd data-explain-source="{{ e.source }}">{% if e.faq %}<b>Pergunta frequente:</b> <a href="/console/faqs">{{ e.faq.canonical_question }}</a>
+    {% elif e.chunks %}{{ e.chunks | length }} trecho(s){% elif e.source == 'no_basis' %}<span class="badge warn">Sem base</span> <span class="muted small">por isso disse que ia confirmar, e a pergunta foi para a Curadoria</span>{% else %}Não consultou{% endif %}</dd>
+  {% if e.attempts and e.attempts > 1 %}<dt>Tentativas</dt><dd>{{ e.attempts }} <span class="muted small">a revisão automática pediu para reescrever</span></dd>{% endif %}
+  {% if e.config_version or e.prompt %}<dt>Versão</dt><dd>{% if e.config_version %}v{{ e.config_version }}{% endif %}{% if e.prompt %} <span class="mono small">{{ e.prompt }}</span>{% endif %}</dd>{% endif %}
+  <dt>Custo</dt><dd>{{ e.cost_usd | money }} <span class="muted small">{{ e.llm_calls }} chamada(s) de IA</span></dd>
+</dl>
+{% if e.guidelines %}<details style="margin-top:8px"><summary class="small">Diretrizes que entraram ({{ e.guidelines | length }})</summary><ul class="steps small" style="margin-top:6px">{% for g in e.guidelines %}<li>{{ g }}</li>{% endfor %}</ul></details>{% endif %}
+{% if e.chunks %}<details style="margin-top:8px"><summary class="small">Trechos usados ({{ e.chunks | length }})</summary>{% for k in e.chunks %}<div style="margin-top:8px"><div class="small"><b>{{ k.file_name }}</b>{% if k.page %} <span class="muted">· p. {{ k.page }}</span>{% endif %}</div><div class="muted small">{{ k.excerpt }}…</div></div>{% endfor %}</details>{% endif %}
+{% if e.guards %}<details style="margin-top:8px" open><summary class="small">O que a revisão barrou ou mandou reescrever ({{ e.guards | length }})</summary>{% for g in e.guards %}<div style="margin-top:6px"><span class="badge {{ 'bad' if g.verdict == 'block' else 'warn' }}">{{ GUARD_RULE.get(g.rule_id, g.rule_id) }}</span>{% if g.detail and g.detail.detail %} <span class="muted small">{{ g.detail.detail }}</span>{% endif %}</div>{% endfor %}</details>{% endif %}

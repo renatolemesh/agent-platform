@@ -1,0 +1,184 @@
+# Production config template. Copy to docker/tenants/<slug>.yaml on the server (never to git), fill the persona, the company, its sites and the seller, and activate through
+# `lab gate --level full` + `config-activate` (docs/runbooks/go-live.md). Subprocessors stay `pending` until the legal review; the
+# go_live flag is refused while any is pending, and without go_live the assistant answers nobody.
+schema_version: 1
+tenant_slug: prod-consortium
+segment_package:
+  name: consortium
+  version: 0.1.0
+models:
+  analyze_turn:
+    primary: google/gemini-2.5-flash-lite
+    fallbacks:
+    - openai/gpt-5-nano
+    temperature: 0.0
+    max_output_tokens: 400
+    timeout_s: 6
+    prompt_version: analyze_turn@v3
+    provider:
+      allow_fallbacks: true
+  respond:
+    primary: deepseek/deepseek-v4-flash
+    fallbacks:
+    - google/gemini-3.1-flash-lite
+    temperature: 0.4
+    max_output_tokens: 500
+    timeout_s: 12
+    prompt_version: respond@v10
+    provider:
+      order:
+      - deepinfra
+      allow_fallbacks: true
+  output_judge:
+    primary: openai/gpt-5-nano
+    fallbacks:
+    - mistralai/mistral-small-2603
+    temperature: 0.0
+    max_output_tokens: 150
+    timeout_s: 5
+    prompt_version: output_judge@v2
+  summarize:
+    primary: google/gemini-2.5-flash-lite
+    temperature: 0.0
+    max_output_tokens: 250
+    timeout_s: 10
+    prompt_version: summarize@v1
+  embedding:
+    model: qwen/qwen3-embedding-8b
+    dims: 1024
+  transcription:
+    model: openai/whisper-large-v3-turbo
+    timeout_s: 20
+  comment_intent:
+    primary: google/gemini-2.5-flash-lite
+    fallbacks: []
+    temperature: 0.0
+    max_output_tokens: 60
+    timeout_s: 5
+    prompt_version: comment_intent@v1
+  allow_same_family_judge: false
+budget:
+  pilot_total_cap_usd: '4.50'
+  net_credit_usd: '4.74'
+  daily_cap_usd: '2.00'
+  per_conversation_cap_usd: '0.10'
+  per_turn_cap_usd: '0.02'
+  openrouter_key_limit_usd: '2.50'
+conversation:
+  persona:
+    assistant_name: Assistente virtual
+    seller_display_name: Consultor (dev)
+    tone: friendly
+    disclose_on_first_message: true
+rag:
+  active_index_id: kb-consortium-prod-v1
+  faq_threshold: 0.86
+  min_score: 0.35
+  top_k: 4
+handoff:
+  routing:
+  - when: 'true'
+    seller_ids:
+    - seller-01
+    strategy: single
+  sla_minutes: 30
+  expectation_message_in_hours: Vou chamar o {seller} para continuar com você por aqui.
+  expectation_message_off_hours: O {seller} responde a partir das 8h. Enquanto isso, posso tirar outras dúvidas.
+comments:
+  enabled: true
+followups:
+  cadences:
+  - id: form_not_filled
+    trigger:
+      event: stage_entered
+      stage: pre_cadastro_enviado
+    steps:
+    - delay: 4h
+      content_kind: template
+      template_key: form_reminder
+compliance:
+  forbidden_phrases:
+  - contempla(ção|do) garantid
+  - garant\w+ (a |de )?contempla
+  - aprova(ção|do) garantid
+  - grupo que (mais )?contempla (mais )?rápido
+  - comiss(ão|ões)
+  required_disclosures:
+    simulation_estimate: Valores estimados com base na tabela vigente. As condições finais constam no contrato e no regulamento
+      do grupo.
+    history_not_guarantee: Isso é histórico de assembleias anteriores e não garante resultado futuro.
+  never_request:
+  - cpf
+  - rg
+  - income
+  - assets
+  - bank_data
+  - health_data
+  extra_rules:
+  - contracting_only_in_official_system
+  - no_contemplation_confirmation
+  - credit_paid_to_seller_of_good_only
+media:
+  transcribe_audio: true
+  images: local_ocr_masked
+  documents: local_extract_masked
+subprocessors:
+- name: OpenRouter
+  purpose: LLM/embedding/STT routing
+  data_categories:
+  - masked_messages
+  country: US
+  transfer_mechanism: pending
+  zdr: true
+- name: Google (via OpenRouter)
+  purpose: analyze_turn, summarize
+  data_categories:
+  - masked_messages
+  country: US
+  transfer_mechanism: pending
+  zdr: true
+- name: DeepInfra (via OpenRouter)
+  purpose: respond, STT
+  data_categories:
+  - masked_messages
+  - audio
+  country: US
+  transfer_mechanism: pending
+  zdr: true
+- name: OpenAI/Azure (via OpenRouter)
+  purpose: output_judge
+  data_categories:
+  - masked_messages
+  country: US
+  transfer_mechanism: pending
+  zdr: true
+- name: Meta Platforms
+  purpose: Instagram channel, WhatsApp notifier
+  data_categories:
+  - messages
+  - ids
+  country: US
+  transfer_mechanism: not_applicable
+  zdr: false
+- name: SMTP provider
+  purpose: handoff e-mail fallback
+  data_categories:
+  - first_name
+  - summary
+  country: BR
+  transfer_mechanism: not_applicable
+  zdr: false
+- name: Object storage
+  purpose: encrypted backups
+  data_categories:
+  - all_encrypted
+  country: BR
+  transfer_mechanism: not_applicable
+  zdr: false
+funnel:
+  question_cooldown_turns: 1
+operations:
+  feature_flags:
+    consortium.simulation_enabled: true
+    consortium.group_history_enabled: false
+environment: prod

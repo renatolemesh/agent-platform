@@ -1,0 +1,83 @@
+# Edge proxy (plan 12 §1). Automatic HTTPS for {$PUBLIC_DOMAIN}; only the public surface is routed to the api.
+{
+	email {$ACME_EMAIL}
+	admin off
+	servers {
+		trusted_proxies static private_ranges
+	}
+	# Default logger (handler errors such as "no upstreams available" also print the request): same redaction.
+	log default {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp "^(/[^/?]*).*$" "${1}/..."
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+			}
+		}
+	}
+}
+
+{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+	}
+
+	# Meta/WhatsApp/Connect webhooks: payloads are small; 1 MB is generous and keeps abuse cheap.
+	@webhooks path /webhooks/*
+	handle @webhooks {
+		request_body {
+			max_size 1MB
+		}
+		reverse_proxy api:8000
+	}
+
+	# Lead form, console (HTML + POST forms; the console may upload imports/datasets), signed seller actions from e-mail, and the
+	# public pages and callbacks the provider's review requires.
+	# Documents for the knowledge base are the one big thing the console receives (operations.knowledge.max_upload_bytes).
+	@upload path /console/documents/upload
+	handle @upload {
+		request_body {
+			max_size 32MB
+		}
+		reverse_proxy api:8000
+	}
+
+	@app path /f/* /console /console/* /health /health/* /actions/* /privacy /data-deletion /data-deletion/* /meta/*
+	handle @app {
+		request_body {
+			max_size 10MB
+		}
+		reverse_proxy api:8000 {
+			health_uri /health
+			health_interval 15s
+		}
+	}
+
+	# Everything else (/docs, /openapi.json, /admin/*, /webchat/*...) stays private.
+	handle {
+		respond "Not found" 404
+	}
+
+	log {
+		output stdout
+		# Paths carry form tokens (/f/<token>) and queries may carry signed actions: keep only the first segment.
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp "^(/[^/?]*).*$" "${1}/..."
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+			}
+		}
+	}
+}
