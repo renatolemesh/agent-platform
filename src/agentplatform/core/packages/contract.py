@@ -119,13 +119,18 @@ class PackageManifest(M):
     form_stage: str
     form_sent_stage: str | None = None       # stage after the pre-registration link is sent
     form_resend_keywords: list[str] = []     # customer asks for the link again -> new single-use link
+    ready_question: str | None = None        # asked in form_stage when no form goes out: the next step is the person
+    ready_offer_pattern: str | None = None   # a question matching it is ready_question in the model's own words
+    short_yes: list[str] = []                # the only words of a message that accepts ready_question
     seller_stage: str
     won_stage: str
     min_profile_for_proposal: list[list[str]]     # AND of ORs, e.g. [["goal"], ["credit_amount","monthly_budget"], ["term_months"]]
     flow: list[FlowStep]
     flow_stages: list[str] = []            # stages where the flow asks its questions (empty = all non-terminal)
     intents: list[str]
+    intent_labels: dict[str, str] = {}   # how the console names each intent
     objections: list[str] = []
+    stop_asking_on: list[str] = []         # intents and objections after which the flow asks nothing this turn
     guidelines: list[GuidelineSpec] = []
     handoff_triggers: list[HandoffTriggerSpec] = []
     compliance: ComplianceConfig

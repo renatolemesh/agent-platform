@@ -8,3 +8,7 @@
 {"id": "u8", "stage": "qualificando", "msgs": ["sou de Campinas"], "slots": {"city": "Campinas"}}
 {"id": "u9", "stage": "engajado", "msgs": ["Uma carta"], "slots": {}}
 {"id": "u10", "stage": "qualificando", "msgs": ["uma carta de 100k"], "slots": {"credit_amount": "100000"}}
+{"id": "u11", "stage": "engajado", "msgs": ["quero a carta pra vender depois"], "slots": {"goal": "resale"}}
+{"id": "u12", "stage": "engajado", "msgs": ["é pra alavancagem, como no vídeo"], "slots": {"goal": "resale"}}
+{"id": "u13", "stage": "engajado", "msgs": ["quero isso como investimento"], "slots": {"goal": "resale"}}
+{"id": "u14", "stage": "engajado", "msgs": ["quero investir num apartamento de 200 mil"], "slots": {"goal": "real_estate", "credit_amount": "200000"}}

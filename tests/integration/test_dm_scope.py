@@ -150,6 +150,24 @@ async def test_shared_reel_and_story_mention_are_not_answered(tenant):
     await assert_forgotten(tenant, *await inbound(tenant, event_type="StoryMention", text=None, attachments=[Attachment(type="story_mention")]))
 
 
+async def test_a_heart_on_a_story_opens_nothing_but_words_on_it_do(tenant):
+    await scope(tenant, "origin_only")
+    await assert_forgotten(tenant, *await inbound(tenant, event_type="StoryReply", story_id="s1", text="❤️"))
+    await assert_forgotten(tenant, *await inbound(tenant, event_type="StoryReply", story_id="s1", text=None))
+    assert (await inbound(tenant, event_type="StoryReply", story_id="s1", text="como funciona isso?"))[0].action == "debounce"
+
+
+async def test_a_heart_on_a_story_inside_a_served_conversation_is_history_not_a_turn(tenant):
+    await scope(tenant, "origin_and_new")
+    first, _, who = await inbound(tenant)
+    async with tenant_tx(tenant) as conn:
+        await conn.execute("update messages set turn_id=gen_random_uuid() where conversation_id=%s", (first.conversation_id,))
+    routed, _, _ = await inbound(tenant, who, event_type="StoryReply", story_id="s1", text="❤️")
+    assert routed.action == "none" and routed.conversation_id == first.conversation_id
+    async with tenant_tx(tenant) as conn:
+        assert await pending_inbound(conn, first.conversation_id) == []
+
+
 async def test_shared_reel_inside_a_served_conversation_is_history_not_a_turn(tenant):
     await scope(tenant, "origin_and_new")
     first, _, who = await inbound(tenant)

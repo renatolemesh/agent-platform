@@ -54,7 +54,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             h["Content-Security-Policy"] = CSP_FORM
         elif "text/html" in h.get("content-type", ""):
             h.setdefault("Content-Security-Policy", CSP_APP)
-        if path.startswith(("/f/", "/console")):
+        if path.startswith(("/f/", "/pm/", "/console")):
             h["Cache-Control"] = "no-store"
         if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
             h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")

@@ -12,7 +12,7 @@ models:
     temperature: 0.0
     max_output_tokens: 400
     timeout_s: 6
-    prompt_version: analyze_turn@v3
+    prompt_version: analyze_turn@v5
     provider:
       allow_fallbacks: true
   respond:
@@ -22,7 +22,7 @@ models:
     temperature: 0.4
     max_output_tokens: 500
     timeout_s: 12
-    prompt_version: respond@v10
+    prompt_version: respond@v11
     provider:
       allow_fallbacks: true
   output_judge:
@@ -86,14 +86,23 @@ comments:
   enabled: true
 followups:
   cadences:
-  - id: form_not_filled
+  - id: seller_offer_unanswered
     trigger:
       event: stage_entered
-      stage: pre_cadastro_enviado
+      stage: pronto_para_proposta
     steps:
     - delay: 4h
       content_kind: template
-      template_key: form_reminder
+      template_key: seller_offer_reminder
+  - id: no_reply
+    label: Parou de responder
+    trigger:
+      event: bot_message_unanswered
+      stages: [novo, engajado, qualificando, educando]
+    steps:
+    - delay: 4h
+      content_kind: template
+      template_key: no_reply_nudge
 compliance:
   forbidden_phrases:
   - contempla(ção|do) garantid

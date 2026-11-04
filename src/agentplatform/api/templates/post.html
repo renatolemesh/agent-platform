@@ -6,6 +6,7 @@
     <span class="muted small">· {{ 'escolha deste post' if eff.source == 'post' else 'segue o padrão' }}{% if m.permalink %} · <a href="{{ m.permalink }}" target="_blank" rel="noopener noreferrer">abrir no Instagram</a>{% endif %}</span></p></div>
 </div>
 {% if saved %}<div class="alert ok">{{ icon('check', 16) }}<p>{{ saved }}</p></div>{% endif %}
+{% if notice %}<div class="alert warn">{{ icon('alert', 16) }}<p>{{ notice }}</p></div>{% endif %}
 {% for p in problems %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ p | text_problem }}</p></div>{% endfor %}
 
 <div class="grid g-side">
@@ -46,9 +47,17 @@
   <div>
     <div class="card">{% if m.image_url %}<img src="{{ m.image_url }}" alt="" style="width:100%;border-radius:8px;margin-bottom:10px">{% endif %}
       <p class="small">{{ m.caption_masked or m.ad_title or 'Sem legenda.' }}</p></div>
+    <div class="card"><h2>No Instagram</h2>
+      <p class="muted small">A Meta não permite editar a legenda ou o arquivo depois de publicar. Para mudar, edite no app do Instagram.</p>
+      {% if can_comments %}<p class="small">Comentários: {% if m.comments_enabled is none %}<span class="muted">sem mudança feita por aqui</span>{% elif m.comments_enabled %}<span class="badge ok">Ligados</span>{% else %}<span class="badge muted">Desligados</span>{% endif %}</p>
+      <form method="post" action="/console/posts/{{ m.id }}/comments" class="actions" style="margin-bottom:10px">{{ csrf_input(user) }}
+        {% if m.comments_enabled is none or not m.comments_enabled %}<button class="btn-sm" name="enabled" value="1">Ligar comentários</button>{% endif %}
+        {% if m.comments_enabled is none or m.comments_enabled %}<button class="btn-sm" name="enabled" value="0">Desligar comentários</button>{% endif %}</form>{% endif %}
+      {% if can_remove and user.role in ('tenant_owner', 'platform_admin') %}<form method="post" action="/console/posts/{{ m.id }}/remove" onsubmit="return confirm('Apagar este post do Instagram? Isso não pode ser desfeito.')">{{ csrf_input(user) }}<button class="btn-sm btn-danger">Apagar do Instagram</button></form>{% endif %}
+    </div>
     <div class="card"><h2>Resultado deste post</h2>
       <dl class="kv"><dt>Comentários</dt><dd>{{ funnel.comments }}</dd><dt>Directs enviados</dt><dd>{{ funnel.directs }}</dd>
-        <dt>Responderam</dt><dd>{{ funnel.replied }}</dd><dt>Pré-cadastros</dt><dd>{{ funnel.forms }}</dd><dt>Vendas</dt><dd>{{ funnel.won }}</dd></dl></div>
+        <dt>Responderam</dt><dd>{{ funnel.replied }}</dd><dt>Leads quentes</dt><dd>{{ funnel.hot }}</dd><dt>Vendas</dt><dd>{{ funnel.won }}</dd></dl></div>
     <div class="card"><h2>Comentários já feitos</h2>
       <p class="muted small">Por padrão, só comentários feitos depois de ativar recebem resposta. A Meta permite responder até {{ backfill_days }} dias depois do comentário.</p>
       <form method="post" action="/console/posts/{{ m.id }}/backfill">{{ csrf_input(user) }}

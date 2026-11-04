@@ -211,14 +211,168 @@ Decisão em [ADR-021](plan/adr/ADR-021-material-pelo-console.md). Migração `00
 
 **Teste real em dev (02/11), com PDF sintético escaneado:** worker real, OCR real das 2 páginas em cerca de 4,5 s, trechos corretos e aprovação recusada pela chave de testes, como previsto.
 
-**Não testado com provedor real:** gerar vetores ao aprovar e responder com o trecho ou a FAQ. Só com provedor falso, porque a chave direta recusa de propósito. Ver T22 no go-live.
+**Provedor real:** gerar vetores ao aprovar e responder com o trecho e a FAQ foram testados em 02/11 com material inventado (ver "Primeira execução com o OpenRouter").
+
+## Meta: Provedor de Tecnologia (03/11/2026)
+
+Decisões em `docs/plan/adr/ADR-025-provedor-de-tecnologia.md`. O app de dev foi para o portfólio verificado e foi identificado como Provedor de Tecnologia. **Nenhum pedido foi enviado à análise.**
+
+**Conferido depois da mudança de portfólio.** Token da Página, campos de webhook, assinatura da Página, permissões prontas para teste e configuração do Facebook Login ficaram iguais. **Não medido:** a entrega de uma mensagem real depois da mudança.
+
+**Páginas públicas.** O texto de `/privacy` passou a tratar o cliente como controlador e a plataforma como operadora. Continua sendo rascunho até a revisão jurídica.
+
+**Follow-ups.** A tela `Follow-ups` do console (`api/templates/followups.html`) mostra os contatos parados, os próximos envios, o histórico e as regras. Todos os perfis veem; só o responsável muda, e a mudança vira rascunho com aprovação.
+
+- **Regras:** nome, ligada ou não, gatilho, etapas e até `followups.max_steps` tentativas, cada uma com tempo e texto. A tela recusa tempo abaixo de `followups.min_delay` e soma de tempos que passe da janela do canal, porque esse lembrete nunca sairia.
+- **Lembrete de quem parou de responder (`no_reply`):** agora ligado por padrão, 4 horas depois da última mensagem do assistente, nas etapas do fluxo. O gatilho já existia, mas não funcionava: só valia depois da primeira mensagem, porque o registro da tentativa continuava lá depois da resposta da pessoa; só valia em turno que mudasse de etapa; e somava 3 horas ao tempo configurado. A mensagem seguinte do assistente agora reinicia a contagem. Depois que um lembrete chega ao outbox, não volta a sair naquela conversa.
+- **Contatos parados:** o assistente falou por último, a conversa está com ele e a pessoa não saiu. O filtro padrão é `followups.stalled_after`. Com a janela fechada, nada sai sozinho: quem retoma é uma pessoa da equipe, pelo próprio canal.
+- **Desligar vale para o que já estava agendado:** o `tick` passa a pular a regra ou a conta desligada e a tentativa removida da regra, que antes derrubaria o lote inteiro.
+
+## Posts escritos no console (03/11/2026)
+
+Decisões em `docs/plan/adr/ADR-024-posts-pelo-console.md`. **A publicação está desligada** (`operations.posts.publishing_enabled`) até a Meta liberar a permissão.
+
+| O que dá para fazer | Onde | Depende de |
+| --- | --- | --- |
+| Escrever foto, carrossel, reel ou story, com legenda e arquivos, salvar, reordenar e excluir | Posts, Novo post | Nada: já funciona |
+| Aprovar e publicar agora, ou agendar | Mesma tela | Publicação ligada e `instagram_content_publish` na conta |
+| Ligar e desligar comentários de um post | Página do post | `instagram_manage_comments` |
+| Apagar um post do Instagram | Página do post, só `tenant_owner` | Publicação ligada e `instagram_manage_contents` na conta |
+
+A Meta não permite editar a legenda ou o arquivo de um post publicado, e as telas dizem isso.
+
+**Onde está:** `core/posts/` (rascunho e publicação), `PostPublisher` em `core/channels/ports.py`, o job `post_publish` chamado a cada minuto pelo `tenants_tick`, `/pm/<token>` em `api/main.py`, e as tabelas de `migrations/sql/0015_post_publishing.sql`.
+
+**Situações de um post:** `draft` → `approved` → `publishing` → `published`. Termina em `failed` quando é certo que nada saiu, ou em `unknown` quando a Meta não confirma: aí uma pessoa olha a conta e responde no console. Os dois aparecem em Posts e geram o alerta `posts_attention`.
+
+**Medido.** Testes com Instagram falso e com as requisições conferidas por transporte simulado (`tests/integration/test_post_publishing.py`), inclusive resposta perdida, worker perdido e arquivo fora do horário. **Nunca rodou contra a Meta de verdade.** A divergência da documentação sobre apagar e sobre o limite diário está no plano `18` §1, e o primeiro uso segue o checklist do `go-live`.
+
+**Ao atualizar um ambiente.** Rode a migração. Em produção, o `Caddyfile` e o `compose.prod.yaml` mudaram: `/pm/*` passa a ser público, uploads de post vão até 110 MB, e a API ganha o volume `api_uploads`.
+
+## Sem formulário na conversa (03/11/2026)
+
+Decisão do dono da conta: o assistente não manda formulário na conversa. O passo de pré-cadastro saiu do funil deste segmento, e o próximo passo agora é o vendedor.
+
+| Antes | Agora |
+| --- | --- |
+| Perfil mínimo completo gerava um link de pré-cadastro e movia o lead para `pre_cadastro_enviado` | O lead fica em `pronto_para_proposta`, e o assistente pergunta uma vez se pode chamar o consultor (`ready_question` no pacote) |
+| Lembrete em 4 horas sobre o formulário | Lembrete em 4 horas com a mesma oferta (`seller_offer_unanswered`). A resposta do cliente ou a chegada do vendedor param o lembrete, como antes |
+| Pedir o formulário gerava outro link | Pedir formulário ou pré-cadastro, ou aceitar a oferta, vira `hot_lead` |
+| Aceitar dependia do classificador | Uma resposta curta logo depois da oferta ("bora", "claro", "ok") é decidida pelo código (`short_yes`): ao vivo, o classificador perdeu 5 de 10 respostas assim. A oferta é reconhecida pelo que a pergunta diz (`ready_offer_pattern`), porque o modelo a reescreve: comparar com a frase fixa não reconhecia "Quer que eu chame o consultor..." |
+| A oferta podia voltar a cada dois turnos | Enquanto a oferta estiver no histórico recente, o código não a pede de novo. O lembrete de 4 horas continua |
+| Quem completava o perfil e dizia "só ano que vem" na mesma mensagem recebia o próximo passo | Fica na etapa em que estava, sem pergunta e sem lembrete |
+| O texto do modelo podia oferecer o formulário | Oferecer, enviar ou pedir para preencher formulário, pré-cadastro, ficha ou dados é recusado na saída. Dizer que quem cuida disso é o consultor passa (`respond@v11`) |
+| Posts mostravam pré-cadastros | Mostram leads quentes (`handoffs.reason = 'hot_lead'`). Um formulário enviado também gera esse motivo, então a contagem serve para qualquer pacote |
+
+**O que continua no núcleo.** A ferramenta do link, a página `/f/`, a tabela `lead_forms` e a regra de retenção seguem disponíveis para um pacote que declare `form_sent_stage`. Nenhum pacote declara hoje. A migração não muda, e os painéis do Grafana com essa contagem ficam em zero.
+
+**Ao atualizar um ambiente.** O pacote não conhece mais a etapa antiga, e um lead parado nela quebraria o turno: `update leads set stage = 'pronto_para_proposta' where stage = 'pre_cadastro_enviado'`. Depois, publique a configuração nova para valer `respond@v11` e o lembrete. Produção nunca teve lead, e o banco de dev já foi atualizado.
+
+**Medido ao vivo, com texto inventado e os modelos de produção (US$ 0,012).** Em 16 respostas à oferta, o classificador acertou as 6 negativas e 5 das 10 positivas, o que levou à regra de `short_yes`. Depois dela, os 2 casos de resposta e as 2 conversas novas passaram, uma vez cada. A avaliação completa com `respond@v11` ainda não rodou, por falta de orçamento em dev.
+
+## Calibragem com uma leitura ampla de conversas (02/11/2026)
+
+Uma leitura ampla de conversas reais de atendimento mostrou o que o assistente ainda não sabia fazer. O texto de tudo abaixo foi escrito para isto: nada veio de uma conversa, e os números e achados da conta ficam na pasta privada.
+
+| O que acontecia | Agora |
+| --- | --- |
+| Recusa educada ("por enquanto não, obrigado") recebia nota alta de pedido para parar, e o contato era descadastrado para sempre | `analyze_turn@v5` separa recusar de pedir para parar. A intenção `not_interested` agradece e não insiste |
+| Quem dizia não ainda recebia a próxima pergunta do fluxo | `stop_asking_on` no pacote: com essas intenções ou objeções, o fluxo não pergunta nada naquele turno |
+| Pedir videochamada ou reunião seguia na conversa | Entra em `continue_elsewhere`, travado como o WhatsApp. Só com frases completas: "estou em reunião" não chama ninguém |
+| Formas comuns de "como começo" passavam direto | `ready_to_buy` ganhou essas formas. "Como funciona" continua sendo dúvida |
+| Histórico de lances, restrição no nome e carta já contemplada podiam receber resposta sem base | Três gatilhos com o motivo `specialist_question` |
+| Outro vendedor, parceria ou emprego eram tratados como cliente | Intenção `business_contact`: avisa o vendedor e não vende |
+| Reação em story abria conversa | `is_shared_only`: resposta a story sem letra nem número não gera turno. Com palavras, segue como antes (ADR-019) |
+| Comentar a palavra do vídeo não tinha modelo próprio | Modelo `carta`, com uma pergunta de sim ou não, para que um "sim" sozinho tenha sentido |
+| Faltavam orientações para os momentos delicados | `financial_hardship` (não vende), `declined`, `already_has`, `commission_question`. `not_now` só fala em crédito menor se o problema for a parcela |
+| Promessas e pressão de vendedor passavam pelo bloqueio | Novas frases proibidas: prazo até meia-noite, cota reservada, empresa que compra a carta, comprador garantido, ganho, investimento seguro, comparação com CDB ou CDI, sem consulta. "Sem entrada" exige a explicação da primeira parcela |
+| As perguntas mais comuns não tinham resposta sugerida | 6 FAQs novas, sempre como rascunho: regulamentação, entrada, nunca ser contemplado, desistir, reajuste e crédito maior que o bem. O dono decide se valem para a conta |
+
+**Medido com modelos de produção e texto inventado:** descadastro 21/21 (com 6 casos novos de recusa), 12 frases do classificador, 5 respostas e 6 cenários novos, uma vez cada. Nas frases, as 2 divergências foram corrigidas ou eram a etiqueta esperada no teste. Os testes sem gasto cobrem gatilhos, bloqueios e reação em story.
+
+**Sem medir:** a avaliação completa com os casos novos, que precisa de mais orçamento antes de ir para produção.
+
+## Venda da carta e WhatsApp (02/11/2026)
+
+A leitura de conversas de atendimento mostrou dois caminhos que o assistente não conhecia. O texto de tudo abaixo foi escrito para isto: nada veio de uma conversa.
+
+- **Comprar a carta para vender depois:** agora é um objetivo reconhecido. A parcela sai da tabela: de qualquer plano, ou só dos marcados com esse objetivo, se a tabela tiver algum. Quem pergunta o resultado da venda (quanto ganha, em quanto tempo, se vale como investimento) vai para o vendedor, e esse gatilho pode ser desligado em Regras.
+- **Promessas e pressão:** as respostas passam a ser barradas se falarem de lucro, rentabilidade, retorno certo, grandes chances de contemplação, poucas vagas ou prazo para decidir.
+- **Continuar no WhatsApp ou por telefone, ou mandar um número:** chama o vendedor, sem opção de desligar. O assistente nunca pede o número.
+
+**Medido com o modelo de produção, em textos inventados:** entender a mensagem 12/12 e descadastro 15/15. Numa conversa ponta a ponta com tabela inventada, ele reconheceu o objetivo, mostrou a parcela com o aviso obrigatório e, quando perguntaram quanto se ganha, chamou o vendedor sem prometer nada. Os novos cenários da avaliação completa ainda não rodaram.
+
+**Falta a revisão jurídica** desse caminho antes de ir ao ar: está na lista do go-live.
+
+## Console: novo visual e edição (02/11/2026)
+
+**Visual:** verde-floresta sobre fundo cor de papel, com fontes do sistema (nenhum pedido a terceiros além do htmx). Modo escuro mantido. No celular, a caixa de entrada vira lista e o menu se recolhe. Os estilos ficam em `api/templates/_styles.html`.
+
+**Agora dá para editar pelo console:**
+- Pergunta frequente: lista com Editar, Aprovar, Retirar e Excluir em cada linha. Só se exclui o que não está em uso.
+- Documento aprovado: nome, uso, versão e validade, sem sair de uso nem gerar vetor novo. Documento fora de uso pode ser excluído.
+- Texto de um trecho: recusado se tiver CPF, cartão, telefone ou e-mail. Em documento aprovado, só esse trecho vai ao provedor para o vetor novo, e a chave de testes recusa.
+- Usuário: nome, WhatsApp e e-mail de aviso (a Preparação apontava para Usuários, mas o campo não existia). Quem foi desativado pode voltar.
+- Lead: estágio, inclusive desfazer venda marcada por engano, e um atalho da conversa para corrigir os dados.
+- Diretriz do pacote: o texto, por conta. Apagar volta ao original.
+- Lembretes: tela própria em `Follow-ups`, com regras, tempos, etapas e textos.
+- `Assistente > Mais ajustes`: orçamento, passagem ao vendedor, condução, ritmo, comentários, mídia, proteção de dados, equipe, operadores de dados e entrada no ar, sempre como rascunho com aprovação.
+
+**Fica de fora, de propósito:**
+- Reverter descadastro: decisão jurídica. O estágio de quem pediu para parar não muda pelo console.
+- Criar campanha: depende do WhatsApp aprovado, porque envia a pessoas reais com modelos aprovados pela Meta.
+- Enviar mensagem pelo console: o vendedor responde no Instagram. Mensagem enviada é registro e não se edita.
+- Canal: desconectar e conectar outro é operação da plataforma.
+- Definição do segmento (estágios, slots, fluxo) e ajustes técnicos: seguem no pacote e no YAML.
+
+**Botões que o servidor recusaria** foram tirados para Revisor e Vendedor, e o formulário de modelos deixou de perder a reserva que não oferece.
+
+**Dados de dev:** 16 documentos e 3 perguntas de uma importação antiga estavam sem dono e por isso sem botões. Passaram para a conta de dev, sem mudar status nem texto. Nenhum código atual cria material sem dono.
+
+## Primeira execução com o OpenRouter (02/11/2026)
+
+Até aqui nenhuma chamada tinha passado pelo provedor de produção. A primeira execução mostrou que **produção não teria funcionado**, sem que nenhum teste apontasse:
+
+| O que acontecia | Efeito | Correção |
+| --- | --- | --- |
+| O gateway enviava `provider.only: []`, que o OpenRouter lê como "nenhum provedor" | Toda chamada de texto e de busca falhava com 404 | Listas vazias ficam fora do pedido |
+| `gemini-2.5-flash-lite` não tem rota com retenção zero | `summarize` e `comment_intent` falhariam sempre | Modelo fora da tabela e da configuração; alerta diário quando um modelo em uso perde a rota |
+| O OpenRouter manda bytes em branco enquanto espera, e o limite do httpx conta só o intervalo entre leituras | `timeout_s` nunca disparava; um provedor parado segurava o turno até os 40 s | `asyncio.timeout` em toda chamada |
+| A reserva só rodava dentro do OpenRouter | Sem reserva após estouro do nosso limite, ou quando ela recusa os parâmetros do primeiro modelo | O gateway percorre a cadeia, com os parâmetros de cada modelo |
+| `opt_out_intent` sem definição no prompt | "Me resume em uma frase" recebeu nota 0,9 e o cliente foi descadastrado | `analyze_turn@v4`; dataset `core/opt-out-v1.jsonl` com meta de 100%; mensagem marcada como injeção não descadastra pela nota do modelo |
+| `config-activate` aceitava qualquer avaliação aprovada, e a linha de comando rodava 10 cenários por padrão | Avaliação parcial liberava produção | Só a avaliação completa aprova |
+| Conversa simulada que falhava voltava sozinha para o assistente | Gasto sem ninguém esperando | Canal `simulator` fica fora do retorno automático |
+
+**Modelos escolhidos por medição** (todos com retenção zero; preços em US$ por milhão de tokens, entrada/saída):
+
+| Etapa | Modelo | Reserva | Por quê |
+| --- | --- | --- | --- |
+| Entender a mensagem | `mistral-small-2603` (0,15/0,60) | `gemini-3.1-flash-lite` | 10/10; `gpt-5-nano` fez 4/10, sem extrair nada nos erros |
+| Escrever | `deepseek-v4-flash` via Crusoe (0,14/0,28) | DeepInfra, depois `gemini-3.1-flash-lite` | 40/40; a DeepInfra é mais barata (0,09/0,18), mas levou 6 s contra cerca de 2 s |
+| Revisar | `gpt-5-nano` (0,05/0,40) | `mistral-small-2603` | Família diferente da escrita |
+| Resumo e intenção de comentário | `gpt-5-nano` | `mistral-small-2603` | Mais barato; funcionou nos dois com os prompts reais |
+| Busca | `qwen3-embedding-8b` via DeepInfra | Outras rotas com retenção zero | De 1,0 a 1,4 s |
+
+**Medido, sempre com dados inventados:**
+- Antes das correções, com cada cenário uma vez: compliance 23/23 e 14/14, filtro de entrada 26/26, entender 9/10, respostas 40/40 (35/40 com o modelo de dev), busca 30/30, cenários 18/20.
+- Depois das correções: descadastro 15/15, entender 10/10 e os 6 cenários afetados passaram. Turno: média de 9,9 s para 6,3 s; 5% mais lentos, de 21,7 s para 11,4 s; falhas técnicas, de 4 para 0.
+- T22 e T23 pelo teste ao vivo: vetores, FAQ com outras palavras, resposta usando o trecho e a FAQ, troca do modelo de busca.
+- Caminho principal, com conta descartável e tabela inventada: mostrou a parcela da tabela com o aviso obrigatório e chegou ao pré-cadastro, por US$ 0,003 a conversa inteira. O revisor recusou um rascunho por engano, e a reescrita saiu certa, com o turno em 13 s. Vale acompanhar a taxa de recusas indevidas.
+
+**Não medido:** 20 cenários × 3 (fica para a configuração real da conta, porque a avaliação vale para o arquivo exato), reservas de escrita e de revisão com os prompts reais, material real.
+
+**Para repetir:** `LLM_PROVIDER=openrouter pytest -m live tests/integration/test_live_openrouter.py -s`, menos de um centavo. Gasto real desta rodada: US$ 0,074 no OpenRouter.
+
+**Dev continua na chave direta.** Para passar para o OpenRouter: `LLM_PROVIDER=openrouter` no `.env`, trocar a transcrição de `config/tenants/dev-consortium.yaml` (o modelo atual não tem rota com retenção zero) e rever `LLM_TOTAL_CAP_USD`, porque o contador `key:total` soma as duas chaves.
+
+**`s_happy_vehicle` não passa em dev** enquanto as tabelas de exemplo estiverem em rascunho: sem tabela ativa não há parcela para mostrar, e a conversa não chega à proposta.
 
 ## Análise do que faltava (01/11/2026)
 
 Cruzamento do plano com o código e o banco de dev.
 
 **Achados que o status escondia**
-- **Os modelos de produção nunca rodaram:** todas as chamadas de IA foram para a OpenAI, então o gate aprovado vale para outros modelos. Depende da chave do OpenRouter.
+- **Os modelos de produção nunca rodaram:** todas as chamadas de IA foram para a OpenAI, então o gate aprovado vale para outros modelos. Resolvido em 02/11 (ver "Primeira execução com o OpenRouter").
 - **O gate é mais fraco que o plano:** 6 cenários uma vez (plano: 20, três vezes cada), sem `rag-v1` e `respond-v1`.
 - **Indexação só com o provedor de produção:** o gateway recusa indexar documento com `LLM_PROVIDER=openai`. Com a chave de testes, as respostas sobre o produto dizem que vão confirmar com o vendedor.
 - **Documentos e Curadoria só listavam:** o go-live dizia para carregar o material pelo console, o que não existia. Construído em seguida (ver abaixo).
@@ -237,9 +391,11 @@ Cruzamento do plano com o código e o banco de dev.
 
 1. **Debounce no Postgres em vez do Redis.** As mensagens `pending` são o buffer durável; o Redis ficou só para rate limit.
 2. **Ferramentas de domínio chamadas pelo código, não pelo LLM**, o que deixa verificável a proveniência dos números.
-3. **Campos novos no manifest do pacote:** sinônimos de slot, `auto_transitions`, `flow_stages`, `form_sent_stage`, `form_resend_keywords`, `intent_hints`, `lead_form_labels`, `scope`.
+3. **Campos novos no manifest do pacote:** sinônimos de slot, `auto_transitions`, `flow_stages`, `form_sent_stage`, `form_resend_keywords`, `ready_question`, `ready_offer_pattern`, `short_yes`, `intent_hints`, `lead_form_labels`, `scope`.
 4. **Compliance efetivo = união do tenant com o pacote** (`resolve_with_package`).
 5. **`allow_same_family_judge`** só em `environment: dev`.
+
+**Funil sem pré-cadastro (03/11/2026).** Os documentos `04`, `09`, `13`, `14` e `15` do plano ainda descrevem o formulário como próximo passo do consórcio. Vale a seção "Sem formulário na conversa".
 6. **Provedor OpenAI direto em dev**, teto rígido de US$ 1,00 e só dados sintéticos; produção usa OpenRouter com ZDR.
 7. **Kill switch de capacidade "agente" não gera turno** (economiza LLM). As mensagens que chegam durante a pausa ficam pendentes e são respondidas no próximo turno, depois da retomada.
 8. **`silent_update` não atualiza perfil nem resumo** (plano 04/05): com o vendedor na conversa o turno não gasta LLM, só consome as mensagens. Elas continuam no histórico que o agente lê quando volta.
@@ -273,7 +429,7 @@ docker compose -f docker/compose.yaml --profile dev --profile app up -d --build 
 3. Tabela de planos oficial e casos de simulação do cliente.
 4. Revisão jurídica (contrato de operador, cláusulas ANPD, RIPD, encarregado) → libera `go_live`.
 5. VPS dedicada, domínio e bucket S3 para o backup.
-6. Chave do OpenRouter com ZDR; **revogar a chave OpenAI de dev**.
+6. Revogar a chave OpenAI de dev, depois de passar dev para o OpenRouter. A chave do OpenRouter já existe, com limite próprio.
 7. Repositório no GitHub para o CI rodar e publicar a imagem (GHCR).
 8. (Opcional) Credenciais do Connect/Chatwoot.
 

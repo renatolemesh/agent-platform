@@ -21,10 +21,10 @@ app = procrastinate.App(connector=procrastinate.PsycopgConnector(conninfo=get_se
 RETRY = RetryStrategy(max_attempts=5, exponential_wait=2)
 # Jobs with a queueing lock are never retried by the queue: the retry would collide with the equivalent job queued meanwhile. They
 # are safe to lose: the periodic sweeps recreate close_batch, and the other two are best effort.
-NO_QUEUE_RETRY = {"close_batch", "fetch_username", "summarize", "knowledge_extract", "knowledge_index", "knowledge_index_faq", "knowledge_reindex", "config_gate"}
+NO_QUEUE_RETRY = {"post_publish", "close_batch", "fetch_username", "summarize", "knowledge_extract", "knowledge_index", "knowledge_index_faq", "knowledge_reindex", "config_gate"}
 
 QUEUE = {"ingress": "ingress", "close_batch": "turns", "run_turn": "turns", "dispatch": "dispatch", "reconcile": "dispatch",
-         "echo": "echo", "comment": "comments", "comment_backfill": "comments", "hydrate_media": "comments",
+         "post_publish": "media", "echo": "echo", "comment": "comments", "comment_backfill": "comments", "hydrate_media": "comments",
          "fetch_username": "comments", "transcribe_pending": "media", "summarize": "maintenance",
          "knowledge_extract": "ingest", "knowledge_index": "ingest", "knowledge_index_faq": "ingest", "knowledge_reindex": "ingest", "config_gate": "lab"}
 

@@ -18,6 +18,7 @@ from agentplatform.core.channels.ports import (
     MediaInfo,
     OutboundMessage,
     PartialParse,
+    PostItem,
     RateLimitedError,
     RetryableSendError,
     SendError,
@@ -85,6 +86,8 @@ def _ts(ms: int | float | str) -> datetime:
 
 class InstagramGraphAdapter:
     channel = "instagram"
+    publish_scope = "instagram_content_publish"
+    delete_scope = "instagram_manage_contents"
 
     def __init__(self, app_secret: str | None, graph_version: str = "v26.0",
                  transport: httpx.AsyncBaseTransport | None = None, timeout_s: float = 10):
@@ -291,6 +294,50 @@ class InstagramGraphAdapter:
         body = {"platform": "instagram", "ice_breakers": [{"locale": "default", "call_to_actions": [
             {"question": q, "payload": f"quick_question:{i}"} for i, q in enumerate(questions)]}]}
         await self._post("/me/messenger_profile", params=params, json_body=body, id_field=None)
+
+    # ----------------------------------------------------------- publishing (ADR-024; facts verified 2026-11-03, plan 18)
+    async def _create_container(self, account: AccountRef, params: dict) -> str:
+        if not account.token:
+            raise TokenInvalidError("no token")
+        r = await self._post(f"/{account.external_account_id}/media", params={**params, "access_token": account.token}, json_body=None, id_field="id")
+        return str(r.external_mid)
+
+    async def create_post_item(self, account: AccountRef, item: PostItem) -> str:
+        params: dict = {"video_url": item.url} if item.is_video else {"image_url": item.url}
+        if item.carousel_item:
+            params["is_carousel_item"] = "true"
+            if item.is_video:
+                params["media_type"] = "VIDEO"
+        elif item.kind == "story":
+            params["media_type"] = "STORIES"
+        elif item.kind == "reel":
+            params["media_type"] = "REELS"
+        if item.caption and item.kind != "story":
+            params["caption"] = item.caption
+        return await self._create_container(account, params)
+
+    async def create_carousel(self, account: AccountRef, children: list[str], caption: str) -> str:
+        return await self._create_container(account, {"media_type": "CAROUSEL", "children": ",".join(children), "caption": caption})
+
+    async def post_status(self, account: AccountRef, container_id: str) -> str:
+        return str((await self._get(f"/{container_id}", account, {"fields": "status_code"})).get("status_code") or "")
+
+    async def publish_post(self, account: AccountRef, container_id: str) -> str:
+        if not account.token:
+            raise TokenInvalidError("no token")
+        r = await self._post(f"/{account.external_account_id}/media_publish", params={"creation_id": container_id, "access_token": account.token},
+                             json_body=None, id_field="id")
+        return str(r.external_mid)
+
+    async def set_comments_enabled(self, account: AccountRef, media_id: str, enabled: bool) -> None:
+        if not account.token:
+            raise TokenInvalidError("no token")
+        await self._post(f"/{media_id}", params={"comment_enabled": "true" if enabled else "false", "access_token": account.token}, json_body=None, id_field=None)
+
+    async def delete_media(self, account: AccountRef, media_id: str) -> None:
+        if not account.token:
+            raise TokenInvalidError("no token")
+        await self._post(f"/{media_id}", params={"access_token": account.token}, json_body=None, id_field=None, method="DELETE")
 
     # ----------------------------------------------------------- catalog
     async def _get(self, path: str, account: AccountRef, params: dict) -> dict:

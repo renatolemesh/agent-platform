@@ -6,7 +6,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import secrets
+import string
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -16,19 +19,20 @@ from pydantic import ValidationError
 
 from agentplatform.api import ui
 from agentplatform.api.auth import forget_session, hash_password, require, require_post, totp_required
-from agentplatform.api.console import KB_ROLES, MIN_PASSWORD_LEN, _audit, _can_index, _page, _queue, _tid
+from agentplatform.api.console import KB_ROLES, MIN_PASSWORD_LEN, _audit, _can_index, _labels, _page, _queue, _tid
 from agentplatform.core.agent import policy
 from agentplatform.core.comments.settings import text_problems
 from agentplatform.core.config.presets import RAG_PRESETS
 from agentplatform.core.config.registry import ConfigError, registry
 from agentplatform.core.config.schema import PlatformConfig
 from agentplatform.core.db.pool import platform_tx, tenant_tx
+from agentplatform.core.followups.engine import parse_delay, trigger_stages
 from agentplatform.core.knowledge import admin as K
 from agentplatform.core.knowledge.service import KnowledgeService
 from agentplatform.core.models import pricing
 from agentplatform.core.models.gateway import BudgetDenied, ModelCallError, tenant_context
 from agentplatform.core.packages.contract import package_datasets
-from agentplatform.core.security.keys import crypto, encrypt_field
+from agentplatform.core.security.keys import crypto, decrypt_field, encrypt_field
 from agentplatform.core.security.pii import mask
 from agentplatform.settings import get_settings
 
@@ -145,7 +149,7 @@ async def assistant_save(request: Request):
 def _model_choices() -> dict:
     """What the configured provider can route, with its price. A model without a price is refused by the gateway, so it is not offered."""
     openai_only = get_settings().llm_provider == "openai"
-    usable = lambda name: not openai_only or name.startswith("openai/")
+    usable = lambda name: name.startswith("openai/") if openai_only else name not in pricing.DIRECT_KEY_ONLY
     return {"chat": [{"name": k, "input": p.input_per_m, "output": p.output_per_m} for k, p in sorted(pricing.CHAT.items()) if usable(k)],
             "embedding": [{"name": k, "per_m": v, "dims": pricing.EMBEDDING_DIMS.get(k)} for k, v in sorted(pricing.EMBEDDING_PER_M.items()) if usable(k)],
             "transcription": [{"name": k, "per_min": v} for k, v in sorted(pricing.TRANSCRIPTION_PER_MIN.items()) if usable(k)],
@@ -174,13 +178,16 @@ async def models_save(request: Request):
         if spec is None:
             continue
         primary, fallback = str(f.get(f"{n}_primary") or spec.primary), str(f.get(f"{n}_fallback") or "")
-        if primary not in known or (fallback and fallback not in known):
+        if (primary not in known and primary != spec.primary) or (fallback and fallback not in known and fallback not in spec.fallbacks):
             errors.append(f"{ui.MODEL_NODE.get(n, n)}: modelo não disponível neste ambiente.")
             continue
         changes[f"models.{n}.primary"] = primary
-        changes[f"models.{n}.fallbacks"] = [fallback] if fallback and fallback != primary else []
+        if spec.fallbacks and fallback == spec.fallbacks[0] and primary not in spec.fallbacks:      # a longer chain set in the file stays as it is
+            changes[f"models.{n}.fallbacks"] = list(spec.fallbacks)
+        else:
+            changes[f"models.{n}.fallbacks"] = [fallback] if fallback and fallback != primary else []
     transcription = str(f.get("transcription") or tr.config.models.transcription.model)
-    if transcription not in {c["name"] for c in choices["transcription"]}:
+    if transcription not in {c["name"] for c in choices["transcription"]} and transcription != tr.config.models.transcription.model:
         errors.append("Transcrição de áudio: modelo não disponível neste ambiente.")
     else:
         changes["models.transcription.model"] = transcription
@@ -199,8 +206,10 @@ def _rules_ctx(tr) -> dict:
     overrides = {o.id: o for o in c.guidelines.overrides}
     package_phrases = set(m.compliance.forbidden_phrases)
     return {"guidelines": [{"spec": g, "enabled": overrides[g.id].enabled if g.id in overrides else True,
-                            "priority": overrides[g.id].priority if g.id in overrides and overrides[g.id].priority is not None else g.priority}
+                            "priority": overrides[g.id].priority if g.id in overrides and overrides[g.id].priority is not None else g.priority,
+                            "action": (overrides[g.id].action if g.id in overrides else None) or g.action, "changed": bool(g.id in overrides and overrides[g.id].action)}
                            for g in sorted(m.guidelines, key=lambda g: g.priority)],
+            "intent_labels": m.intent_labels,
             "custom": [*c.guidelines.custom, *[None] * BLANK_GUIDELINES], "cfg": c, "stages": m.stages,
             "intents": m.intents, "can_turn_off": policy.can_turn_off(m), "locked_reasons": [t.reason for t in m.handoff_triggers if t.locked],
             "package_phrases": sorted(package_phrases), "own_phrases": [p for p in c.compliance.forbidden_phrases if p not in package_phrases],
@@ -229,14 +238,18 @@ async def rules_save(request: Request):
         enabled = bool(f.get(f"g_on_{g.id}"))
         raw = str(f.get(f"g_priority_{g.id}") or "").strip()
         priority = int(raw) if raw.lstrip("-").isdigit() else g.priority
-        if not enabled or priority != g.priority:
-            overrides.append({"id": g.id, "enabled": enabled, "priority": priority if priority != g.priority else None})
+        said = str(f.get(f"g_action_{g.id}") or "").strip()
+        action = said if said and said != g.action else None      # back to the package's words when they match, or when left blank
+        if not enabled or priority != g.priority or action:
+            overrides.append({"id": g.id, "enabled": enabled, "priority": priority if priority != g.priority else None, "action": action})
     custom = []
+    had = {c.id: c.priority for c in tr.config.guidelines.custom}
     for action, words, intents, stages in zip(f.getlist("c_action"), f.getlist("c_words"), f.getlist("c_intents"), f.getlist("c_stages")):
         if not str(action).strip():
             continue
-        custom.append({"id": f"own_{hashlib.sha256(str(action).encode()).hexdigest()[:8]}", "action": str(action).strip(), "when_keywords": _words(str(words)),
-                       "when_intents": _words(str(intents)), "stages": _words(str(stages))})
+        cid = f"own_{hashlib.sha256(str(action).encode()).hexdigest()[:8]}"
+        custom.append({"id": cid, "action": str(action).strip(), "when_keywords": _words(str(words)), "when_intents": _words(str(intents)), "stages": _words(str(stages)),
+                       **({"priority": had[cid]} if cid in had else {})})
     limits = {st.name: int(str(f.get(f"limit_{st.name}"))) for st in m.stages if str(f.get(f"limit_{st.name}") or "").strip().isdigit()
               and int(str(f.get(f"limit_{st.name}"))) != st.max_turns_without_progress and int(str(f.get(f"limit_{st.name}"))) > 0}
     own = [p.strip() for p in str(f.get("own_phrases") or "").splitlines() if p.strip()]
@@ -383,21 +396,386 @@ async def conflict_dismiss(request: Request, conflict_id: UUID, back: str = Form
     return RedirectResponse(back if back.startswith("/console/documents") else "/console/documents", status_code=303)
 
 
+# ======================= the rest of the settings =======================
+def _at(doc: dict, path: str):
+    for part in path.split("."):
+        doc = doc.get(part) if isinstance(doc, dict) else None
+    return doc
+
+
+def _shown(s: ui.Setting, value):
+    if s.kind == "lines":
+        return "\n".join(value or [])
+    if s.kind == "percents":
+        return ", ".join(f"{float(x) * 100:g}" for x in value or [])
+    return "" if value is None else value
+
+
+def _posted(s: ui.Setting, f, current):
+    """What a field holds as the configuration wants it. ValueError: the sentence for the person."""
+    if s.kind == "bool":
+        return s.path in f
+    if s.kind in ("map_text", "map_int"):
+        out = {}
+        for key in current or {}:
+            raw = str(f.get(f"{s.path}:{key}") or "").strip()
+            if not raw:
+                raise ValueError(f"{s.label}: preencha todos os campos.")
+            if s.kind == "map_int" and not raw.isdigit():
+                raise ValueError(f"{s.label}: use números inteiros.")
+            out[key] = int(raw) if s.kind == "map_int" else raw
+        return out
+    raw = str(f.get(s.path) or "").strip()
+    if s.kind == "lines":
+        return [x.strip() for x in raw.splitlines() if x.strip()]
+    if s.kind == "percents":
+        try:
+            return [float(x.strip().replace(",", ".")) / 100 for x in raw.replace(";", ",").split(",") if x.strip()]
+        except ValueError:
+            raise ValueError(f"{s.label}: use números separados por vírgula.") from None
+    if not raw:
+        if s.optional:
+            return None
+        raise ValueError(f"{s.label}: não pode ficar em branco.")
+    if s.kind == "int":
+        if not raw.isdigit():
+            raise ValueError(f"{s.label}: use um número inteiro.")
+        return int(raw)
+    if s.kind in ("number", "usd"):
+        try:
+            float(raw.replace(",", "."))
+        except ValueError:
+            raise ValueError(f"{s.label}: use um número.") from None
+        return raw.replace(",", ".")
+    if s.kind == "choice" and raw not in s.options:
+        raise ValueError(f"{s.label}: escolha uma das opções.")
+    if s.kind == "text":
+        names = {n for _, n, _, _ in string.Formatter().parse(raw.replace("{{", "").replace("}}", "")) if n is not None}
+        if names - set(s.placeholders):
+            raise ValueError(f"{s.label}: " + (f"só pode usar {', '.join('{' + p + '}' for p in s.placeholders)}." if s.placeholders else "não use chaves { } neste texto."))
+    return raw
+
+
+def _more_page(request: Request, user: dict, tr, f=None, errors=(), saved: str | None = None, status_code: int = 200) -> HTMLResponse:
+    doc = json.loads(tr.config.model_dump_json())
+    groups = []
+    for g in ui.MORE_SETTINGS:
+        rows = []
+        for s in g["settings"]:
+            current = _at(doc, s.path)
+            if f is None:
+                value = _shown(s, current)
+            elif s.kind == "bool":
+                value = s.path in f
+            elif s.kind in ("map_text", "map_int"):
+                value = {k: f.get(f"{s.path}:{k}", v) for k, v in (current or {}).items()}
+            else:
+                value = f.get(s.path, "")
+            rows.append({"s": s, "value": value})
+        groups.append({**g, "rows": rows})
+    subs = [{"i": i, "name": s.name, "purpose": s.purpose, "country": s.country, "mechanism": (f.get(f"sub_{i}", s.transfer_mechanism) if f is not None else s.transfer_mechanism)}
+            for i, s in enumerate(tr.config.subprocessors)]
+    go_live = ("go_live" in f) if f is not None else bool(tr.config.operations.feature_flags.get("go_live"))
+    return _page(request, "more.html", {"user": user, "groups": groups, "subs": subs, "go_live": go_live, "env": tr.config.environment, "errors": errors, "saved": saved,
+                                        "TRANSFER": ui.TRANSFER, "note": f.get("note", "") if f is not None else ""}, status_code)
+
+
+@router.get("/assistant/more", response_class=HTMLResponse)
+async def more_page(request: Request):
+    user = require(request, "tenant_owner")
+    return _more_page(request, user, await _setup_runtime(_tid(user)))
+
+
+@router.post("/assistant/more", response_class=HTMLResponse)
+async def more_save(request: Request):
+    user = await require_post(request, "tenant_owner")
+    tid = _tid(user)
+    tr = await _setup_runtime(tid)
+    f = await request.form()
+    doc = json.loads(tr.config.model_dump_json())
+    changes, errors = {}, []
+    for g in ui.MORE_SETTINGS:
+        for s in g["settings"]:
+            try:
+                changes[s.path] = _posted(s, f, _at(doc, s.path))
+            except ValueError as e:
+                errors.append(str(e))
+    subs = doc["subprocessors"]
+    for i, s in enumerate(subs):
+        chosen = str(f.get(f"sub_{i}") or s["transfer_mechanism"])
+        if chosen in ui.TRANSFER:
+            s["transfer_mechanism"] = chosen
+    changes["subprocessors"] = subs
+    flags = dict(doc["operations"]["feature_flags"])
+    flags["go_live"] = "go_live" in f
+    if not flags["go_live"] and "go_live" not in doc["operations"]["feature_flags"]:
+        flags.pop("go_live")
+    changes["operations.feature_flags"] = flags
+    vid = None
+    if not errors:
+        vid, errors = await _propose(tr, tid, user, changes, str(f.get("note") or "Mais ajustes").strip())
+    if errors:
+        return _more_page(request, user, tr, f, errors, status_code=400)
+    return _to_config(vid) if vid else _more_page(request, user, tr, saved="Nada mudou.")
+
+
+# ======================= follow-ups =======================
+def _rule_name(cad) -> str:
+    return cad.label or ui.CADENCE.get(cad.id, ui.humanize(cad.id))
+
+
+def _shortest_window() -> timedelta | None:
+    """A rule that waits past the channel's window would never send. The tightest window wins: the rule runs on every channel."""
+    from agentplatform.runtime import get_runtime
+    windows = [a.capabilities().service_window for a in get_runtime().adapters.values()]
+    return min((w for w in windows if w), default=None)
+
+
+def _rules_view(tr, f=None) -> list[dict]:
+    """Every rule, plus a blank one to add. Each rule also shows a blank attempt while it has room for another."""
+    fu, words = tr.config.followups, {**tr.package.manifest.templates, **tr.config.followups.texts}
+    rules = []
+    for i, c in enumerate([*fu.cadences, None]):
+        said = {"delay": "", "text": ""}
+        steps = [{"j": j, "delay": st.delay, "text": words.get(st.template_key or "", ""), "editable": st.content_kind == "template"}
+                 for j, st in enumerate(c.steps)] if c else []
+        steps += [{"j": j, **said, "editable": True} for j in range(len(steps), fu.max_steps)]
+        chosen = set(trigger_stages(c.trigger)) if c else set()
+        rule = {"i": i, "is_new": c is None, "name": _rule_name(c) if c else "", "enabled": c.enabled if c else True, "event": c.trigger.get("event") if c else "bot_message_unanswered"}
+        if f is not None:
+            rule.update(name=str(f.get(f"rule_{i}_label") or ""), enabled=f"rule_{i}_enabled" in f, event=str(f.get(f"rule_{i}_event") or rule["event"]))
+            chosen = {k.rsplit("_stage_", 1)[1] for k in f if k.startswith(f"rule_{i}_stage_")}
+            steps = [{**s, "delay": str(f.get(f"rule_{i}_{s['j']}_delay") or ""), "text": str(f.get(f"rule_{i}_{s['j']}_text") or "")} for s in steps]
+        rules.append({**rule, "stages": chosen, "steps": steps})
+    return rules
+
+
+def _posted_rules(tr, f) -> tuple[list[dict], dict, list[str]]:
+    """What the form says, checked. A rule or an attempt left completely blank is not there."""
+    fu = tr.config.followups
+    templates = tr.package.manifest.templates
+    allowed = {s.name for s in tr.package.manifest.stages if not s.is_terminal}
+    window, shortest = _shortest_window(), parse_delay(fu.min_delay)
+    old_rules = json.loads(fu.model_dump_json())["cadences"]
+    taken = {c["id"] for c in old_rules}
+    cadences, errors = [], []
+    overrides = dict(fu.texts)
+    used = set()
+    for i in range(len(old_rules) + 1):
+        old = old_rules[i] if i < len(old_rules) else None
+        if f"rule_{i}_remove" in f:
+            continue
+        label = str(f.get(f"rule_{i}_label") or "").strip()
+        raw_steps = [(j, str(f.get(f"rule_{i}_{j}_delay") or "").strip(), str(f.get(f"rule_{i}_{j}_text") or "").strip()) for j in range(fu.max_steps)]
+        if old is None and not label and not any(d or t for _, d, t in raw_steps):
+            continue
+        name = label or (_rule_name(fu.cadences[i]) if old else "Nova regra")
+        if not label:
+            errors.append(f"{name}: dê um nome à regra.")
+        event = str(f.get(f"rule_{i}_event") or "")
+        if event not in ui.FOLLOWUP_EVENT:
+            errors.append(f"{name}: escolha quando a regra vale.")
+        stages = [s.name for s in tr.package.manifest.stages if s.name in allowed and f"rule_{i}_stage_{s.name}" in f]
+        if not stages:
+            errors.append(f"{name}: escolha ao menos uma etapa.")
+        steps, total = [], timedelta(0)
+        rid = old["id"] if old else _new_rule_id(label, taken)
+        for j, delay, said in raw_steps:
+            before = old["steps"][j] if old and j < len(old["steps"]) else None
+            fixed = before is not None and before["content_kind"] != "template"
+            if not delay and (fixed or not said):
+                continue
+            try:
+                wait = parse_delay(delay)
+            except ValueError:
+                errors.append(f"{name}: use o tempo como 30m, 4h ou 2d.")
+                continue
+            if wait < shortest:
+                errors.append(f"{name}: o tempo mínimo é {fu.min_delay}.")
+            total += wait
+            if window and total >= window:
+                errors.append(f"{name}: a tentativa sairia depois de {_hours(total)}, com a janela do canal já fechada. Use menos de {_hours(window)} no total.")
+            if fixed:
+                steps.append({**before, "delay": delay})
+                continue
+            if not said:
+                errors.append(f"{name}: o texto não pode ficar em branco.")
+                continue
+            errors += [f"{name}: {ui.text_problem(p)}" for p in text_problems(tr.config, "followup", said, tr.config.comments.private_max_chars, tr.allowed_urls)]
+            key = (before or {}).get("template_key") or f"{rid}_{j}"
+            used.add(key)
+            if said != templates.get(key):
+                overrides[key] = said
+            else:
+                overrides.pop(key, None)
+            steps.append({**(before or {"content_kind": "template"}), "delay": delay, "template_key": key})
+        if not steps:
+            errors.append(f"{name}: a regra precisa de ao menos uma tentativa.")
+        same = old and old["trigger"].get("event") == event and sorted(trigger_stages(old["trigger"])) == sorted(stages)
+        unnamed = old and not old.get("label") and fu.cadences[i] and label == _rule_name(fu.cadences[i])
+        cadences.append({**(old or {}), "id": rid, "label": "" if unnamed else label, "enabled": f"rule_{i}_enabled" in f,
+                         "trigger": old["trigger"] if same else {"event": event, "stages": stages}, "steps": steps, "max_attempts": len(steps) or 1})
+    gone = {st["template_key"] for c in old_rules for st in c["steps"] if st.get("template_key")} - used
+    return cadences, {k: v for k, v in overrides.items() if k not in gone}, errors
+
+
+def _hours(d: timedelta) -> str:
+    return f"{d.total_seconds() / 3600:g} h"
+
+
+def _new_rule_id(label: str, taken: set[str]) -> str:
+    base = re.sub(r"[^a-z0-9]+", "_", unicodedata.normalize("NFKD", label.lower()).encode("ascii", "ignore").decode()).strip("_") or "regra"
+    rid, n = base, 2
+    while rid in taken:
+        rid, n = f"{base}_{n}", n + 1
+    taken.add(rid)
+    return rid
+
+
+async def _followups_page(request: Request, user: dict, tr, f=None, errors: list[str] | None = None, status_code: int = 200) -> HTMLResponse:
+    tid = _tid(user)
+    fu, m = tr.config.followups, tr.package.manifest
+    shown = str(request.query_params.get("parado") or fu.stalled_after).strip()
+    try:
+        silence = parse_delay(shown)
+    except ValueError:
+        shown, silence = fu.stalled_after, parse_delay(fu.stalled_after)
+    who = """join conversations c on c.id = f.conversation_id join contacts ct on ct.id = c.contact_id
+             join contact_identities ci on ci.contact_id = c.contact_id"""
+    people = "ci.channel <> 'simulator' and ci.external_user_id not like 'LAB-%%'"
+    async with tenant_tx(tid) as conn:
+        stalled = await (await conn.execute(
+            f"""select c.id, c.last_reply_at, c.window_expires_at, l.stage, ci.username, ci.channel, ci.external_user_id, ct.first_name,
+                       coalesce(c.window_expires_at > now(), false) as window_open,
+                       (select min(r.due_at) from followup_runs r where r.conversation_id = c.id and r.status = 'scheduled') as next_due
+                from conversations c join leads l on l.contact_id = c.contact_id join contacts ct on ct.id = c.contact_id
+                join contact_identities ci on ci.contact_id = c.contact_id
+                where {people} and c.ownership = 'BOT' and l.opted_out_at is null and not (l.stage = any(%s))
+                  and c.last_inbound_at is not null and c.last_reply_at > c.last_inbound_at and c.last_reply_at < now() - %s
+                order by c.last_reply_at desc limit 100""", ([s.name for s in m.stages if s.is_terminal], silence))).fetchall()
+        upcoming = await (await conn.execute(
+            f"""select f.cadence_id, f.due_at, c.id, ci.username, ci.channel, ci.external_user_id, ct.first_name
+                from followup_runs f {who} where {people} and f.status = 'scheduled' order by f.due_at limit 50""")).fetchall()
+        recent = await (await conn.execute(
+            f"""select f.cadence_id, f.status, f.stop_reason, coalesce(o.sent_at, f.due_at) as at, o.status as outbox_status,
+                       c.id, ci.username, ci.channel, ci.external_user_id, ct.first_name
+                from followup_runs f {who} left join outbox o on o.id = f.outbox_id
+                where {people} and f.status <> 'scheduled' order by coalesce(o.sent_at, f.due_at) desc limit 50""")).fetchall()
+        sent = (await (await conn.execute(
+            "select count(*) as n from followup_runs f join outbox o on o.id = f.outbox_id where o.status = 'sent' and o.sent_at > now() - interval '7 days'")).fetchone())["n"]
+    names = {c.id: _rule_name(c) for c in fu.cadences}
+    history = [{**r, "shown_status": "sent" if r["outbox_status"] == "sent" else r["status"]} for r in recent]
+    return _page(request, "followups.html", {
+        "user": user, "can_edit": user["role"] in ("tenant_owner", "platform_admin"), "rules": _rules_view(tr, f), "errors": errors or [], "names": names,
+        "on": ("followups_enabled" in f) if f is not None else fu.enabled, "stalled": stalled, "upcoming": upcoming, "history": history, "sent": sent, "shown": shown,
+        "stalled_after": (f.get("stalled_after", fu.stalled_after) if f is not None else fu.stalled_after), "stages": [s for s in m.stages if not s.is_terminal],
+        "EVENT": ui.FOLLOWUP_EVENT, "STATUS": ui.FOLLOWUP_STATUS, "sending": tr.config.sending, "note": f.get("note", "") if f is not None else "",
+        "min_delay": fu.min_delay, "window": _hours(w) if (w := _shortest_window()) else None, "labels": await _labels(tid)}, status_code)
+
+
+@router.get("/followups", response_class=HTMLResponse)
+async def followups(request: Request):
+    user = require(request)
+    return await _followups_page(request, user, await _setup_runtime(_tid(user)))
+
+
+@router.post("/followups", response_class=HTMLResponse)
+async def followups_save(request: Request):
+    user = await require_post(request, "tenant_owner")
+    tid = _tid(user)
+    tr = await _setup_runtime(tid)
+    f = await request.form()
+    cadences, texts, errors = _posted_rules(tr, f)
+    stalled_after = str(f.get("stalled_after") or "").strip()
+    try:
+        parse_delay(stalled_after)
+    except ValueError:
+        errors.append("Contato parado: use o tempo como 30m, 4h ou 2d.")
+    vid = None
+    if not errors:
+        vid, errors = await _propose(tr, tid, user, {"followups.enabled": "followups_enabled" in f, "followups.cadences": cadences, "followups.texts": texts,
+                                                     "followups.stalled_after": stalled_after}, str(f.get("note") or "Follow-ups").strip())
+    if errors:
+        return await _followups_page(request, user, tr, f, errors, 400)
+    return _to_config(vid)
+
+
 # ======================= joining the console =======================
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+async def users_page(request: Request, user: dict, *, edit: dict | None = None, error: str | None = None, status_code: int = 200) -> HTMLResponse:
+    """The row being edited shows its alert contacts in clear text, so the browser keeps no copy."""
+    tid = _tid(user)
+    raw = request.query_params.get("edit")
+    if edit is None and raw:
+        try:
+            uid = UUID(raw)
+        except ValueError:
+            raise HTTPException(404) from None
+        async with tenant_tx(tid) as conn:
+            row = await (await conn.execute("select id, display_name, notify_whatsapp_enc, notify_email_enc from tenant_users where id=%s and tenant_id=%s and is_active", (uid, tid))).fetchone()
+            if not row:
+                raise HTTPException(404)
+            edit = {"id": row["id"], "name": row["display_name"], "whatsapp": await decrypt_field(conn, tid, row["notify_whatsapp_enc"], "tenant_users.whatsapp") or "",
+                    "email": await decrypt_field(conn, tid, row["notify_email_enc"], "tenant_users.email") or ""}
+    resp = _page(request, "users.html", {"user": user, **await users_context(user), "edit": edit, "error": error}, status_code)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.post("/users/{uid}/edit", response_class=HTMLResponse)
+async def user_edit(request: Request, uid: UUID, name: str = Form(""), whatsapp: str = Form(""), email: str = Form("")):
+    """How this person appears, and where the alerts of conversations waiting for them go."""
+    user = await require_post(request, "tenant_owner")
+    tid = _tid(user)
+    name, email = name.strip()[:100], email.strip().lower()[:200]
+    digits = re.sub(r"[\s()+-]", "", whatsapp)
+    form = {"id": uid, "name": name, "whatsapp": whatsapp, "email": email}
+    error = None
+    if not name:
+        error = "O nome não pode ficar em branco."
+    elif digits and not re.fullmatch(r"\d{10,15}", digits):
+        error = "WhatsApp inválido. Use o número com DDI e DDD, como 55 11 99999-0000."
+    elif email and "@" not in email:
+        error = "E-mail de aviso inválido."
+    if error:
+        return await users_page(request, user, edit=form, error=error, status_code=400)
+    async with tenant_tx(tid) as conn:
+        row = await (await conn.execute(
+            "update tenant_users set display_name=%s, notify_whatsapp_enc=%s, notify_email_enc=%s where id=%s and tenant_id=%s and is_active returning id",
+            (name, await encrypt_field(conn, tid, digits or None, "tenant_users.whatsapp"), await encrypt_field(conn, tid, email or None, "tenant_users.email"), uid, tid))).fetchone()
+        if not row:
+            raise HTTPException(404)
+        await _audit(conn, tid, UUID(user["id"]), "user.edit", str(uid), {"whatsapp": bool(digits), "email": bool(email)})
+    return RedirectResponse("/console/users", status_code=303)
+
+
+@router.post("/users/{uid}/reactivate", response_class=HTMLResponse)
+async def user_reactivate(request: Request, uid: UUID):
+    user = await require_post(request, "tenant_owner")
+    tid = _tid(user)
+    async with tenant_tx(tid) as conn:
+        row = await (await conn.execute("update tenant_users set is_active=true where id=%s and tenant_id=%s and not is_active returning id", (uid, tid))).fetchone()
+        if not row:
+            raise HTTPException(404)
+        await _audit(conn, tid, UUID(user["id"]), "user.reactivate", str(uid))
+    return RedirectResponse("/console/users", status_code=303)
 
 
 async def users_context(user: dict) -> dict:
     tid = _tid(user)
     async with platform_tx() as conn:
         rows = await (await conn.execute(
-            """select u.id, u.display_name, u.role, u.totp_enabled_at, u.locked_until, u.tenant_id, null as slug from tenant_users u
+            """select u.id, u.display_name, u.role, u.totp_enabled_at, u.locked_until, u.tenant_id, null as slug,
+                      u.notify_whatsapp_enc is not null as has_whatsapp, u.notify_email_enc is not null as has_email from tenant_users u
                where u.tenant_id = %s and u.is_active order by u.display_name""", (tid,))).fetchall()
+        inactive = await (await conn.execute("select id, display_name, role from tenant_users where tenant_id=%s and not is_active order by display_name", (tid,))).fetchall()
         invites = await (await conn.execute(
             """select id, display_name, role, expires_at, created_at from user_invites
                where tenant_id=%s and used_at is null and revoked_at is null and expires_at > now() order by created_at desc""", (tid,))).fetchall()
-    return {"rows": rows, "invites": invites, "invite_roles": INVITE_ROLES}
+    return {"rows": rows, "invites": invites, "invite_roles": INVITE_ROLES, "inactive": inactive}
 
 
 @router.post("/users/invite", response_class=HTMLResponse)
@@ -580,12 +958,12 @@ async def _setup_items(tid: UUID) -> list[dict]:
         {"key": "curation", "state": state(questions["n"] == 0, warn=True), "link": "/console/curation", "detail": str(questions["n"])},
         {"key": "second_person", "state": state(people["n"] >= 2), "link": "/console/users", "detail": str(people["n"])},
         {"key": "seller_notice", "state": state(notify["n"] > 0), "link": "/console/users", "detail": str(notify["n"])},
-        {"key": "legal", "state": state(not pending_legal), "link": None, "detail": ", ".join(pending_legal)},
+        {"key": "legal", "state": state(not pending_legal), "link": "/console/assistant/more#ar", "detail": ", ".join(pending_legal)},
         {"key": "evaluation", "state": state(bool(evaluated)), "link": "/console/config", "detail": ui.EVAL_STATUS.get(running["status"], "") if running else ""},
         {"key": "active", "state": state(active), "link": "/console/config", "detail": ""},
     ]
     if env == "prod":
-        items.append({"key": "go_live", "state": state(bool(cfg.operations.feature_flags.get("go_live"))), "link": None, "detail": ""})
+        items.append({"key": "go_live", "state": state(bool(cfg.operations.feature_flags.get("go_live"))), "link": "/console/assistant/more#ar", "detail": ""})
     return items
 
 

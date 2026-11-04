@@ -494,7 +494,7 @@ async def test_faq_is_used_only_after_approval_and_changing_it_takes_it_out(tena
     email, _ = await owner(tenant)
     async with _client() as c:
         await c.post("/console/login", data={"email": email, "password": PW})
-        csrf = await _csrf(c, "/console/faqs")
+        csrf = await _csrf(c, "/console/faqs?new=1")
         r = await c.post("/console/faqs", data={"csrf": csrf, "question": "Como funciona?", "answer": "Assim funciona.", "variants": "como que é\n\nme explica", "action": "save"})
         assert r.status_code == 303 and env == []
         assert await faq_found(tenant) is None, "a draft is not used"
@@ -536,7 +536,7 @@ async def test_faq_text_goes_through_the_checks_but_may_have_numbers(tenant, env
     email, _ = await owner(tenant)
     async with _client() as c:
         await c.post("/console/login", data={"email": email, "password": PW})
-        csrf = await _csrf(c, "/console/faqs")
+        csrf = await _csrf(c, "/console/faqs?new=1")
         bad = await c.post("/console/faqs", data={"csrf": csrf, "question": "Quanto ganha?", "answer": "A comissão do consultor é boa.", "action": "save"})
         assert bad.status_code == 400 and "proibido" in bad.text and "A comissão do consultor é boa." in bad.text, "what was typed stays"
         assert (await c.post("/console/faqs", data={"csrf": csrf, "question": "", "answer": "", "action": "save"})).status_code == 400

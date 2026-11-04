@@ -27,7 +27,6 @@ CHAT: dict[str, ChatPrice] = {
     "openai/gpt-5.4-nano": ChatPrice(D("0.20"), D("1.25"), None, reasoning=True),
     "openai/gpt-5.4-mini": ChatPrice(D("0.75"), D("4.50"), None, reasoning=True),
     # OpenRouter (ZDR endpoints)
-    "google/gemini-2.5-flash-lite": ChatPrice(D("0.10"), D("0.40")),
     "google/gemini-3.1-flash-lite": ChatPrice(D("0.25"), D("1.50")),
     "deepseek/deepseek-v4-flash": ChatPrice(D("0.09"), D("0.18"), reasoning=True),
     "mistralai/mistral-small-2603": ChatPrice(D("0.15"), D("0.60")),
@@ -55,6 +54,10 @@ TRANSCRIPTION_PER_MIN: dict[str, Decimal] = {
     "openai/whisper-1": D("0.006"),
     "openai/whisper-large-v3-turbo": D("0.00067"),
 }
+
+
+# Priced for the direct key, but OpenRouter has no zero-retention route for them, so the console does not offer them there.
+DIRECT_KEY_ONLY = frozenset({"openai/gpt-4o-mini-transcribe", "openai/whisper-1"})
 
 
 class UnknownPrice(LookupError):

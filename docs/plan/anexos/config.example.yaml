@@ -7,11 +7,11 @@ meta: { graph_api_version: v26.0, login_kind: facebook_login }
 
 models:
   analyze_turn:
-    primary: google/gemini-2.5-flash-lite
-    fallbacks: [openai/gpt-5-nano]
+    primary: mistralai/mistral-small-2603
+    fallbacks: [google/gemini-3.1-flash-lite]
     temperature: 0.0
     max_output_tokens: 400
-    timeout_s: 6
+    timeout_s: 8
     prompt_version: analyze_turn@v1
     provider: { allow_fallbacks: true }      # 'only' would block the openai fallback (review #18)
   respond:
@@ -21,7 +21,7 @@ models:
     max_output_tokens: 500
     timeout_s: 12
     prompt_version: respond@v1
-    provider: { order: [deepinfra], allow_fallbacks: true }
+    provider: { order: [crusoe, deepinfra], allow_fallbacks: true }
   output_judge:
     primary: openai/gpt-5-nano
     fallbacks: [mistralai/mistral-small-2603]
@@ -30,12 +30,13 @@ models:
     timeout_s: 5
     prompt_version: output_judge@v1
   summarize:
-    primary: google/gemini-2.5-flash-lite
+    primary: openai/gpt-5-nano
+    fallbacks: [mistralai/mistral-small-2603]
     temperature: 0.0
     max_output_tokens: 250
     timeout_s: 10
     prompt_version: summarize@v1
-  embedding: { model: qwen/qwen3-embedding-8b, dims: 1024 }
+  embedding: { model: qwen/qwen3-embedding-8b, dims: 1024, timeout_s: 5, provider: { order: [deepinfra], allow_fallbacks: true } }
   transcription: { model: openai/whisper-large-v3-turbo, timeout_s: 20 }
   rerank: null
 
@@ -90,10 +91,14 @@ comments:
 
 followups:
   cadences:
-    - id: form_not_filled
-      trigger: { event: stage_entered, stage: pre_cadastro_enviado }
-      steps: [ { delay: 4h, content_kind: template, template_key: form_reminder } ]
-      stop_on: [inbound_message, opt_out, handoff, ownership_human, stage_changed, form_submitted]
+    - id: seller_offer_unanswered
+      trigger: { event: stage_entered, stage: pronto_para_proposta }
+      steps: [ { delay: 4h, content_kind: template, template_key: seller_offer_reminder } ]
+      stop_on: [inbound_message, opt_out, handoff, ownership_human, stage_changed]
+    - id: no_reply
+      label: Parou de responder
+      trigger: { event: bot_message_unanswered, stages: [novo, engajado, qualificando, educando] }
+      steps: [ { delay: 4h, content_kind: template, template_key: no_reply_nudge } ]
 
 compliance:
   forbidden_phrases:
@@ -120,6 +125,7 @@ subprocessors:   # LGPD inventory (RIPD); transfer mechanism validated with lega
   - { name: Object storage, purpose: "encrypted backups", data_categories: [all_encrypted], country: BR, transfer_mechanism: not_applicable, zdr: false }
 
 operations:
+  posts: { publishing_enabled: false, max_per_day: 10, late_after_min: 60 }     # ADR-024: liga depois da permissão da Meta
   feature_flags: { consortium.simulation_enabled: false, consortium.group_history_enabled: false }
   canary_percent: 0
   trace_sampling: 1.0

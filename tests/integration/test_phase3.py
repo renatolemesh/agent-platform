@@ -1,5 +1,6 @@
 """Phase 3: plans table import/activation/rollback, simulation through the real turn."""
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -9,6 +10,7 @@ from agentplatform.core.config.schema import PlatformConfig
 from agentplatform.core.db.pool import platform_tx
 from agentplatform.core.knowledge.datasets import activate, import_dataset, parse_table, rollback
 from agentplatform.core.models.fake import ScriptedGateway, analysis, draft
+from agentplatform.core.packages.contract import StageSpec, TransitionSpec
 from agentplatform_packages.consortium import PlanRow
 from tests.integration.test_turn import NOON, PKG, inbound
 
@@ -57,10 +59,8 @@ async def test_simulation_numbers_come_from_tool(tenant):
         "analyze_turn": [analysis(intents=["simulation_request"], stage="qualificando", evidence=["simular"],
                                   slots=[("goal", "vehicle", "um carro"), ("credit_amount", "80 mil", "carro de 80 mil"),
                                          ("term_months", "60", "em 60 meses")])],
-        # the minimum profile is complete, so the pre-registration link of this turn goes in the reply
-        "respond": [lambda msgs: draft("Pela tabela vigente, a carta de 80 mil em 60 meses fica em parcelas estimadas de R$ 1.546,67, "
-                                       "com taxa de administração. Quer seguir com o pré-cadastro? "
-                                       + next(w for w in msgs[0]["content"].split() if "/f/" in w))],
+        "respond": [draft("Pela tabela vigente, a carta de 80 mil em 60 meses fica em parcelas estimadas de R$ 1.546,67, "
+                          "com taxa de administração. Posso chamar o consultor para seguir com você?")],
         "output_judge": [{"violations": [], "explanation": ""}]})
     res = await TurnRunner(TurnDeps(config=cfg, package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
     tools = res.trace["tools"]
@@ -126,8 +126,118 @@ async def _sent_text(tenant, conv) -> str:
     return " ".join(r["t"] for r in rows)
 
 
+def _package_that_sends_a_form():
+    """The core still sends a pre-registration link for a package that asks for it. This segment does not."""
+    m = PKG.manifest
+    return SimpleNamespace(tools=PKG.tools, manifest=m.model_copy(update={
+        "ready_question": None, "form_sent_stage": "form_sent", "stages": [*m.stages, StageSpec(name="form_sent", goal="Aguardar")],
+        "transitions": [*m.transitions, TransitionSpec(frm=m.form_stage, to="form_sent")]}))
+
+
+async def _lead_about_to_be_ready(tenant, text):
+    await _plans_active(None)
+    conv = await inbound(tenant, [text])
+    from agentplatform.core.db.pool import tenant_tx
+    async with tenant_tx(tenant) as conn:
+        await conn.execute("update leads set stage='qualificando' where contact_id=%s", (conv["contact_id"],))
+    return conv
+
+
+async def _stage_and_forms(tenant, conv) -> tuple[str, int]:
+    from agentplatform.core.db.pool import tenant_tx
+    async with tenant_tx(tenant) as conn:
+        lead = await (await conn.execute("select id, stage from leads where contact_id=%s", (conv["contact_id"],))).fetchone()
+        forms = await (await conn.execute("select count(*) as n from lead_forms where lead_id=%s", (lead["id"],))).fetchone()
+    return lead["stage"], forms["n"]
+
+
+async def test_someone_ready_gets_no_form_and_is_asked_about_the_seller(tenant):
+    conv = await _lead_about_to_be_ready(tenant, "pra casa, uns 100 mil")
+    prompts = []
+
+    def reply(msgs):
+        prompts.append(msgs[0]["content"])
+        return draft("Show! Posso chamar o consultor para seguir com você?")
+    g = ScriptedGateway({"analyze_turn": [analysis(intents=["provide_info"], stage="qualificando",
+                                                   slots=[("goal", "real_estate", "pra casa"), ("credit_amount", "100 mil", "100 mil")])],
+                         "respond": [reply], "output_judge": [{"violations": [], "explanation": ""}]})
+    res = await TurnRunner(TurnDeps(config=_sim_cfg(), package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
+    assert res.status == "committed" and "create_lead_form_link" not in res.trace["tools"]
+    assert PKG.manifest.ready_question in prompts[0] and "/f/" not in prompts[0]
+    assert await _stage_and_forms(tenant, conv) == ("pronto_para_proposta", 0)
+    assert "/f/" not in await _sent_text(tenant, conv)
+
+
+async def test_saying_no_with_the_last_answer_does_not_start_the_next_step(tenant):
+    """Nothing is asked, and the reminder of that stage is not scheduled for someone who just said not now."""
+    conv = await _lead_about_to_be_ready(tenant, "pra casa, uns 100 mil, mas só ano que vem")
+    prompts = []
+
+    def reply(msgs):
+        prompts.append(msgs[0]["content"])
+        return draft("Tranquilo, quando fizer sentido é só chamar.")
+    g = ScriptedGateway({"analyze_turn": [analysis(intents=["provide_info", "not_interested"], stage="qualificando",
+                                                   slots=[("goal", "real_estate", "pra casa"), ("credit_amount", "100 mil", "100 mil")])],
+                         "respond": [reply], "output_judge": [{"violations": [], "explanation": ""}]})
+    res = await TurnRunner(TurnDeps(config=_sim_cfg(), package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
+    assert res.status == "committed" and PKG.manifest.ready_question not in prompts[0]
+    assert await _stage_and_forms(tenant, conv) == ("qualificando", 0)
+
+
+async def test_saying_yes_to_the_seller_is_a_hot_lead(tenant):
+    conv = await _lead_about_to_be_ready(tenant, "pode sim")
+    from agentplatform.core.db.pool import tenant_tx
+    async with tenant_tx(tenant) as conn:
+        await conn.execute("update leads set stage='pronto_para_proposta' where contact_id=%s", (conv["contact_id"],))
+    g = ScriptedGateway({"analyze_turn": [analysis(intents=["ready_to_buy"], stage="pronto_para_proposta")]})
+    await TurnRunner(TurnDeps(config=_sim_cfg(), package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
+    async with tenant_tx(tenant) as conn:
+        h = await (await conn.execute("select reason from handoffs where conversation_id=%s", (conv["id"],))).fetchall()
+    assert [r["reason"] for r in h] == ["hot_lead"]
+    assert (await _stage_and_forms(tenant, conv))[1] == 0
+
+
+@pytest.mark.parametrize("offer", ["Show! Posso chamar o consultor para seguir com você?",
+                                   "A parcela depende do prazo. Quer que eu chame o consultor para te mostrar as opções?"])
+async def test_a_lone_yes_to_the_offer_calls_the_seller_even_if_the_classifier_sees_nothing(tenant, offer):
+    conv = await _lead_about_to_be_ready(tenant, "bora")
+    from agentplatform.core.db.pool import tenant_tx
+    async with tenant_tx(tenant) as conn:
+        await conn.execute("update leads set stage='pronto_para_proposta' where contact_id=%s", (conv["contact_id"],))
+        lead = await (await conn.execute("select tenant_id from leads where contact_id=%s", (conv["contact_id"],))).fetchone()
+        await conn.execute("insert into messages (tenant_id, conversation_id, direction, kind, text_masked, provider_ts) "
+                           "values (%s,%s,'out_bot','text',%s,now() - interval '1 minute')",
+                           (lead["tenant_id"], conv["id"], offer))
+    g = ScriptedGateway({"analyze_turn": [analysis(intents=["greeting"], stage="pronto_para_proposta")]})
+    await TurnRunner(TurnDeps(config=_sim_cfg(), package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
+    async with tenant_tx(tenant) as conn:
+        h = await (await conn.execute("select reason from handoffs where conversation_id=%s", (conv["id"],))).fetchall()
+    assert [r["reason"] for r in h] == ["hot_lead"]
+
+
+async def test_the_offer_is_not_made_again_while_it_is_in_the_conversation(tenant):
+    conv = await _lead_about_to_be_ready(tenant, "e quanto tempo demora?")
+    from agentplatform.core.db.pool import tenant_tx
+    async with tenant_tx(tenant) as conn:
+        await conn.execute("update leads set stage='pronto_para_proposta' where contact_id=%s", (conv["contact_id"],))
+        lead = await (await conn.execute("select tenant_id from leads where contact_id=%s", (conv["contact_id"],))).fetchone()
+        for minutes, text in ((3, "Quer que eu chame o consultor para te mostrar as opções?"), (1, "Depende do grupo.")):
+            await conn.execute("insert into messages (tenant_id, conversation_id, direction, kind, text_masked, provider_ts) "
+                               "values (%s,%s,'out_bot','text',%s,now() - make_interval(mins => %s))",
+                               (lead["tenant_id"], conv["id"], text, minutes))
+    prompts = []
+
+    def reply(msgs):
+        prompts.append(msgs[0]["content"])
+        return draft("Costuma depender do grupo.")
+    g = ScriptedGateway({"analyze_turn": [analysis(intents=["provide_info"], stage="pronto_para_proposta")],
+                         "respond": [reply], "output_judge": [{"violations": [], "explanation": ""}]})
+    await TurnRunner(TurnDeps(config=_sim_cfg(), package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
+    assert prompts and PKG.manifest.ready_question not in prompts[0]
+
+
 async def test_form_link_is_never_lost(tenant):
-    """Minimum profile complete: the pre-registration link is created and the stage moves on, so the reply must carry it.
+    """A package that sends a form. Minimum profile complete: the link is created and the stage moves on, so the reply must carry it.
     The model forgets it twice: the code appends it instead of sending a reply without the link."""
     await _plans_active(None)
     conv = await inbound(tenant, ["pra casa, uns 100 mil"])
@@ -137,7 +247,7 @@ async def test_form_link_is_never_lost(tenant):
     g = ScriptedGateway({"analyze_turn": [analysis(intents=["provide_info"], stage="qualificando",
                                                    slots=[("goal", "real_estate", "pra casa"), ("credit_amount", "100 mil", "100 mil")])],
                          "respond": [draft("Show! Quer garantir a sua com o pré-cadastro?")] * 2})
-    res = await TurnRunner(TurnDeps(config=_sim_cfg(), package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
+    res = await TurnRunner(TurnDeps(config=_sim_cfg(), package=_package_that_sends_a_form(), gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
     assert res.status == "committed" and "create_lead_form_link" in res.trace["tools"] and res.trace["attempts"] == 2
     assert "/f/" in await _sent_text(tenant, conv)
 

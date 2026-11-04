@@ -33,9 +33,9 @@
 <div class="muted small">{{ k.text[:400] }}{% if k.text | length > 400 %}…{% endif %}</div></div>
 {% else %}<p class="muted small">Nada encontrado no material aprovado.</p>{% endfor %}</div>
 
+{% endif %}
 {% if user.role in ('tenant_owner', 'platform_admin') %}<form method="post" action="/console/knowledge/settings" class="card">{{ csrf_input(user) }}
 <input type="hidden" name="faq_threshold" value="{{ values.faq_threshold }}"><input type="hidden" name="min_score" value="{{ values.min_score }}"><input type="hidden" name="top_k" value="{{ values.top_k }}">
 <div class="row"><div class="field"><label>Ficou melhor com estes números? Anotação</label><input name="note" maxlength="300" placeholder="ex.: mais rigoroso, para não responder com trecho fraco"></div>
 <button>{{ icon('check', 16) }} Criar rascunho com estes números</button></div></form>{% endif %}
-{% endif %}
 {% endblock %}

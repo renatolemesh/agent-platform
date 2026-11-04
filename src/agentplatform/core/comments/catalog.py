@@ -48,7 +48,7 @@ async def _upsert(conn: AsyncConnection, tenant_id: UUID, channel_account_id: UU
            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())
            on conflict (tenant_id, external_media_id) do update set
              media_type=excluded.media_type, caption_masked=excluded.caption_masked, permalink=excluded.permalink,
-             image_url=excluded.image_url, posted_at=excluded.posted_at, comments_count=excluded.comments_count, synced_at=now()""",
+             image_url=excluded.image_url, posted_at=excluded.posted_at, comments_count=excluded.comments_count, synced_at=now(), removed_at=null""",
         (tenant_id, channel_account_id, m.external_id, m.kind, m.media_type, mask(m.caption).text if m.caption else None,
          m.permalink, m.image_url, m.posted_at, m.comments_count))
 

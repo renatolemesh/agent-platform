@@ -130,6 +130,11 @@ async def evaluate_alerts(conn: AsyncConnection, tenant_id: UUID, cfg: OpsAlerts
         out.append(OpsAlert(f"outbox_stuck:{t}", tenant_id, "Envios parados no outbox",
                             f"{r['n']} item(ns) há mais de {cfg.outbox_stuck_minutes} min sem envio. Veja o runbook de fila travada."))
     r = await (await conn.execute(
+        "select count(*) as n from post_drafts where status in ('failed','unknown') and updated_at > now() - interval '1 day'")).fetchone()
+    if r["n"]:
+        out.append(OpsAlert(f"posts_attention:{t}", tenant_id, "Posts que não saíram",
+                            f"{r['n']} post(s) aprovados não foram publicados ou precisam ser conferidos no Instagram. Veja Posts no console."))
+    r = await (await conn.execute(
         "select count(*) as n from turns where status='failed' and started_at > now() - interval '1 hour'")).fetchone()
     if r["n"] >= cfg.turn_failures_per_hour:
         out.append(OpsAlert(f"turn_failures:{t}", tenant_id, "Turnos falhando",

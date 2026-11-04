@@ -76,6 +76,10 @@ services:
     volumes:
       - ../scripts/docker/secrets-entrypoint.sh:/usr/local/bin/secrets-entrypoint.sh:ro
       - webhook_spool:/var/spool/agentplatform     # durable spool while Postgres is down (07 §1); api only
+      - api_uploads:/var/tmp/uploads               # a file being received: /tmp is memory and counts against the limit below
+    environment:
+      PUBLIC_BASE_URL: https://${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN}
+      TMPDIR: /var/tmp/uploads
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 15s
@@ -310,6 +314,7 @@ volumes:
   caddy_data: {}
   caddy_config: {}
   webhook_spool: {}
+  api_uploads: {}
   prometheus_data: {}
   grafana_data: {}
 

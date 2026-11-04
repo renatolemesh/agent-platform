@@ -348,7 +348,8 @@ async def test_models_form_keeps_the_family_rule_and_only_offers_priced_models(t
         token = await csrf(c, "/console/assistant/models")
         bad = await c.post("/console/assistant/models", data={"csrf": token, "respond_primary": "unknown/model"})
         assert bad.status_code == 400
-        ok = await c.post("/console/assistant/models", data={"csrf": token, "respond_primary": "deepseek/deepseek-v4-flash", "respond_fallback": "google/gemini-3.1-flash-lite"})
+        ok = await c.post("/console/assistant/models", data={"csrf": token, "respond_primary": "deepseek/deepseek-v4-flash", "respond_fallback": "google/gemini-3.1-flash-lite",
+                                                                  "transcription": "openai/whisper-large-v3-turbo"})
     assert ok.status_code == 303
     d = (await version(tenant, uuid.UUID(ok.headers["location"].split("proposta=")[1])))["document"]
     assert d["models"]["respond"]["primary"] == "deepseek/deepseek-v4-flash" and d["models"]["respond"]["fallbacks"] == ["google/gemini-3.1-flash-lite"]
@@ -377,7 +378,7 @@ async def test_owner_can_turn_a_guideline_off_and_add_their_own(tenant):
             "own_phrases": "aproveite só hoje\n"})
     assert r.status_code == 303
     d = (await version(tenant, uuid.UUID(r.headers["location"].split("proposta=")[1])))["document"]
-    assert {"id": target.id, "enabled": False, "priority": None} in d["guidelines"]["overrides"]
+    assert {"id": target.id, "enabled": False, "priority": None, "action": None} in d["guidelines"]["overrides"]
     assert d["guidelines"]["custom"][0]["when_keywords"] == ["visita", "presencial"]
     assert "aproveite só hoje" in d["compliance"]["forbidden_phrases"]
     assert set(PKG.manifest.compliance.forbidden_phrases) <= set(d["compliance"]["forbidden_phrases"]), "the package's stay"
@@ -783,7 +784,7 @@ async def test_alike_questions_are_grouped_answered_together_and_can_be_separate
         await service.report_gap(conn, tenant, "qual o valor da parcela do carro?", None)
         await service.report_gap(conn, tenant, "valor da parcela de um carro", None)
         await service.report_gap(conn, tenant, "vocês atendem em Campinas?", None)
-        rows = await (await conn.execute("select id, question_masked, frequency, cluster_id from curation_queue where tenant_id=%s order by created_at", (tenant,))).fetchall()
+        rows = await (await conn.execute("select id, question_masked, frequency, cluster_id from curation_queue where tenant_id=%s order by question_masked", (tenant,))).fetchall()
     leader = rows[0]
     assert leader["frequency"] == 2 and rows[1]["cluster_id"] == leader["id"] and rows[2]["cluster_id"] is None
     monkeypatch.setattr(get_settings(), "llm_provider", "openrouter")
@@ -1139,7 +1140,7 @@ async def test_a_person_can_read_why_the_assistant_said_that(tenant):
     async with client() as c:
         await signed_in(c, tenant)
         page = (await c.get(f"/console/conversations/{conv['id']}")).text
-    assert "por que respondeu isso" in page and 'data-explain-source="faq"' in page and "Como funciona?" in page and CFG.models.respond.prompt_version in page
+    assert "Por que respondeu isso" in page and 'data-explain-source="faq"' in page and "Como funciona?" in page and CFG.models.respond.prompt_version in page
 
 
 async def test_an_answer_without_basis_says_so(tenant):
@@ -1313,4 +1314,18 @@ def test_older_prompts_still_render_with_the_new_variables():
                   fix_reasons=None, profile="-", require_with={}, reply_examples=[], summary="-", recent="-", origin=[], turn_input="- oi", knowledge="no_basis",
                   tool_results="(nenhum)", assistant_name="Bia", tone_instruction="x", business_instructions="y")
 
+
+@pytest.mark.parametrize("limits, unlocks", [({}, True), ({"repeats": 1}, False), ({"max_scenarios": 10}, False)])
+async def test_only_a_complete_evaluation_unlocks_activation(db, monkeypatch, limits, unlocks):
+    """The command line used to run 10 of the scenarios by default, and that passed as approval for production."""
+    from agentplatform.lab import gate as G
+
+    async def no_spend(cfg, pkg, slug, gateway, res, max_scenarios, repeats, verbose, output):
+        return None
+    monkeypatch.setattr(G, "_live_levels", no_spend)
+    res = await G.run_gate(RAW, PKG, "t", "full", object(), **limits)
+    assert res.passed, "the scores themselves are fine"
+    async with platform_tx() as conn:
+        exp = await (await conn.execute("select variants from experiments where id=%s", (res.experiment_id,))).fetchone()
+    assert exp["variants"]["passed"] is unlocks and res.partial is not unlocks
 

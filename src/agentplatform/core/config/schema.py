@@ -55,6 +55,7 @@ class ModelRef(Strict):
     provider: ProviderPolicy = ProviderPolicy()
     dims: PosInt | None = None          # embeddings only
     timeout_s: Annotated[float, Field(gt=0, le=60)] = 10
+    batch_timeout_s: Annotated[float, Field(gt=0, le=300)] = 60      # several texts at once, when indexing: nobody is waiting for it
 
 
 class ModelsConfig(Strict):
@@ -186,6 +187,7 @@ class GuidelineOverride(Strict):
     id: str
     enabled: bool = True
     priority: int | None = None
+    action: Annotated[str, Field(min_length=1, max_length=1500)] | None = None      # this account's words for what the guideline asks
 
 
 class CustomGuideline(Strict):
@@ -378,7 +380,7 @@ class CommentsConfig(Strict):
     sensitive_patterns: list[str] = [r"\b(golpe|golpist\w*|fraude|enganad\w*|reclama\w*|procon|processar|advogad\w*|roubo|vergonha|lixo|picaret\w*)\b"]
     attention_patterns: list[str] = [r"\?"]        # comments the seller should see even when nothing is sent (questions)
     any_ignore_patterns: list[str] = [r"^[^a-z0-9]*$", r"^(@\w+\s*)+$"]   # "any comment" skips emoji-only and friend tags
-    disclosure_terms: list[str] = ["assistente"]   # the first automatic direct must identify the assistant (persona.disclose_on_first_message)
+    disclosure_terms: list[str] = ["assistente", "atendimento virtual"]   # the first automatic direct must identify the assistant (persona.disclose_on_first_message)
     min_public_variants: PosInt = 3                # no identical mass replies
     public_max_chars: PosInt = 300
     private_max_chars: PosInt = 640
@@ -409,7 +411,9 @@ class CadenceStep(Strict):
 class Cadence(Strict):
     _removed: ClassVar[frozenset[str]] = frozenset({"stop_on"})     # the conversation's events stop every run (orchestration)
     id: str
-    trigger: dict
+    label: str = ""                            # the name in the console; empty means the id, humanized
+    enabled: bool = True
+    trigger: dict                              # event: stage_entered | bot_message_unanswered; stages: [...]
     steps: list[CadenceStep]
     max_attempts: PosInt = 1
 
@@ -417,6 +421,10 @@ class Cadence(Strict):
 class FollowupsConfig(Strict):
     enabled: bool = True
     cadences: list[Cadence] = []
+    texts: dict[str, str] = {}                 # this account's words for the package's reminder templates
+    stalled_after: Annotated[str, Field(pattern=r"^\d+\s*[smhd]$")] = "24h"   # silence that lists a contact as stalled in the console
+    min_delay: Annotated[str, Field(pattern=r"^\d+\s*[smhd]$")] = "15m"       # the shortest wait a rule may set in the console
+    max_steps: PosInt = 3                      # attempts a rule may have in the console
 
 
 # ---------- compliance (merge must be monotonic) ----------
@@ -502,6 +510,7 @@ class KnowledgeConfig(Strict):
     processing_max_requeues: PosInt = 3
     faq_question_max_chars: PosInt = 200
     faq_answer_max_chars: PosInt = 1000
+    passage_max_chars: PosInt = 4000
 
 
 class ReviewConfig(Strict):
@@ -514,12 +523,31 @@ class ReviewConfig(Strict):
     violation_categories: list[str] = ["compliance"]
 
 
+class PostsConfig(Strict):
+    """Posts written in the console and published through the provider (ADR-024)."""
+    publishing_enabled: bool = False           # off until the provider grants the permission and someone turns it on
+    caption_max_chars: PosInt = 2200
+    caption_max_hashtags: PosInt = 30
+    caption_max_mentions: PosInt = 20
+    carousel_max_items: PosInt = 10
+    max_image_bytes: PosInt = 8_000_000
+    max_video_bytes: PosInt = 100_000_000      # the edge proxy has to allow this too (docker/Caddyfile)
+    file_chunk_bytes: PosInt = 1_000_000       # what the small API process holds in memory per file
+    image_min_width: PosInt = 320
+    image_min_ratio: Annotated[float, Field(gt=0)] = 0.8      # width / height the provider accepts in the feed
+    image_max_ratio: Annotated[float, Field(gt=0)] = 1.91
+    max_per_day: PosInt = 10                   # ours, well under the provider's limit: a queue of mistakes stops here
+    late_after_min: PosInt = 60                # an approved post this late waits for a person instead of going out
+    container_wait_min: PosInt = 5             # how long the provider may take with a file before the attempt ends
+
+
 class OperationsConfig(Strict):
     _removed: ClassVar[frozenset[str]] = frozenset({"trace_sampling", "canary_percent"})
     alerts: OpsAlertsConfig = OpsAlertsConfig()
     review: ReviewConfig = ReviewConfig()
     knowledge: KnowledgeConfig = KnowledgeConfig()
     datasets: DatasetsConfig = DatasetsConfig()
+    posts: PostsConfig = PostsConfig()
     feature_flags: dict[str, bool] = {}
     dm_recovery_enabled: bool = True           # after an outage, directs the provider gave up delivering are read back
     dm_recovery_lookback_minutes: PosInt = 180
@@ -529,7 +557,7 @@ class OperationsConfig(Strict):
     retention_days: dict[str, PosInt] = {
         "inbound_raw": 30, "media": 30, "messages_original": 365, "comments": 365, "llm_calls": 365, "checkpoints": 30,
         "ownership_evidence": 90, "dead_letters": 30, "tool_call_args": 90, "handoff_summaries": 365,
-        "lead_forms": 730, "audit_log": 1825, "reviews": 365, "invites": 30}
+        "lead_forms": 730, "audit_log": 1825, "reviews": 365, "invites": 30, "post_drafts": 90}
 
 
 class PackageRef(Strict):

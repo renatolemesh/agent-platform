@@ -143,6 +143,7 @@ async def auto_return_to_bot(conn: AsyncConnection, cfg: PlatformConfig, tenant_
         """select distinct on (c.id) c.id, c.ownership, a.id as handoff_id from handoffs a join conversations c on c.id = a.conversation_id
            where a.tenant_id=%(t)s and a.reason = any(%(reasons)s) and a.taken_at is null and not a.is_notice and a.created_at < %(before)s
              and (c.ownership = 'AWAITING_HUMAN' or (c.ownership = 'BOT' and c.handoff_pending))
+             and not exists (select 1 from contact_identities ci where ci.contact_id = c.contact_id and ci.channel = 'simulator')
              and not exists (select 1 from handoffs b where b.conversation_id = c.id and b.taken_at is null and not b.is_notice
                              and b.reason <> all(%(reasons)s) and b.reason <> 'human_unanswered')
              and not exists (select 1 from messages m where m.conversation_id = c.id and m.direction = 'out_human' and m.provider_ts > a.created_at)

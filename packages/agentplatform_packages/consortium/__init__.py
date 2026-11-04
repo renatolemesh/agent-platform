@@ -12,7 +12,7 @@ from agentplatform.core.packages.contract import DatasetSpec, PackageManifest, T
 
 MANIFEST = PackageManifest.model_validate(yaml.safe_load((Path(__file__).parent / "manifest.yaml").read_text(encoding="utf-8")))
 
-Goal = Literal["real_estate", "vehicle", "heavy_vehicle", "services", "other_movable"]
+Goal = Literal["real_estate", "vehicle", "heavy_vehicle", "services", "other_movable", "resale"]
 
 
 GOAL_LABELS = next(s for s in MANIFEST.slots if s.name == "goal").value_labels
@@ -96,7 +96,10 @@ def approx_up(v: Decimal, step: int = 10) -> Decimal:
 
 
 def simulate(rows: list[PlanRow], req: SimulateIn, dataset_id: str, version: int, limit: int = 3) -> SimulateOut:
-    cands = [r for r in rows if (req.goal is None or r.goal == req.goal) and
+    wanted = req.goal
+    if wanted == "resale" and not any(r.goal == "resale" for r in rows):
+        wanted = None      # a letter to sell later can come from any plan, unless the table says which
+    cands = [r for r in rows if (wanted is None or r.goal == wanted) and
              (req.term_months is None or r.term_months is None or abs(r.term_months - req.term_months) <= 24)]
     scored = []
     for r in cands:

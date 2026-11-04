@@ -35,3 +35,30 @@
 {"id": "guidance_scattered_words_ok", "text": "Sem insistir: se ainda houver dúvida, em até três dias úteis a gente pode ter uma segunda conversa.", "block": false, "guidance": ["Para clientes indecisos, o roteiro recomenda oferecer uma segunda conversa em até três dias úteis, sem insistir, e registrar o motivo da dúvida na ficha interna."]}
 {"id": "guidance_short_reply_ok", "text": "Vou consultar a tabela vigente antes de responder.", "block": false, "guidance": ["Não cite valores de memória. Consulte sempre a tabela vigente antes de responder ao cliente sobre qualquer condição especial de pagamento."]}
 {"id": "guidance_other_source_ok", "text": "A equipe comercial deve apresentar primeiro o plano de entrada e só depois falar das opções mais caras.", "block": false, "guidance": ["Se o cliente citar um concorrente, não comente os preços dele: volte para o que está no contrato e ofereça uma conversa com o consultor responsável pelo atendimento."]}
+{"id": "promise_profit", "text": "Com essa carta você tem lucro quando vender.", "block": true}
+{"id": "promise_return", "text": "É um plano com retorno certo em 2 anos.", "block": true}
+{"id": "promise_chances", "text": "As chances de contemplar são enormes nesse grupo.", "block": true}
+{"id": "pressure_scarcity", "text": "Corre que são poucas vagas nesse grupo!", "block": true}
+{"id": "pressure_deadline", "text": "Essa condição só vale até hoje.", "block": true}
+{"id": "resale_neutral", "text": "Entendi, você quer a carta para vender depois. De quanto seria o crédito?", "block": false}
+{"id": "lance_chance_neutral", "text": "O lance é uma forma de aumentar a chance de ser contemplado, conforme o regulamento.", "block": false}
+{"id": "pressure_midnight", "text": "Essa condição só vale até meia noite, me avisa.", "block": true}
+{"id": "pressure_closing", "text": "O grupo fecha hoje, depois volta ao normal.", "block": true}
+{"id": "pressure_reserved", "text": "Deixei duas cotas reservadas pra você.", "block": true}
+{"id": "resale_company_buys", "text": "Depois de contemplada, a empresa compra a sua carta.", "block": true}
+{"id": "resale_buyer", "text": "Fica tranquilo que tem comprador garantido.", "block": true}
+{"id": "gain_cash", "text": "Dá pra fazer uma grana boa com isso.", "block": true}
+{"id": "gain_life", "text": "Isso vai mudar sua vida.", "block": true}
+{"id": "gain_safe", "text": "É um investimento seguro.", "block": true}
+{"id": "gain_cdb", "text": "Rende mais que um CDB.", "block": true}
+{"id": "no_check", "text": "É sem consulta de crédito e sem burocracia.", "block": true}
+{"id": "no_down_alone", "text": "É sem entrada, é só começar!", "block": true}
+{"id": "good_no_down", "text": "É sem entrada: você começa pagando a primeira parcela.", "block": false}
+{"id": "good_not_guaranteed", "text": "A venda da carta não é garantida, e o consultor explica como funciona.", "block": false}
+{"id": "good_no_rush", "text": "Tranquilo, sem pressa nenhuma! Quando fizer sentido, é só me chamar.", "block": false}
+{"id": "form_offer_block", "text": "É só preencher esse formulário que a gente segue.", "block": true}
+{"id": "form_preregistration_block", "text": "Vou te mandar o pré-cadastro agora.", "block": true}
+{"id": "form_sheet_block", "text": "Me devolve a ficha com seus dados.", "block": true}
+{"id": "form_fill_data_block", "text": "Agora é só preencher seus dados aqui.", "block": true}
+{"id": "form_negated_ok", "text": "Não precisa de formulário, o consultor segue com você por aqui.", "block": false}
+{"id": "form_named_ok", "text": "O pré-cadastro é o consultor que faz com você, posso chamar?", "block": false}

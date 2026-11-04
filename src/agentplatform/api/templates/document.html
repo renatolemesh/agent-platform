@@ -4,8 +4,10 @@
 <div class="page-head"><div><h1>{{ doc.title }}</h1>
   <p class="sub">{% if doc.processing == 'queued' %}<span class="badge info" data-state="reading">Lendo o arquivo</span>{% elif doc.processing == 'indexing' %}<span class="badge info" data-state="indexing">Preparando para uso</span>{% elif doc.processing == 'failed' %}<span class="badge bad" data-state="failed">Falhou</span>{% else %}<span class="badge {{ doc.status | status_tone }}" data-state="{{ doc.status }}">{{ doc.status | status_label }}</span>{% endif %}
   <span class="muted small">{{ doc.file_name }}{% if doc.pages %} · {{ doc.pages }} página(s){% endif %}{% if doc.approved_at and doc.status == 'approved' %} · aprovado em {{ doc.approved_at | dt }}{% if doc.approver %} por {{ doc.approver }}{% endif %}{% endif %}</span></p></div>
-  {% if own and doc.status != 'do_not_use' and doc.processing != 'queued' %}<form method="post" action="/console/documents/{{ doc.id }}/retire" class="actions">{{ csrf_input(user) }}<button class="btn-ghost">Não usar este documento</button></form>{% endif %}
+  <div class="actions">{% if own and doc.status != 'do_not_use' and doc.processing != 'queued' %}<form method="post" action="/console/documents/{{ doc.id }}/retire" class="inline">{{ csrf_input(user) }}<button class="btn-ghost">Não usar este documento</button></form>{% endif %}
+  {% if own and doc.status != 'approved' and doc.processing not in ('queued', 'indexing') %}<form method="post" action="/console/documents/{{ doc.id }}/delete" class="inline" onsubmit="return confirm('Excluir este documento e todos os trechos? Não dá para desfazer.')">{{ csrf_input(user) }}<button class="btn-danger">Excluir</button></form>{% endif %}</div>
 </div>
+{% if saved %}<div class="alert ok">{{ icon('check', 16) }}<p>{{ saved }}</p></div>{% endif %}
 {% if error %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ error }}</p></div>{% endif %}
 {% if not own %}<div class="alert warn">{{ icon('alert', 16) }}<p>Este documento vem do pacote do segmento: aqui é só leitura.</p></div>{% endif %}
 {% if doc.processing == 'failed' %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ KB_ERROR.get(doc.processing_error, 'Algo deu errado. Tente de novo.') }}</p></div>{% endif %}
@@ -43,15 +45,39 @@
   </form></div>
 {% endif %}
 
+{% if own and doc.status == 'approved' and doc.processing != 'queued' %}
+<details class="card"><summary>Editar nome, uso e validade</summary>
+  <form method="post" action="/console/documents/{{ doc.id }}/details" style="margin-top:14px">{{ csrf_input(user) }}
+    <p class="muted small">Muda na hora e não precisa aprovar de novo: o texto continua o mesmo.</p>
+    <div class="field"><label>Nome do documento</label><input name="title" value="{{ doc.title }}" maxlength="200"></div>
+    <div class="row top">
+      <div class="field"><label>Como o assistente usa</label><select name="visibility" required>{% for k, v in KB_USE.items() %}<option value="{{ k }}" {{ 'selected' if doc.visibility == k }}>{{ v }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Para quem foi feito</label><select name="audience" required>{% for k, v in KB_AUDIENCE.items() %}<option value="{{ k }}" {{ 'selected' if doc.audience == k }}>{{ v }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Versão (opcional)</label><input name="version_label" value="{{ doc.version_label or '' }}" maxlength="60" placeholder="mar/2026"></div>
+    </div>
+    <div class="row top">
+      <div class="field"><label>Vale a partir de (opcional)</label><input type="date" name="effective_from" value="{{ doc.effective_from.isoformat() if doc.effective_from else '' }}"></div>
+      <div class="field"><label>Vale até (opcional)</label><input type="date" name="effective_to" value="{{ doc.effective_to.isoformat() if doc.effective_to else '' }}"></div>
+    </div>
+    <button class="btn-primary">Salvar</button>
+  </form></details>
+{% endif %}
+
 {% if total %}<div class="card flush"><div class="card-head"><div><h2>Trechos que o assistente vai consultar</h2>
   <p class="sub">{{ total }} trecho(s){% if excluded %}, {{ excluded }} fora de uso{% endif %}.{% if alerts %} <b class="warn">{{ alerts }} com alerta.</b>{% endif %}
   {% if only_alerts %}<a href="/console/documents/{{ doc.id }}">Ver todos</a>{% elif alerts %}<a href="/console/documents/{{ doc.id }}?f=alert">Ver só os com alerta</a>{% endif %}</p></div></div>
-  {% for c in chunks %}<div id="c{{ c.id }}" data-chunk style="padding:14px 18px;border-top:1px solid var(--line){% if c.excluded_at %};opacity:.55{% endif %}">
+  {% for c in chunks %}<div id="c{{ c.id }}" data-chunk style="padding:16px 20px;border-top:1px solid var(--line-2){% if c.excluded_at %};opacity:.55{% endif %}">
     <div class="muted small">{% if c.page %}Página {{ c.page }}{% endif %}{% if c.heading_path %} · {{ c.heading_path | join(' / ') }}{% endif %}{% if c.excluded_at %} · <b>fora de uso</b>{% endif %}</div>
-    <p class="small" style="white-space:pre-wrap;margin:6px 0">{{ c.text }}</p>
+    {% if own and editing == c.id %}<form method="post" action="/console/documents/{{ doc.id }}/chunks/{{ c.id }}/text" class="editor">{{ csrf_input(user) }}
+      <div class="field"><label>Texto do trecho</label><textarea name="text" rows="8" maxlength="{{ passage_max }}" autofocus>{{ draft if draft is not none else c.text }}</textarea>
+      {% if doc.status == 'approved' %}<span class="help">Ao salvar, este trecho vai ao provedor de IA para preparar a busca, com retenção zero.</span>{% endif %}</div>
+      <div class="actions"><button class="btn-primary">Salvar trecho</button><a class="btn btn-ghost" href="/console/documents/{{ doc.id }}#c{{ c.id }}">Cancelar</a></div></form>
+    {% else %}<p style="white-space:pre-wrap;margin:6px 0">{{ c.text }}</p>
     {% for f in c.flags %}<span class="badge warn" data-flag="{{ f }}">{{ KB_FLAG.get(f, KB_PII.get(f, f)) }}</span> {% endfor %}
-    {% if own %}<form method="post" action="/console/documents/{{ doc.id }}/chunks/{{ c.id }}" style="margin-top:6px">{{ csrf_input(user) }}<input type="hidden" name="f" value="{{ 'alert' if only_alerts }}">
-      {% if c.excluded_at %}<button class="btn-sm" name="excluded" value="0">Voltar a usar</button>{% else %}<button class="btn-sm btn-ghost" name="excluded" value="1">Tirar este trecho</button>{% endif %}</form>{% endif %}
+    {% if own %}<div class="actions" style="margin-top:8px"><a class="btn btn-sm" href="/console/documents/{{ doc.id }}?edit={{ c.id }}#c{{ c.id }}">Editar texto</a>
+      <form method="post" action="/console/documents/{{ doc.id }}/chunks/{{ c.id }}" class="inline">{{ csrf_input(user) }}<input type="hidden" name="f" value="{{ 'alert' if only_alerts }}">
+      {% if c.excluded_at %}<button class="btn-sm" name="excluded" value="0">Voltar a usar</button>{% else %}<button class="btn-sm btn-ghost" name="excluded" value="1">Tirar este trecho</button>{% endif %}</form></div>{% endif %}
+    {% endif %}
   </div>{% endfor %}</div>
 {% elif doc.processing == 'done' and doc.status == 'in_review' %}<div class="card"><div class="empty">{{ icon('alert', 28) }}<div>Não encontrei texto legível neste arquivo.</div></div></div>{% endif %}
 {% endblock %}

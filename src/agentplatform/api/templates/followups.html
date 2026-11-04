@@ -1,0 +1,80 @@
+{% extends "base.html" %}{% block title %}Follow-ups{% endblock %}{% block body %}
+<div class="page-head"><div><h1>Follow-ups</h1><p class="sub">Quem parou de responder, o que vai sair sozinho e as regras desses lembretes.</p></div></div>
+{% for e in errors %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ e }}</p></div>{% endfor %}
+{% if not on %}<div class="alert info">{{ icon('alert', 16) }}<p>Os lembretes automáticos estão desligados. Nada sai sozinho.</p></div>{% endif %}
+
+<div class="kpis">
+  <div class="kpi {{ 'warn' if stalled }}"><div class="label">{{ icon('users', 15) }} Contatos parados</div><div class="value">{{ stalled | length }}</div><div class="hint">há mais de {{ shown }}</div></div>
+  <div class="kpi"><div class="label">{{ icon('clock', 15) }} Agendados</div><div class="value">{{ upcoming | length }}</div></div>
+  <div class="kpi"><div class="label">{{ icon('check', 15) }} Enviados</div><div class="value">{{ sent }}</div><div class="hint">últimos 7 dias</div></div>
+</div>
+
+<div class="card flush" id="parados">
+  <div class="card-head"><div><h2>Contatos parados</h2><p class="sub">O assistente falou por último e a pessoa não respondeu. Depois que a janela do canal fecha, só uma pessoa da equipe pode retomar, pelo próprio canal.</p></div>
+    <form method="get" action="/console/followups#parados" class="row" style="align-items:flex-end;flex-wrap:nowrap"><div class="field" style="margin:0;flex:0 0 110px;min-width:0"><label for="parado">Parado há</label><input id="parado" name="parado" value="{{ shown }}" placeholder="24h"></div><button class="btn-sm">Filtrar</button></form></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Contato</th><th>Estágio</th><th>Última mensagem do assistente</th><th>Situação</th></tr></thead>
+    <tbody>{% for r in stalled %}<tr>
+      <td><a href="/console/conversations/{{ r.id }}">{{ r | contact_name }}</a></td>
+      <td><span class="badge">{{ stage_label(r.stage, labels) }}</span></td>
+      <td class="muted nowrap">{{ r.last_reply_at | dt }}</td>
+      <td>{% if r.next_due %}<span class="badge info">Lembrete em {{ r.next_due | dt }}</span>{% elif r.window_open %}<span class="badge ok">Janela aberta até {{ r.window_expires_at | dt }}</span>{% else %}<span class="badge warn">Janela fechada: retomar à mão</span>{% endif %}</td>
+    </tr>{% else %}<tr><td colspan="4"><div class="empty">{{ icon('users', 28) }}<div>Ninguém parado há mais de {{ shown }}.</div></div></td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<div class="card flush">
+  <div class="card-head"><div><h2>Próximos envios</h2><p class="sub">Param sozinhos se a pessoa responder, pedir para sair ou se a conversa passar para o vendedor.</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Contato</th><th>Regra</th><th>Sai em</th></tr></thead>
+    <tbody>{% for r in upcoming %}<tr><td><a href="/console/conversations/{{ r.id }}">{{ r | contact_name }}</a></td><td>{{ names.get(r.cadence_id, r.cadence_id | humanize) }}</td><td class="muted nowrap">{{ r.due_at | dt }}</td></tr>
+    {% else %}<tr><td colspan="3"><div class="empty">{{ icon('clock', 28) }}<div>Nenhum lembrete agendado.</div></div></td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<div class="card flush">
+  <div class="card-head"><div><h2>Histórico</h2><p class="sub">Os 50 mais recentes.</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Contato</th><th>Regra</th><th>Resultado</th><th>Quando</th></tr></thead>
+    <tbody>{% for r in history %}{% set st = STATUS.get(r.shown_status, (r.shown_status, 'muted')) %}<tr><td><a href="/console/conversations/{{ r.id }}">{{ r | contact_name }}</a></td><td>{{ names.get(r.cadence_id, r.cadence_id | humanize) }}</td>
+      <td><span class="badge {{ st[1] }}">{{ st[0] }}</span>{% if r.stop_reason and r.shown_status != 'sent' %} <span class="muted small">{{ r.stop_reason | followup_stop }}</span>{% endif %}</td><td class="muted nowrap">{{ r.at | dt }}</td></tr>
+    {% else %}<tr><td colspan="4"><div class="empty">{{ icon('clock', 28) }}<div>Nenhum lembrete ainda.</div></div></td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<section class="section" id="regras"><div class="section-head"><h2>Regras</h2><p>{% if can_edit %}Salvar cria um <b>rascunho</b>: nada muda para os clientes até outra pessoa aprovar em <a href="/console/config">Configuração</a>.{% else %}Quem é responsável pela conta pode mudar estas regras.{% endif %}</p></div>
+<div class="card"><p class="muted small" style="margin:0">Vale para todas as regras: o lembrete só sai com a janela do canal aberta{% if window %} ({{ window }} desde a última mensagem da pessoa){% endif %}, fora do horário de silêncio e dentro do limite de {{ sending.frequency_cap_per_contact_day }} por dia e {{ sending.frequency_cap_per_contact_week }} por semana. Cada tentativa sai no máximo uma vez por conversa.{% if can_edit %} O silêncio e os limites ficam em <a href="/console/assistant/more">Mais ajustes</a>.{% endif %}</p>
+{% if can_edit %}</div></section>
+<form method="post" action="/console/followups">{{ csrf_input(user) }}
+<section class="section"><div class="section-head"><h2>Geral</h2><p>Desligado, nada sai sozinho, nem o que já estava agendado.</p></div><div class="card">
+  <label class="check"><input type="checkbox" name="followups_enabled" {{ 'checked' if on }}> <span>Lembretes automáticos ligados</span></label>
+  <div class="field" style="max-width:260px;margin-top:12px"><label for="stalled_after">Contato parado depois de</label><input id="stalled_after" name="stalled_after" value="{{ stalled_after }}" required><span class="help">O filtro padrão da lista acima.</span></div>
+</div></section>
+{% for c in rules %}<section class="section"><div class="section-head"><h2>{{ 'Nova regra' if c.is_new else c.name }}</h2><p>{% if c.is_new %}Preencha só se quiser mais um lembrete.{% elif not c.enabled %}Desligada.{% else %}{{ EVENT.get(c.event, c.event) }}.{% endif %}</p></div>
+<div class="card">{% if c.is_new %}<details{{ ' open' if c.name or errors }}><summary><b>Adicionar regra</b></summary>{% endif %}
+  <div class="row top">
+    <div class="field" style="flex:1"><label for="rule_{{ c.i }}_label">Nome</label><input id="rule_{{ c.i }}_label" name="rule_{{ c.i }}_label" value="{{ c.name }}" maxlength="80"></div>
+    <div class="field" style="flex:1"><label for="rule_{{ c.i }}_event">Quando</label><select id="rule_{{ c.i }}_event" name="rule_{{ c.i }}_event">{% for k, label in EVENT.items() %}<option value="{{ k }}" {{ 'selected' if c.event == k }}>{{ label }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="field"><label>Etapas em que vale</label><div class="row" style="gap:6px 14px">{% for s in stages %}<label class="check" style="margin:0"><input type="checkbox" name="rule_{{ c.i }}_stage_{{ s.name }}" {{ 'checked' if s.name in c.stages }}> <span>{{ s.label or (s.name | humanize) }}</span></label>{% endfor %}</div></div>
+  {% macro attempt(c, st, n) %}<div class="row top">
+    <div class="field" style="flex:0 0 170px;min-width:0"><label for="rule_{{ c.i }}_{{ st.j }}_delay">{{ n }}ª tentativa, depois de</label><input id="rule_{{ c.i }}_{{ st.j }}_delay" name="rule_{{ c.i }}_{{ st.j }}_delay" value="{{ st.delay }}" placeholder="4h"></div>
+    {% if st.editable %}<div class="field" style="flex:1"><label for="rule_{{ c.i }}_{{ st.j }}_text">Texto</label><textarea id="rule_{{ c.i }}_{{ st.j }}_text" name="rule_{{ c.i }}_{{ st.j }}_text" rows="2" maxlength="1000">{{ st.text }}</textarea></div>{% endif %}
+  </div>{% endmacro %}
+  {% for st in c.steps if st.delay or st.text or (c.is_new and st.j == 0) %}{{ attempt(c, st, st.j + 1) }}{% endfor %}
+  {% set blanks = c.steps | rejectattr('delay') | rejectattr('text') | list %}{% if c.is_new %}{% set blanks = blanks[1:] %}{% endif %}
+  {% if blanks %}<details style="margin-bottom:10px"><summary class="small">Adicionar tentativa</summary>{% for st in blanks %}{{ attempt(c, st, st.j + 1) }}{% endfor %}</details>{% endif %}
+  <span class="help">Tempo como 30m, 4h ou 2d, contado a partir da tentativa anterior; o mínimo é {{ min_delay }}. Para tirar uma tentativa, apague o tempo e o texto. O texto passa pelas mesmas regras das respostas.</span>
+  <div class="row" style="margin-top:10px;gap:6px 18px">
+    <label class="check" style="margin:0"><input type="checkbox" name="rule_{{ c.i }}_enabled" {{ 'checked' if c.enabled }}> <span>Regra ligada</span></label>
+    {% if not c.is_new %}<label class="check" style="margin:0"><input type="checkbox" name="rule_{{ c.i }}_remove"> <span>Remover esta regra</span></label>{% endif %}
+  </div>
+{% if c.is_new %}</details>{% endif %}</div></section>{% endfor %}
+<div class="savebar"><div class="field"><label for="note">O que mudou (anotação)</label><input id="note" name="note" maxlength="300" value="{{ note }}" placeholder="ex.: lembrete mais cedo para quem parou"></div>
+<button class="btn-primary">{{ icon('check', 16) }} Criar rascunho</button></div>
+</form>
+{% else %}{% for c in rules if not c.is_new %}<h3 style="margin-top:16px">{{ c.name }} {% if not c.enabled %}<span class="badge muted">Desligada</span>{% endif %}</h3>
+  <p class="muted small">{{ EVENT.get(c.event, c.event) }}: {% for s in stages if s.name in c.stages %}{{ s.label or (s.name | humanize) }}{{ ', ' if not loop.last }}{% endfor %}</p>
+  {% for st in c.steps if st.delay %}<p class="small"><b>Depois de {{ st.delay }}:</b> {{ st.text }}</p>{% endfor %}
+{% else %}<p class="muted" style="margin-top:12px">Nenhuma regra.</p>{% endfor %}</div></section>{% endif %}
+{% endblock %}

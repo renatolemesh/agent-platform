@@ -137,6 +137,37 @@ async def test_webhook_fields_off_in_the_app_are_noticed(response, expected):
     assert got == expected
 
 
+@pytest.mark.parametrize("response, expected", [
+    (httpx.Response(200, json={"data": [{"model_id": "a/um"}, {"model_id": "a/dois"}]}), {"a/um", "a/dois"}),
+    (httpx.Response(200, json={"data": []}), None),                      # an empty list says nothing: no false alarm
+    (httpx.Response(500, text="x"), None),
+    (httpx.Response(200, text="not json"), None),
+])
+async def test_zero_retention_routes_are_read(response, expected):
+    from agentplatform.core.ops.maintenance import zero_retention_models
+    assert await zero_retention_models(transport=httpx.MockTransport(lambda r: response)) == expected
+
+
+def test_a_model_without_a_zero_retention_route_is_noticed_even_as_a_fallback():
+    from agentplatform.core.config.schema import ModelRef, ModelsConfig
+    from agentplatform.core.ops.maintenance import models_without_route
+    node = lambda p, *f: NodeModel(primary=p, fallbacks=list(f), prompt_version="respond@v1")
+    models = ModelsConfig(analyze_turn=node("a/um", "b/reserva"), respond=node("a/um"), output_judge=node("c/juiz"), summarize=node("a/um"),
+                          embedding=ModelRef(model="d/busca", dims=1024), transcription=ModelRef(model="e/voz"))
+    assert models_without_route(models, {"a/um", "c/juiz", "d/busca", "e/voz"}) == {"b/reserva"}
+    assert models_without_route(models, {"a/um", "b/reserva", "c/juiz", "d/busca"}) == {"e/voz"}
+
+
+async def test_the_console_does_not_offer_what_has_no_zero_retention_route(monkeypatch):
+    from agentplatform.api import console_setup
+    from agentplatform.settings import get_settings
+    monkeypatch.setattr(get_settings(), "llm_provider", "openrouter")
+    names = [m["name"] for m in console_setup._model_choices()["transcription"]]
+    assert names == ["openai/whisper-large-v3-turbo"]
+    monkeypatch.setattr(get_settings(), "llm_provider", "openai")
+    assert "openai/gpt-4o-mini-transcribe" in [m["name"] for m in console_setup._model_choices()["transcription"]]
+
+
 # ------------------------------------------------------------------ gateway
 class Out(BaseModel):
     answer: str
@@ -500,6 +531,7 @@ def client(monkeypatch):
 def test_public_pages_exist_for_the_review(client):
     r = client.get("/privacy")
     assert r.status_code == 200 and "Empresa Exemplo" in r.text and "privacidade@exemplo.test" in r.text
+    assert "controladora" in r.text and "operadora" in r.text          # the app serves other companies (ADR-025)
     assert client.get("/data-deletion").status_code == 200
 
 
@@ -568,3 +600,94 @@ def test_compose_gives_the_database_a_way_out_and_the_app_no_owner_password():
     for name in ("api", "worker", "worker-bg"):
         assert "pg_owner_password" not in s[name]["secrets"]
     assert "pg_owner_password" in s["migrate"]["secrets"]
+
+
+# ------------------------------------------------------------------ gateway: the chain on OpenRouter, as measured with the real provider
+def chain_spec(primary, *fallbacks, retries=1) -> NodeModel:
+    return NodeModel(primary=primary, fallbacks=list(fallbacks), prompt_version="respond@v1", retries=retries, max_output_tokens=10)
+
+
+OK_FROM = lambda m: {"model": m, "choices": [{"message": {"content": '{"answer": "oi"}'}}], "usage": {"prompt_tokens": 1, "completion_tokens": 1, "cost": 0.000001}}
+
+
+async def test_a_model_slower_than_our_timeout_goes_to_its_fallback_without_waiting_twice(db):
+    seen = []
+
+    def handler(req):
+        body = json.loads(req.content)
+        seen.append(body["model"])
+        if body["model"] == "mistralai/mistral-small-2603":
+            raise httpx.ReadTimeout("slow", request=req)
+        return httpx.Response(200, json=OK_FROM(body["model"]))
+    r = await gateway(handler, "openrouter").chat(chain_spec("mistralai/mistral-small-2603", "google/gemini-3.1-flash-lite"), [{"role": "user", "content": "x"}], await _ctx(), Out)
+    assert r.model_used == "google/gemini-3.1-flash-lite" and seen == ["mistralai/mistral-small-2603", "google/gemini-3.1-flash-lite"]
+
+
+async def test_a_fallback_refused_for_the_parameters_of_the_first_is_called_with_its_own(db):
+    """OpenRouter answers 404 when the first model of the list sends `temperature` and the next one does not accept it."""
+    bodies = []
+
+    def handler(req):
+        body = json.loads(req.content)
+        bodies.append(body)
+        if body["model"] == "mistralai/mistral-small-2603":
+            return httpx.Response(404, json={"error": {"message": "No endpoints found that can handle the requested parameters."}})
+        return httpx.Response(200, json=OK_FROM(body["model"]))
+    r = await gateway(handler, "openrouter").chat(chain_spec("mistralai/mistral-small-2603", "openai/gpt-5-nano"), [{"role": "user", "content": "x"}], await _ctx(), Out)
+    assert r.model_used == "openai/gpt-5-nano"
+    assert "temperature" in bodies[0] and "reasoning_effort" not in bodies[0]
+    assert "temperature" not in bodies[1] and bodies[1]["reasoning_effort"] == "minimal" and bodies[1]["models"] == ["openai/gpt-5-nano"]
+
+
+async def test_no_credit_stops_at_the_first_model(db):
+    seen = []
+
+    def handler(req):
+        seen.append(json.loads(req.content)["model"])
+        return httpx.Response(402, json={"error": {"message": "no credit"}})
+    with pytest.raises(BudgetDenied):
+        await gateway(handler, "openrouter").chat(chain_spec("mistralai/mistral-small-2603", "openai/gpt-5-nano"), [{"role": "user", "content": "x"}], await _ctx(), Out)
+    assert seen == ["mistralai/mistral-small-2603"]
+
+
+async def test_a_provider_that_only_sends_blank_bytes_still_times_out(db):
+    """Measured on the real provider: blank bytes every few seconds, so a timeout per read never fires and a stuck call held the turn for 40 s."""
+    import asyncio
+    import time
+    seen = []
+
+    class Blank(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            for _ in range(200):
+                await asyncio.sleep(0.05)
+                yield b" "
+
+    def handler(req):
+        body = json.loads(req.content)
+        seen.append(body["model"])
+        if body["model"] == "mistralai/mistral-small-2603":
+            return httpx.Response(200, stream=Blank())
+        return httpx.Response(200, json=OK_FROM(body["model"]))
+    slow = chain_spec("mistralai/mistral-small-2603", "google/gemini-3.1-flash-lite").model_copy(update={"timeout_s": 0.2})
+    t0 = time.monotonic()
+    r = await gateway(handler, "openrouter").chat(slow, [{"role": "user", "content": "x"}], await _ctx(), Out)
+    assert r.model_used == "google/gemini-3.1-flash-lite" and seen == ["mistralai/mistral-small-2603", "google/gemini-3.1-flash-lite"]
+    assert time.monotonic() - t0 < 2, "the limit is the limit, however alive the connection looks"
+
+
+async def test_one_question_has_the_short_limit_and_a_batch_the_long_one(db, monkeypatch):
+    used = []
+
+    def handler(req):
+        return httpx.Response(200, json={"data": [{"index": i, "embedding": [0.1]} for i in range(len(json.loads(req.content)["input"]))], "usage": {"prompt_tokens": 1}})
+    gw = gateway(handler, "openrouter")
+    original = gw._post
+
+    async def spy(path, timeout_s, **kw):
+        used.append(timeout_s)
+        return await original(path, timeout_s, **kw)
+    monkeypatch.setattr(gw, "_post", spy)
+    spec_ = ModelRef(model="qwen/qwen3-embedding-8b", dims=1, timeout_s=5, batch_timeout_s=90)
+    await gw.embed(spec_, ["um"], await _ctx())
+    await gw.embed(spec_, ["um", "dois"], await _ctx())
+    assert used == [5, 90]

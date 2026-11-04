@@ -15,6 +15,7 @@ from agentplatform.core.channels.ports import (
     ChannelCapabilities,
     MediaInfo,
     OutboundMessage,
+    PostItem,
     SendResult,
 )
 
@@ -46,6 +47,16 @@ class FakeChannelAdapter:
     usernames: dict[str, str] = field(default_factory=dict)
     mixed_inbox: bool = False
     contact_pages: list = field(default_factory=list)   # pages of ids; an Exception in the list is raised
+    publish_scope: str | None = None
+    delete_scope: str | None = None
+    post_items: list[PostItem] = field(default_factory=list)
+    carousels: list[tuple[list[str], str]] = field(default_factory=list)
+    post_statuses: dict[str, str] = field(default_factory=dict)         # container -> status; FINISHED unless said otherwise
+    published_posts: list[str] = field(default_factory=list)            # containers actually made public
+    post_failures: dict[str, list[Exception]] = field(default_factory=dict)   # create | status | publish: raised in order
+    publish_then_fail: list[Exception] = field(default_factory=list)    # the post goes out and the answer is lost
+    comments_set: list[tuple[str, bool]] = field(default_factory=list)
+    deleted_media: list[str] = field(default_factory=list)
     _ids: itertools.count = field(default_factory=lambda: itertools.count(1))
 
     def capabilities(self) -> ChannelCapabilities:
@@ -57,6 +68,40 @@ class FakeChannelAdapter:
         if isinstance(page, Exception):
             raise page
         return page, str(i + 1) if i + 1 < len(self.contact_pages) else None
+
+    def _post_failure(self, step: str) -> None:
+        pending = self.post_failures.get(step)
+        if pending:
+            raise pending.pop(0)
+
+    async def create_post_item(self, account: AccountRef, item: PostItem) -> str:
+        self._post_failure("create")
+        self.post_items.append(item)
+        return f"container-{next(self._ids)}"
+
+    async def create_carousel(self, account: AccountRef, children: list[str], caption: str) -> str:
+        self._post_failure("create")
+        self.carousels.append((children, caption))
+        return f"carousel-{next(self._ids)}"
+
+    async def post_status(self, account: AccountRef, container_id: str) -> str:
+        self._post_failure("status")
+        return "PUBLISHED" if container_id in self.published_posts else self.post_statuses.get(container_id, "FINISHED")
+
+    async def publish_post(self, account: AccountRef, container_id: str) -> str:
+        self._post_failure("publish")
+        self.published_posts.append(container_id)
+        if self.publish_then_fail:
+            raise self.publish_then_fail.pop(0)
+        return f"media-{next(self._ids)}"
+
+    async def set_comments_enabled(self, account: AccountRef, media_id: str, enabled: bool) -> None:
+        self._post_failure("comments")
+        self.comments_set.append((media_id, enabled))
+
+    async def delete_media(self, account: AccountRef, media_id: str) -> None:
+        self._post_failure("delete")
+        self.deleted_media.append(media_id)
 
     async def list_media(self, account: AccountRef, limit: int) -> list[MediaInfo]:
         return [m for m in self.media if m.kind != "story"][:limit]

@@ -1,18 +1,36 @@
 {% extends "base.html" %}{% block title %}Posts{% endblock %}{% block body %}
 <div class="page-head">
-  <div><h1>Posts</h1><p class="sub">Escolha o que o assistente faz com os comentários de cada post. Nada é enviado em post inativo.</p></div>
-  <form method="post" action="/console/posts/sync" class="actions">{{ csrf_input(user) }}<button>{{ icon('download', 16) }} Atualizar lista</button></form>
+  <div><h1>Posts</h1><p class="sub">Escreva posts e escolha o que o assistente faz com os comentários de cada um. Nada é enviado em post inativo.</p></div>
+  <div class="actions">{% if account %}<a class="btn btn-primary" href="/console/posts/drafts/new">{{ icon('plus', 16) }} Novo post</a>{% endif %}
+    <form method="post" action="/console/posts/sync" class="inline">{{ csrf_input(user) }}<button>{{ icon('download', 16) }} Atualizar lista</button></form></div>
 </div>
 {% if saved %}<div class="alert ok">{{ icon('check', 16) }}<p>{{ saved }}</p></div>{% endif %}
 {% if notice %}<div class="alert warn">{{ icon('alert', 16) }}<p>{{ notice }}</p></div>{% endif %}
 {% if not account %}<div class="alert warn">{{ icon('alert', 16) }}<p>Conecte uma conta em Canais para listar os posts.</p></div>{% endif %}
+
+{% if drafts %}
+<div class="card flush">
+  <div class="card-head"><div><h2>Escritos aqui</h2><p class="sub">Rascunhos e posts que ainda não saíram.</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th style="min-width:300px">Post</th><th>Tipo</th><th>Situação</th><th>Quando</th></tr></thead>
+    <tbody>{% for d in drafts %}<tr>
+      <td style="min-width:300px"><div class="who-cell">{% if d.thumb %}<img src="/console/posts/drafts/{{ d.id }}/files/{{ d.thumb }}" alt="" width="44" height="44" style="object-fit:cover;border-radius:6px">{% else %}<span class="avatar">{{ icon('image', 16) }}</span>{% endif %}
+        <div><a href="/console/posts/drafts/{{ d.id }}">{{ (d.caption or 'Sem legenda') | truncate(70) }}</a>
+        <div class="muted small">{{ d.files }} arquivo(s){% if d.error %} · {{ d.error | post_error_label }}{% endif %}</div></div></div></td>
+      <td>{{ POST_KIND.get(d.kind, d.kind) }}</td>
+      <td><span class="badge {{ d.status | post_status_tone }}">{{ d.status | post_status_label }}</span></td>
+      <td class="nowrap">{{ (d.scheduled_at or d.updated_at) | dt }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
 
 {% if account %}
 <div class="card"><h2>Quem o assistente atende no direct</h2>
   <p class="muted small">Quem está fora fica com você, como é hoje: o assistente não responde e nada dessas conversas é guardado.</p>
   {% if dm.contacts_synced_at %}<p class="small"><span class="badge ok">Lista pronta</span> <span class="muted">{{ dm.contacts_count }} pessoas que já conversam com a conta ficam fora, salvo se você liberar. Concluída em {{ dm.contacts_synced_at | dt }}. Se o número parecer baixo (a Meta pode mostrar só parte da lista antes da aprovação do app), refaça a lista.</span></p>
   {% else %}<div class="alert warn">{{ icon('alert', 16) }}<p><b>O assistente ainda não atende ninguém novo.</b> Falta terminar a lista de quem já conversa com a conta. Ela é montada sozinha em até 5 minutos, e Atualizar lista adianta.</p></div>{% endif %}
-  {% if dm.contacts_synced_at and user.role == 'tenant_owner' %}<form method="post" action="/console/posts/direct/relist" style="margin:0 0 10px">{{ csrf_input(user) }}<button class="btn-sm btn-ghost">Refazer lista</button></form>{% endif %}
+  {% if dm.contacts_synced_at and user.role in ('tenant_owner', 'platform_admin') %}<form method="post" action="/console/posts/direct/relist" style="margin:0 0 10px">{{ csrf_input(user) }}<button class="btn-sm btn-ghost">Refazer lista</button></form>{% endif %}
   <form method="post" action="/console/posts/direct">{{ csrf_input(user) }}
     {% for key, label in DM_SCOPE.items() %}<label class="small" style="display:flex;gap:8px;align-items:flex-start;margin:6px 0"><input type="radio" name="scope" value="{{ key }}" {{ 'checked' if dm.scope == key }} style="width:auto"> <span>{{ label }}{% if key == 'all' %} <span class="warn">(inclui amigos e família, se a conta for usada para isso)</span>{% endif %}</span></label>{% endfor %}
     <button class="btn-primary" style="margin-top:8px">{{ icon('check', 16) }} Salvar</button>
@@ -68,7 +86,7 @@
 <div class="card flush">
   <div class="card-head"><div><h2>Publicações</h2><p class="sub">Atualizadas a cada 5 minutos. Anúncios e lives aparecem quando recebem o primeiro comentário.</p></div></div>
   <div class="table-wrap"><table>
-    <thead><tr><th style="min-width:300px">Publicação</th><th>O que faz</th><th class="num">Comentários</th><th class="num">Directs</th><th class="num" title="Responderam ao direct">Resp.</th><th class="num" title="Pré-cadastros">Pré-cad.</th><th class="num">Vendas</th></tr></thead>
+    <thead><tr><th style="min-width:300px">Publicação</th><th>O que faz</th><th class="num">Comentários</th><th class="num">Directs</th><th class="num" title="Responderam ao direct">Resp.</th><th class="num" title="Quiseram seguir com o vendedor">Quentes</th><th class="num">Vendas</th></tr></thead>
     <tbody>{% for m in media %}<tr>
       <td style="min-width:300px"><div class="who-cell">{% if m.image_url %}<img src="{{ m.image_url }}" alt="" width="44" height="44" style="object-fit:cover;border-radius:6px">{% else %}<span class="avatar">{{ icon('chat', 16) }}</span>{% endif %}
         <div><a href="/console/posts/{{ m.id }}">{{ (m.caption_masked or m.ad_title or 'Sem legenda') | truncate(70) }}</a>
@@ -76,7 +94,7 @@
       <td><span class="badge {{ 'muted' if m.effective.mode == 'off' else 'ok' }}">{{ m.effective.mode | mode_label }}</span>
         <div class="muted small">{{ 'escolha do post' if m.effective.source == 'post' else 'padrão' }}</div></td>
       <td class="num">{{ m.funnel.comments }}{% if m.funnel.attention %} <a class="small warn" href="/console/comments?f=attention&media={{ m.external_media_id }}">({{ m.funnel.attention }} p/ ver)</a>{% endif %}</td>
-      <td class="num">{{ m.funnel.directs }}</td><td class="num">{{ m.funnel.replied }}</td><td class="num">{{ m.funnel.forms }}</td><td class="num">{{ m.funnel.won }}</td>
+      <td class="num">{{ m.funnel.directs }}</td><td class="num">{{ m.funnel.replied }}</td><td class="num">{{ m.funnel.hot }}</td><td class="num">{{ m.funnel.won }}</td>
     </tr>{% else %}<tr><td colspan="7"><div class="empty">{{ icon('chat', 28) }}<div>Nenhuma publicação ainda.</div><div class="small">Clique em Atualizar lista.</div></div></td></tr>{% endfor %}</tbody>
   </table></div>
 </div>

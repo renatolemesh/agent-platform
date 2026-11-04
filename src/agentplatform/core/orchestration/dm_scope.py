@@ -56,7 +56,9 @@ async def has_conversation(conn: AsyncConnection, channel_account_id: UUID, chan
 
 
 def is_shared_only(ev: CanonicalEvent) -> bool:
-    """A shared reel, a story mention, a sticker: nothing to answer."""
+    """A shared reel, a story mention, a sticker, a heart on a story: nothing to answer."""
+    if ev.event_type == "StoryReply" and not any(c.isalnum() for c in ev.text or ""):
+        return all(a.type in _NO_TURN_ATTACHMENTS for a in ev.attachments)
     if (ev.text or "").strip() or ev.event_type in _INTENTIONAL:     # someone opening through an ad or link, even without words
         return False
     return ev.event_type == "StoryMention" or all(a.type in _NO_TURN_ATTACHMENTS for a in ev.attachments)

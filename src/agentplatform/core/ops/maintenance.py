@@ -9,6 +9,7 @@ import httpx
 from psycopg import AsyncConnection
 
 from agentplatform.core.config.registry import registry
+from agentplatform.core.config.schema import ModelsConfig
 from agentplatform.core.security.keys import decrypt_field
 
 log = logging.getLogger(__name__)
@@ -67,6 +68,23 @@ async def missing_app_fields(app_id: str, app_secret: str, required: set[str], g
         return None
     have = {f.get("name") for s in subs if s.get("object") == "instagram" and s.get("active") for f in s.get("fields", [])}
     return required - have
+
+
+async def zero_retention_models(transport: httpx.AsyncBaseTransport | None = None) -> set[str] | None:
+    """Models OpenRouter can serve with zero data retention. The list changes by itself: a model can lose its only route, and from then on every call
+    to it is refused. None when the answer says nothing either way."""
+    async with httpx.AsyncClient(base_url="https://openrouter.ai/api/v1", transport=transport, timeout=15) as c:
+        try:
+            r = await c.get("/endpoints/zdr")
+            routes = r.json().get("data") if r.status_code < 400 else None
+        except (httpx.HTTPError, ValueError):
+            return None
+    return {e.get("model_id") or e.get("model") for e in routes} if routes else None
+
+
+def models_without_route(models: ModelsConfig, routes: set[str]) -> set[str]:
+    nodes = (models.analyze_turn, models.respond, models.output_judge, models.input_classifier, models.summarize, models.comment_intent, models.image_describe)
+    return ({m for n in nodes if n for m in (n.primary, *n.fallbacks)} | {models.embedding.model, models.transcription.model}) - routes
 
 
 async def check_subscription(page_id: str, page_token: str, required_fields: set[str], app_id: str | None = None,

@@ -10,5 +10,5 @@
   <td class="num">{{ s.replied }} <span class="muted small">({{ pct(s.replied, s.sent) }})</span></td><td class="num">{{ s.opted_out }}</td></tr>
   {% else %}<tr><td colspan="7"><div class="empty">Sem público.</div></td></tr>{% endfor %}</tbody></table></div>
 </div>{% else %}
-<div class="card"><div class="empty">{{ icon('megaphone', 28) }}<div>Nenhuma campanha.</div></div></div>{% endfor %}
+<div class="card"><div class="empty">{{ icon('megaphone', 28) }}<div>Nenhuma campanha.</div><div class="small" style="margin-top:4px">Criar campanhas pelo console depende do WhatsApp aprovado: os envios usam modelos aprovados pela Meta e só vão para quem deu consentimento.</div></div></div>{% endfor %}
 {% endblock %}

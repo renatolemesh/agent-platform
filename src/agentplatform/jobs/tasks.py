@@ -155,7 +155,7 @@ async def run_turn(tenant_id: str, conversation_id: str) -> Next:
             if sd.get("applied"):
                 await on_stage_entered(conn, tr.config, tid, cid, sd["to"], utcnow())
             if res.outbox_ids:
-                await on_bot_message(conn, tr.config, tid, cid, sd.get("to") or "", utcnow())
+                await on_bot_message(conn, tr.config, tid, cid, utcnow())
     return nxt
 
 
@@ -533,12 +533,25 @@ async def config_gate(tenant_id: str, request_id: str) -> Next:
     return []
 
 
+async def post_publish(tenant_id: str, post_id: str) -> Next:
+    """One step of an approved post (ADR-024). The minute tick defers it again while the post is on the way, so the queue never retries."""
+    from agentplatform.core.comments.catalog import accounts
+    from agentplatform.core.posts.publisher import advance
+    rt = get_runtime()
+    tid = UUID(tenant_id)
+    tr = await rt.tenant(tid)
+    found = await accounts(tid)
+    return await advance(tid, UUID(post_id), tr.config, rt.adapters, {a.channel_account_id: a for _, a in found}, rt.settings.public_base_url,
+                         [*tr.package.manifest.allowed_urls, *tr.config.conversation.allowed_urls], utcnow())
+
+
 async def tenants_tick() -> Next:
     """Per tenant: follow-ups, handoff alerts and campaigns. One failing tenant never blocks the others."""
     from agentplatform.core.campaigns.engine import tick as campaign_tick
     from agentplatform.core.followups.engine import tick
     from agentplatform.core.handoff.alerts import auto_return_to_bot, run_alerts
     from agentplatform.core.knowledge.admin import sweep as sweep_knowledge
+    from agentplatform.core.posts.publisher import due_posts
     from agentplatform.lab.gate import sweep_requests
     rt = get_runtime()
     async with platform_tx() as conn:
@@ -559,6 +572,7 @@ async def tenants_tick() -> Next:
                 nxt += await sweep_orphan_sends(tid, conn, tr.config)
                 nxt += await sweep_knowledge(conn, tid, tr.config.operations.knowledge, tr.config.rag.active_index_id)
                 nxt += await sweep_requests(conn, tid, tr.config.operations.evaluation_stuck_after_min)
+                nxt += await due_posts(conn, tid, tr.config.operations.posts)
                 camps = await (await conn.execute(
                     "select id from campaigns where tenant_id=%s and status in ('scheduled','running')", (tid,))).fetchall()
                 campaigns_paused = await registry.kill_switch_on(conn, tenant_id=tid, feature="campaigns")
@@ -723,9 +737,11 @@ async def daily_maintenance() -> Next:
     """Retention sweep (LGPD), token guard, per tenant. Separate transactions and error handling: a provider outage during the
     token check never costs the retention of that day."""
     from agentplatform.core.lgpd.service import retention_sweep
-    from agentplatform.core.ops.maintenance import token_guard
+    from agentplatform.core.ops.maintenance import models_without_route, token_guard, zero_retention_models
+    from agentplatform.core.ops.observability import OpsAlert, record_sent, should_send
     rt = get_runtime()
     s = rt.settings
+    routes = await zero_retention_models() if s.llm_provider == "openrouter" else None
     async with platform_tx() as conn:
         tenants = await (await conn.execute("select id from tenants where status='active'")).fetchall()
     for t in tenants:
@@ -744,4 +760,13 @@ async def daily_maintenance() -> Next:
                                   s.meta_graph_version)
         except Exception:
             log.exception("token guard failed for %s", t["id"])
+        lost = models_without_route(tr.config.models, routes) if routes else None
+        if lost:
+            alert = OpsAlert(f"model_route:{t['id']}", t["id"], "Modelo de IA sem rota com retenção zero",
+                             f"Toda chamada a estes modelos é recusada: {', '.join(sorted(lost))}. Onde há reserva, ela responde por enquanto. Troque em Modelos.")
+            async with platform_tx() as conn:
+                due = await should_send(conn, alert, 24 * 60)
+            if due and await rt.ops.send(alert):
+                async with platform_tx() as conn:
+                    await record_sent(conn, alert)
     return []

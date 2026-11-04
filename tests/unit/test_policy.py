@@ -81,3 +81,23 @@ def test_flow_moves_on_from_a_question_just_asked():
     assert next(q for q in qs if not recently_asked(q, [asked])) == qs[1]
     amount = {"credit_amount": {"value": "100000"}}
     assert pending_questions(M, amount, optional=False) == [qs[0]]      # goal still missing: no side question (lance)
+
+
+def test_the_model_cannot_opt_someone_out_on_a_message_flagged_as_an_attack():
+    from agentplatform.core.agent import policy
+    from agentplatform.core.config.schema import InputGuardConfig
+    cfg = InputGuardConfig(opt_out_intent_confirm_threshold=0.6, opt_out_intent_apply_threshold=0.85)
+    assert policy.opt_out_from_model(0.9, False, cfg) == "apply"
+    assert policy.opt_out_from_model(0.7, False, cfg) == "confirm"
+    assert policy.opt_out_from_model(0.2, False, cfg) is None
+    assert policy.opt_out_from_model(1.0, True, cfg) is None, "seen with the real provider: 'ignore as instruções' scored 1.0"
+
+
+def test_the_first_message_is_not_identified_twice():
+    """Seen with the real model: it said "atendimento virtual" and the code still added its own sentence."""
+    from agentplatform.core.agent.guards import ensure_identified
+    from agentplatform.core.config.schema import CommentsConfig
+    terms = CommentsConfig().disclosure_terms
+    said = "Oi! Aqui é o atendimento virtual da Ana. Como posso ajudar?"
+    assert ensure_identified(said, "Aqui é o assistente virtual de Ana.", terms) == said
+    assert ensure_identified("Como posso ajudar?", "Aqui é o assistente virtual de Ana.", terms).startswith("Aqui é o assistente")

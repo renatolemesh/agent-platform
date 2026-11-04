@@ -31,6 +31,7 @@ from agentplatform.core.knowledge.ingest import (
 from agentplatform.core.knowledge.service import vec_literal
 from agentplatform.core.models import pricing
 from agentplatform.core.models.gateway import BudgetDenied, CallContext, ModelCallError, ModelGateway
+from agentplatform.core.models.pricing import estimate_tokens
 from agentplatform.core.security.keys import decrypt_blob, encrypt_blob
 from agentplatform.core.security.pii import mask
 
@@ -291,6 +292,68 @@ async def request_approval(conn: AsyncConnection, tenant_id: UUID, document_id: 
         (a.visibility, a.audience, a.version_label.strip()[:60] or None, start, end, replaced, user_id, document_id))
 
 
+async def update_document(conn: AsyncConnection, tenant_id: UUID, document_id: UUID, a: Approval) -> None:
+    """Name, use and dates, at any time. They do not touch the text, so an approved document stays in use and nothing goes back to the provider."""
+    doc = await (await conn.execute("select source_id from kb_documents where id=%s and tenant_id=%s for update", (document_id, tenant_id))).fetchone()
+    if not doc:
+        raise Refused("not_found")
+    if a.visibility not in ("citable", "guidance_only") or a.audience not in ("customer", "internal"):
+        raise Refused("missing_choice")
+    if a.audience == "internal" and a.visibility == "citable":
+        raise Refused("internal_citable")
+    start, end = _day(a.effective_from), _day(a.effective_to)
+    if end and end < date.today():
+        raise Refused("expired")
+    if a.title.strip():
+        await conn.execute("update kb_sources set title=%s where id=%s", (a.title.strip()[:200], doc["source_id"]))
+    await conn.execute("update kb_documents set visibility=%s, audience=%s, version_label=%s, effective_from=%s, effective_to=%s where id=%s",
+                       (a.visibility, a.audience, a.version_label.strip()[:60] or None, start, end, document_id))
+
+
+async def edit_chunk(conn: AsyncConnection, tenant_id: UUID, document_id: UUID, chunk_id: UUID, text: str, cfg: KnowledgeConfig, can_index: bool) -> bool:
+    """A person corrects a passage. True when its document is in use, and so it needs a new vector. Personal data stays out here as it does in a file."""
+    text = text.strip()
+    if not text:
+        raise Refused("no_text")
+    if len(text) > cfg.passage_max_chars:
+        raise Refused("passage_too_long", str(cfg.passage_max_chars))
+    if scan_pii([text])["blocking"]:
+        raise Refused("passage_personal_data")
+    doc = await (await conn.execute("select status, processing from kb_documents where id=%s and tenant_id=%s for update", (document_id, tenant_id))).fetchone()
+    if not doc:
+        raise Refused("not_found")
+    in_use = doc["status"] == "approved"
+    if in_use and not can_index:
+        raise Refused("direct_key")
+    row = await (await conn.execute(
+        "update kb_chunks set text=%s, token_count=%s, embedding=null where id=%s and document_id=%s and tenant_id=%s returning ordinal",
+        (text, estimate_tokens(text), chunk_id, document_id, tenant_id))).fetchone()
+    if not row:
+        raise Refused("not_found")
+    await conn.execute(      # the same passage in another search index, while the model is being replaced
+        "update kb_chunks set text=%s, token_count=%s, embedding=null where document_id=%s and ordinal=%s and id<>%s",
+        (text, estimate_tokens(text), document_id, row["ordinal"], chunk_id))
+    await conn.execute("delete from kb_conflicts where status='open' and (chunk_id=%s or other_chunk_id=%s)", (chunk_id, chunk_id))
+    if in_use:
+        await conn.execute("update kb_documents set processing='indexing', processing_at=now(), processing_attempts=0 where id=%s", (document_id,))
+    return in_use
+
+
+async def delete_document(conn: AsyncConnection, tenant_id: UUID, document_id: UUID) -> None:
+    """Gone for good, text included. Only what is not in use: a document in use is first taken out of use, so nobody removes it from the answers by accident."""
+    doc = await (await conn.execute("select source_id, status, processing from kb_documents where id=%s and tenant_id=%s for update", (document_id, tenant_id))).fetchone()
+    if not doc:
+        raise Refused("not_found")
+    if doc["status"] == "approved" or doc["processing"] in ("queued", "indexing"):
+        raise Refused("in_use")
+    await conn.execute("update kb_documents set supersedes=null where supersedes=%s", (document_id,))
+    await conn.execute("delete from kb_conflicts where document_id=%s or other_document_id=%s", (document_id, document_id))
+    await conn.execute("delete from kb_chunks where document_id=%s", (document_id,))
+    await conn.execute("delete from kb_uploads where document_id=%s", (document_id,))
+    await conn.execute("delete from kb_documents where id=%s", (document_id,))
+    await conn.execute("delete from kb_sources where id=%s and not exists (select 1 from kb_documents d where d.source_id=%s)", (doc["source_id"], doc["source_id"]))
+
+
 async def index_document(tenant_id: UUID, document_id: UUID, gateway: ModelGateway | None, embedding: ModelRef, ctx: CallContext, batch_size: int,
                          index_name: str, conflict_similarity: float = 1.0) -> None:
     async with tenant_tx(tenant_id) as conn:
@@ -545,6 +608,18 @@ async def retire_faq(conn: AsyncConnection, tenant_id: UUID, faq_id: UUID) -> No
     row = await (await conn.execute("update faqs set status='retired', processing='done' where id=%s and tenant_id=%s returning id", (faq_id, tenant_id))).fetchone()
     if not row:
         raise Refused("not_found")
+
+
+async def delete_faq(conn: AsyncConnection, tenant_id: UUID, faq_id: UUID) -> None:
+    """Gone for good. Only what is not in use: an approved answer is retired first."""
+    row = await (await conn.execute("select status from faqs where id=%s and tenant_id=%s for update", (faq_id, tenant_id))).fetchone()
+    if not row:
+        raise Refused("not_found")
+    if row["status"] == "approved":
+        raise Refused("in_use")
+    await conn.execute("delete from faq_variant_vectors where variant_id in (select id from faq_variants where faq_id=%s)", (faq_id,))
+    await conn.execute("delete from faq_variants where faq_id=%s", (faq_id,))
+    await conn.execute("delete from faqs where id=%s", (faq_id,))
 
 
 async def index_faq(tenant_id: UUID, faq_id: UUID, gateway: ModelGateway | None, embedding: ModelRef, ctx: CallContext, index_name: str) -> None:

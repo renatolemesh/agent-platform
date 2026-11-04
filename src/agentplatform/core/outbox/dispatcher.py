@@ -54,7 +54,7 @@ def is_national_holiday(day: date) -> bool:
 
 
 # Capability kill switches (scope 'feature'): which capability produced an outbox item, from its effect key.
-FEATURES = ("agent", "comments", "followups", "campaigns")
+FEATURES = ("agent", "comments", "followups", "campaigns", "posts")
 _FEATURE_BY_PREFIX = {"camp:": "campaigns", "cmt:": "comments", "fu:": "followups"}
 
 

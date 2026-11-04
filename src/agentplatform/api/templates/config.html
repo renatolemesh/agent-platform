@@ -49,13 +49,13 @@
 <div class="card"><details {{ 'open' if candidate or error }}><summary>Editar o YAML completo (avançado)</summary><div style="margin-top:12px">
 {% if error %}<div class="alert bad">{{ icon('alert', 16) }}<div style="flex:1"><p><b>Config inválida</b></p><pre style="margin-top:8px">{{ error }}</pre></div></div>{% endif %}
 <form method="post" action="/console/config/preview" enctype="multipart/form-data">{{ csrf_input(user) }}
-<div class="field"><label>YAML completo da configuração</label><textarea name="yaml_text" rows="18" placeholder="cole o YAML aqui">{{ candidate or active_yaml }}</textarea></div>
+<div class="field"><label>YAML completo da configuração</label><textarea class="code" name="yaml_text" rows="18" placeholder="cole o YAML aqui">{{ candidate or active_yaml }}</textarea></div>
 <div class="row" style="align-items:center"><div class="field"><label>ou envie o arquivo</label><input type="file" name="file" accept=".yaml,.yml"></div>
 <button class="btn-primary">Validar e ver diferenças</button></div></form>
 {% if diff and not error %}<h3 style="margin-top:20px">Diferenças em relação à versão ativa <span class="muted small">(já com o compliance do pacote)</span></h3>
 <pre>{% for line in diff.splitlines() %}<span class="{{ 'diff-add' if line.startswith('+') else ('diff-del' if line.startswith('-') else '') }}">{{ line }}</span>
 {% endfor %}</pre>
-<form method="post" action="/console/config/propose" style="margin-top:14px">{{ csrf_input(user) }}<textarea name="yaml_text" hidden>{{ candidate }}</textarea>
+<form method="post" action="/console/config/propose" style="margin-top:14px">{{ csrf_input(user) }}<textarea class="code" name="yaml_text" hidden>{{ candidate }}</textarea>
 <div class="row"><div class="field" style="max-width:220px"><label>Canário (% das conversas)</label><input name="canary_percent" type="number" min="0" max="100" value="0">
 <span class="help">0 = ativa direto quando aprovada</span></div><button class="btn-primary">Propor versão</button></div></form>{% endif %}
 </div></details></div>

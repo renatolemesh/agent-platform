@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 # What a change must reach to be activated. Platform rules, on purpose not in the tenant's configuration: nobody lowers the bar of their own change.
 GATES = {"compliance_block_rate": 1.0, "compliance_false_positive_free": 0.95, "input_guard": 1.0,
-         "analyze_slots": 0.75, "respond": 0.85, "rag": 0.8, "scenarios": 0.85}
+         "analyze_slots": 0.75, "opt_out_intent": 1.0, "respond": 0.85, "rag": 0.8, "scenarios": 0.85}
 SCENARIO_REPEATS = 3            # pass^3: a scenario only counts if it passes every time (plan 10)
 SIMULATED_CUSTOMER = "customer_simulator@v2"
 MAX_FAILURES_KEPT = 12
@@ -31,6 +31,7 @@ class GateResult:
     cost: Decimal = Decimal(0)
     experiment_id: str | None = None
     hash: str = ""
+    partial: bool = False      # fewer scenarios or repeats than a change must reach: worth knowing, but it unlocks nothing
 
     @property
     def passed(self) -> bool:
@@ -44,13 +45,13 @@ class GateResult:
 async def run_gate(cfg: PlatformConfig, pkg: SegmentPackage, slug: str, level: str, gateway=None, *, max_scenarios: int | None = None,
                    repeats: int = SCENARIO_REPEATS, verbose: bool = False, output=None) -> GateResult:
     cfg = resolve_with_package(cfg, pkg.manifest.compliance)
-    res = GateResult(hash=config_hash(cfg))
+    res = GateResult(hash=config_hash(cfg), partial=max_scenarios is not None or repeats < SCENARIO_REPEATS)
     res.scores += [*L.eval_output_guard(cfg, pkg), L.eval_input_guard(cfg, pkg)]
     if level == "full":
         await _live_levels(cfg, pkg, slug, gateway, res, max_scenarios, repeats, verbose, output)
     res.failed = [s.name for s in res.scores if s.rate < GATES.get(s.name, 1.0)]
     res.experiment_id = await L.record_experiment(
-        f"gate:{level}", {"config": slug, "config_hash": res.hash, "passed": res.passed, "repeats": repeats},
+        f"gate:{level}", {"config": slug, "config_hash": res.hash, "passed": res.passed and not res.partial, "repeats": repeats, "max_scenarios": max_scenarios},
         {s.name: {"rate": s.rate, "failures": s.failures} for s in res.scores}, res.cost)
     return res
 
@@ -60,6 +61,9 @@ async def _live_levels(cfg, pkg, slug, gateway, res: GateResult, max_scenarios, 
     a = await L.eval_analyze(cfg, pkg, gateway)
     res.scores.append(a)
     res.cost += a.cost_usd
+    o = await L.eval_opt_out(cfg, pkg, gateway)
+    res.scores.append(o)
+    res.cost += o.cost_usd
     r = await L.eval_respond(cfg, pkg, gateway, cap - res.cost)
     if r.total:
         res.scores.append(r)

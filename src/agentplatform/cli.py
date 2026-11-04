@@ -249,7 +249,9 @@ async def _lab(args) -> None:
         need = G.GATES.get(s.name, 1.0)
         print(f"{'PASS' if s.rate >= need else 'FAIL'}  {s.name:32s} {s.passed}/{s.total} ({s.rate:.0%}, gate {need:.0%})"
               + (f"  failures: {s.failures}" if s.failures else ""))
-    if args.config_version and args.level == "full" and res.passed:
+    if res.partial and args.level == "full":
+        print("avaliação parcial: serve para medir, mas não libera a ativação")
+    if args.config_version and args.level == "full" and res.passed and not res.partial:
         async with platform_tx() as conn:
             await conn.execute("update config_versions set eval_run_id=%s where id=%s and status='draft'", (res.experiment_id, args.config_version))
     await close_pool()
@@ -337,9 +339,9 @@ def main() -> None:
     lab.add_argument("--level", choices=["fast", "full"], default="fast")
     lab.add_argument("--slug", default="dev-consortium")
     lab.add_argument("--config-version", help="avalia um rascunho salvo em vez do arquivo")
-    lab.add_argument("--max-scenarios", type=int, default=10)
+    lab.add_argument("--max-scenarios", type=int, default=None, help="só para medir: com limite, a avaliação não libera a ativação")
     lab.add_argument("--verbose", action="store_true")
-    lab.add_argument("--repeats", type=int, default=3, help="cada cenário precisa passar todas as vezes (pass^k)")
+    lab.add_argument("--repeats", type=int, default=3, help="cada cenário precisa passar todas as vezes (pass^k); com menos de 3, não libera a ativação")
     args = p.parse_args()
     if args.cmd == "migrate":
         cmd_migrate(args)

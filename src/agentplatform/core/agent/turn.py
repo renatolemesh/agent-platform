@@ -407,9 +407,10 @@ class TurnRunner:
         a = AnalyzeOutput.model_validate(s["analysis"])
         u = a.understanding
         turn_text = "\n".join(s["masked_input"])
-        if u.opt_out_intent >= cfg.input_guard.opt_out_intent_apply_threshold:
+        wants_out = policy.opt_out_from_model(u.opt_out_intent, bool(s.get("injection")), cfg.input_guard)
+        if wants_out == "apply":
             return {"route": "opt_out", "opt_out": True, "trace": {**s["trace"], "intents": u.intents, "opt_out_intent": u.opt_out_intent}}
-        if u.opt_out_intent >= cfg.input_guard.opt_out_intent_confirm_threshold:
+        if wants_out == "confirm":
             u.intents.append("opt_out")
         recent_customer = "\n".join([*(m["text"] for m in s["recent"] if m["from"] == "cliente"), *origin_comments(s.get("origin"))])
         slots = policy.apply_slots(self.m, s["profile"], u, turn_text, cfg.funnel,
@@ -417,10 +418,15 @@ class TurnRunner:
         profile_after = {**s["profile"], **slots.accepted}
         stage_dec = policy.decide_stage(self.m, s["stage"], a.stage_proposal, profile_after, cfg.funnel,
                                         filled_this_turn=bool(slots.accepted))
+        if stage_dec.applied and stage_dec.to == self.m.form_stage and policy.stops_asking(self.m, u):
+            stage_dec = policy.StageDecision(False, s["stage"], stage_dec.to, "customer_said_no")     # a next step, and its reminder, wait for another turn
         stage_now = stage_dec.to if stage_dec.applied else s["stage"]
         flags = cfg.operations.feature_flags
         sim_enabled = bool(flags.get(f"{self.m.name}.simulation_enabled"))
         reason = policy.handoff_reason(self.m, u, sim_enabled, stage_now, s["turns_in_stage"], cfg.funnel, cfg.handoff.disabled_reasons)
+        if not reason and "hot_lead" not in cfg.handoff.disabled_reasons and policy.accepted_the_offer(
+                self.m, turn_text, [m["text"] for m in s["recent"] if m["from"] == "assistente"]):
+            reason = "hot_lead"
         if not reason and set(s.get("media_notes") or []) & _NEEDS_A_PERSON_NOTES:
             reason = "media_review"      # images/documents the tenant chose not to process, or an audio the assistant could not hear
         tool_results = await self._run_tools(s, stage_now, profile_after, u, set(slots.accepted))
@@ -452,7 +458,7 @@ class TurnRunner:
                                   "reason": stage_dec.reason, "regression": stage_dec.regression,
                                   "confidence": a.stage_proposal.confidence, "evidence": a.stage_proposal.evidence},
                "stage": stage_now,
-               "next_question": self._next_question(s, profile_after, stage_now),
+               "next_question": None if policy.stops_asking(self.m, u) else self._next_question(s, profile_after, stage_now),
                "tool_results": tool_results,
                "trace": {**s["trace"], "intents": u.intents, "slots_rejected": slots.rejected}}
         if reason:
@@ -522,10 +528,13 @@ class TurnRunner:
         return "\n".join(f"[{c.id}][{c.visibility}] {c.text}" for c in r.chunks)
 
     def _next_question(self, s: TurnState, profile_after: dict, stage_now: str) -> str | None:
-        if self.m.flow_stages and stage_now not in self.m.flow_stages:
-            return None
         n = self.d.config.funnel.question_cooldown_turns
         recent_bot = [m["text"] for m in s["recent"] if m["from"] == "assistente"][-n:] if n else []
+        if stage_now == self.m.form_stage and self.m.ready_question:     # once: it does not come back after the cooldown
+            offered = policy.offered_the_person(self.m, [m["text"] for m in s["recent"] if m["from"] == "assistente"])
+            return None if offered else self.m.ready_question
+        if self.m.flow_stages and stage_now not in self.m.flow_stages:
+            return None
         # a question just asked and not answered is not repeated: the flow moves on to the next required one; optional
         # questions only once the required ones are answered (never a side question while the essentials are missing)
         pending = policy.pending_questions(self.m, profile_after, optional=False) or policy.pending_questions(self.m, profile_after)

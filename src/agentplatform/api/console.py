@@ -23,7 +23,7 @@ import httpx
 import segno
 import yaml
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 from pydantic import ValidationError
@@ -298,8 +298,8 @@ async def users(request: Request):
                 "where u.tenant_id = %s and u.is_active order by u.display_name", (_tid(user),))).fetchall()
     if user["role"] == "platform_admin" and not user.get("acting_tenant"):
         return _page(request, "users.html", {"user": user, "rows": rows})
-    from agentplatform.api.console_setup import users_context
-    return _page(request, "users.html", {"user": user, **await users_context(user)})
+    from agentplatform.api.console_setup import users_page
+    return await users_page(request, user)
 
 
 @router.post("/users/{uid}/totp-reset")
@@ -324,8 +324,9 @@ async def _labels(tid: UUID) -> dict:
     try:
         m = (await get_runtime().tenant_for_setup(tid)).package.manifest
     except Exception:
-        return {"stages": {}, "slots": {}}
-    return {"stages": {st.name: st.label for st in m.stages if st.label}, "slots": {sl.name: sl for sl in m.slots}}
+        return {"stages": {}, "slots": {}, "intents": {}, "stage_list": [], "opt_out_stage": None, "won_stage": None}
+    return {"stages": {st.name: st.label for st in m.stages if st.label}, "slots": {sl.name: sl for sl in m.slots}, "intents": m.intent_labels,
+            "stage_list": m.stages, "opt_out_stage": m.opt_out_stage, "won_stage": m.won_stage}
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -383,9 +384,11 @@ async def conversation(request: Request, cid: UUID):
             "select from_state, to_state, cause, at from ownership_events where conversation_id=%s order by at desc limit 20", (cid,))).fetchall()
         reviews = await review_service.for_conversation(conn, cid)
         explained = await explain_turns(conn, turns)
+    labels = await _labels(tid)
     return _page(request, "conversation.html", {"user": user, "c": conv, "msgs": msgs, "turns": turns, "events": events,
-                                                "origin": origin, "contact_flag": contact_flag, "labels": await _labels(tid),
-                                                "reviews": reviews, "review_cfg": await _review_config(tid), "explained": explained})
+                                                "origin": origin, "contact_flag": contact_flag, "labels": labels,
+                                                "reviews": reviews, "review_cfg": await _review_config(tid), "explained": explained,
+                                                "can_act": user["role"] != "reviewer", "stages": labels["stage_list"], "opt_out_stage": labels["opt_out_stage"], "won_stage": labels["won_stage"]})
 
 
 async def _review_config(tid: UUID) -> ReviewConfig:
@@ -462,6 +465,31 @@ async def set_ownership(request: Request, cid: UUID, to: str = Form(...), next: 
         await answer_pending(tid, cid)
     back = next if next.startswith("/console/") and "//" not in next else f"/console/conversations/{cid}"
     return RedirectResponse(back, status_code=303)
+
+
+@router.post("/conversations/{cid}/stage")
+async def change_stage(request: Request, cid: UUID, stage: str = Form("")):
+    """A person corrects where the lead stands, or undoes a sale marked by mistake. Stopping contact is not a stage to choose: it comes from the person, and leaving it is a legal decision."""
+    user = await require_post(request, "tenant_owner", "seller")
+    tid = _tid(user)
+    from agentplatform.runtime import get_runtime
+    m = (await get_runtime().tenant_for_setup(tid)).package.manifest
+    if stage not in {s.name for s in m.stages} or stage == m.opt_out_stage:
+        raise HTTPException(400)
+    async with tenant_tx(tid) as conn:
+        lead = await (await conn.execute(
+            "select l.id, l.stage, l.opted_out_at from leads l join conversations c on c.contact_id=l.contact_id where c.id=%s", (cid,))).fetchone()
+        if not lead:
+            raise HTTPException(404)
+        if lead["opted_out_at"] or lead["stage"] == m.opt_out_stage:
+            raise HTTPException(409)
+        if lead["stage"] != stage:
+            await conn.execute("update leads set stage=%s, stage_changed_at=now() where id=%s", (stage, lead["id"]))
+            await conn.execute(
+                "insert into lead_stage_history (tenant_id, lead_id, from_stage, to_stage, proposed_by, applied) values (%s,%s,%s,%s,'seller',true)",
+                (tid, lead["id"], lead["stage"], stage))
+            await _audit(conn, tid, UUID(user["id"]), "lead.stage", str(lead["id"]), {"from": lead["stage"], "to": stage})
+    return RedirectResponse(f"/console/conversations/{cid}", status_code=303)
 
 
 @router.post("/conversations/{cid}/won")
@@ -556,7 +584,7 @@ async def documents_upload(request: Request, file: UploadFile | None = None, tit
 
 
 async def _document_page(request: Request, user: dict, tid: UUID, doc_id: UUID, *, error: str | None = None, only_alerts: bool = False,
-                         status_code: int = 200) -> HTMLResponse:
+                         editing: UUID | None = None, draft: str | None = None, saved: str | None = None, status_code: int = 200) -> HTMLResponse:
     from agentplatform.core.knowledge.admin import chunk_flags
     tr = await _kb_runtime(tid)
     async with tenant_tx(tid) as conn:
@@ -584,14 +612,15 @@ async def _document_page(request: Request, user: dict, tid: UUID, doc_id: UUID, 
     chunks = [{**c, "flags": chunk_flags(c["text"], tr.config)} for c in rows]
     return _page(request, "document.html", {
         "user": user, "doc": doc, "own": doc["tenant_id"] == tid, "others": others, "error": error, "conflicts": conflicts, "can_index": _can_index(), "only_alerts": only_alerts,
+        "editing": editing, "draft": draft, "saved": saved, "passage_max": tr.config.operations.knowledge.passage_max_chars,
         "chunks": [c for c in chunks if c["flags"]] if only_alerts else chunks, "total": len(chunks), "alerts": sum(1 for c in chunks if c["flags"]),
         "excluded": sum(1 for c in chunks if c["excluded_at"]), "processing": doc["processing"] in ("queued", "indexing")}, status_code)
 
 
 @router.get("/documents/{doc_id}", response_class=HTMLResponse)
-async def document_page(request: Request, doc_id: UUID, f: str = ""):
+async def document_page(request: Request, doc_id: UUID, f: str = "", edit: UUID | None = None, saved: str | None = None):
     user = require(request, *KB_ROLES)
-    return await _document_page(request, user, _tid(user), doc_id, only_alerts=f == "alert")
+    return await _document_page(request, user, _tid(user), doc_id, only_alerts=f == "alert", editing=edit, saved=saved)
 
 
 @router.post("/documents/{doc_id}/approve", response_class=HTMLResponse)
@@ -610,6 +639,56 @@ async def document_approve(request: Request, doc_id: UUID, title: str = Form("")
         return await _document_page(request, user, tid, doc_id, error=ui.kb_refusal(e.reason, e.detail), status_code=400)
     await _queue([K.index_job(tid, doc_id)])
     return RedirectResponse(f"/console/documents/{doc_id}", status_code=303)
+
+
+@router.post("/documents/{doc_id}/details", response_class=HTMLResponse)
+async def document_details(request: Request, doc_id: UUID, title: str = Form(""), visibility: str = Form(""), audience: str = Form(""),
+                           version_label: str = Form(""), effective_from: str = Form(""), effective_to: str = Form("")):
+    from agentplatform.core.knowledge import admin as K
+    user = await require_post(request, *KB_ROLES)
+    tid = _tid(user)
+    try:
+        async with tenant_tx(tid) as conn:
+            await K.update_document(conn, tid, doc_id, K.Approval(title, visibility, audience, version_label, effective_from, effective_to))
+            await _audit(conn, tid, UUID(user["id"]), "kb.document_update", str(doc_id), {"visibility": visibility, "audience": audience})
+    except K.Refused as e:
+        return await _document_page(request, user, tid, doc_id, error=ui.kb_refusal(e.reason, e.detail), status_code=400)
+    return RedirectResponse(f"/console/documents/{doc_id}?" + urlencode({"saved": "Dados do documento salvos."}), status_code=303)
+
+
+@router.post("/documents/{doc_id}/delete", response_class=HTMLResponse)
+async def document_delete(request: Request, doc_id: UUID):
+    from agentplatform.core.knowledge import admin as K
+    user = await require_post(request, *KB_ROLES)
+    tid = _tid(user)
+    try:
+        async with tenant_tx(tid) as conn:
+            await K.delete_document(conn, tid, doc_id)
+            await _audit(conn, tid, UUID(user["id"]), "kb.document_delete", str(doc_id))
+    except K.Refused as e:
+        if e.reason == "not_found":
+            raise HTTPException(404) from None
+        return await _document_page(request, user, tid, doc_id, error=ui.kb_refusal(e.reason, e.detail), status_code=400)
+    return RedirectResponse("/console/documents", status_code=303)
+
+
+@router.post("/documents/{doc_id}/chunks/{chunk_id}/text", response_class=HTMLResponse)
+async def document_chunk_text(request: Request, doc_id: UUID, chunk_id: UUID, text: str = Form("")):
+    from agentplatform.core.knowledge import admin as K
+    user = await require_post(request, *KB_ROLES)
+    tid = _tid(user)
+    tr = await _kb_runtime(tid)
+    try:
+        async with tenant_tx(tid) as conn:
+            needs_vector = await K.edit_chunk(conn, tid, doc_id, chunk_id, text, tr.config.operations.knowledge, _can_index())
+            await _audit(conn, tid, UUID(user["id"]), "kb.chunk_edit", str(chunk_id), {"document": str(doc_id)})      # never the text: it may be what was wrong
+    except K.Refused as e:
+        if e.reason == "not_found":
+            raise HTTPException(404) from None
+        return await _document_page(request, user, tid, doc_id, error=ui.kb_refusal(e.reason, e.detail), editing=chunk_id, draft=text, status_code=400)
+    if needs_vector:
+        await _queue([K.index_job(tid, doc_id)])
+    return RedirectResponse(f"/console/documents/{doc_id}#c{chunk_id}", status_code=303)
 
 
 @router.post("/documents/{doc_id}/retire")
@@ -704,6 +783,22 @@ async def faqs_retire(request: Request, faq_id: UUID):
     except K.Refused:
         raise HTTPException(404) from None
     return RedirectResponse("/console/faqs?" + urlencode({"saved": "Pergunta retirada: o assistente não usa mais."}), status_code=303)
+
+
+@router.post("/faqs/{faq_id}/delete", response_class=HTMLResponse)
+async def faqs_delete(request: Request, faq_id: UUID):
+    from agentplatform.core.knowledge import admin as K
+    user = await require_post(request, *KB_ROLES)
+    tid = _tid(user)
+    try:
+        async with tenant_tx(tid) as conn:
+            await K.delete_faq(conn, tid, faq_id)
+            await _audit(conn, tid, UUID(user["id"]), "kb.faq_delete", str(faq_id))
+    except K.Refused as e:
+        if e.reason == "not_found":
+            raise HTTPException(404) from None
+        return await _faqs_page(request, user, tid, error=ui.kb_refusal(e.reason, e.detail), status_code=400)
+    return RedirectResponse("/console/faqs?" + urlencode({"saved": "Pergunta excluída."}), status_code=303)
 
 
 async def _curation_page(request: Request, user: dict, tid: UUID, *, problems=(), error: str | None = None, draft: dict | None = None, saved: str | None = None,
@@ -848,6 +943,24 @@ async def kill_switch(request: Request, scope: str = Form(...), on: str = Form(.
 async def lgpd_page(request: Request):
     user = require(request, "tenant_owner")
     return _page(request, "lgpd.html", {"user": user, "subject": None, "searched": False, "confirm_word": ERASE_CONFIRM})
+
+
+@router.get("/lgpd/contact/{contact_id}", response_class=HTMLResponse)
+async def lgpd_contact(request: Request, contact_id: UUID):
+    """Straight from a conversation to this person's data, for correcting it."""
+    user = require(request, "tenant_owner")
+    tid = _tid(user)
+    async with tenant_tx(tid) as conn:
+        subject = await (await conn.execute(
+            """select ct.id, ct.first_name, ct.created_at, l.stage, l.opted_out_at,
+                      (select count(*) from conversations c where c.contact_id = ct.id) as conversations,
+                      (select count(*) from messages m join conversations c on c.id = m.conversation_id where c.contact_id = ct.id) as messages,
+                      (select array_agg(distinct ci.channel) from contact_identities ci where ci.contact_id = ct.id) as channels
+               from contacts ct left join leads l on l.contact_id = ct.id where ct.id = %s""", (contact_id,))).fetchone()
+        if not subject:
+            raise HTTPException(404)
+        await _audit(conn, tid, UUID(user["id"]), "lgpd.open", "subject", {"from": "conversation"})
+    return await _lgpd_subject_page(request, user, tid, subject)
 
 
 @router.post("/lgpd/search", response_class=HTMLResponse)
@@ -1805,7 +1918,7 @@ async def _funnel(conn, tid: UUID, won_stage: str) -> dict:
                      select 1 from messages m where m.conversation_id = a.conversation_id and m.direction = 'in'
                      and m.kind <> 'comment' and m.provider_ts > o.sent_at)) as replied,
                   count(distinct a.conversation_id) filter (where exists (
-                     select 1 from lead_forms f where f.lead_id = l.id and f.submitted_at is not null)) as forms,
+                     select 1 from handoffs h where h.conversation_id = a.conversation_id and h.reason = 'hot_lead')) as hot,
                   count(distinct a.conversation_id) filter (where l.stage = %s) as won
            from comment_actions a left join outbox o on o.id = a.private_reply_outbox_id
            left join conversations c on c.id = a.conversation_id left join leads l on l.contact_id = c.contact_id
@@ -1813,7 +1926,7 @@ async def _funnel(conn, tid: UUID, won_stage: str) -> dict:
     return {r["media_id"]: r for r in rows}
 
 
-_NO_FUNNEL = {"comments": 0, "attention": 0, "directs": 0, "replied": 0, "forms": 0, "won": 0}
+_NO_FUNNEL = {"comments": 0, "attention": 0, "directs": 0, "replied": 0, "hot": 0, "won": 0}
 
 
 def _settings_form(row: dict | None) -> dict:
@@ -1834,8 +1947,13 @@ async def _posts_page(request: Request, user: dict, tid: UUID, *, form: dict | N
         settings = await load_settings(conn, account["id"]) if account else None
         dm = await load_scope(conn, account["id"]) if account else None
         rows = await (await conn.execute(
-            "select * from channel_media where media_kind <> 'story' or posted_at > now() - interval '1 day' "
+            "select * from channel_media where removed_at is null and (media_kind <> 'story' or posted_at > now() - interval '1 day') "
             "order by coalesce(posted_at, created_at) desc limit 60")).fetchall()
+        drafts = await (await conn.execute(
+            """select d.id, d.kind, d.caption, d.status, d.scheduled_at, d.error, d.updated_at,
+                      (select count(*) from post_draft_files f where f.draft_id = d.id) as files,
+                      (select f.id from post_draft_files f where f.draft_id = d.id and not f.is_video order by f.position limit 1) as thumb
+               from post_drafts d where d.status <> 'published' order by d.updated_at desc limit 30""")).fetchall()
         funnel = await _funnel(conn, tid, manifest.won_stage)
         media = []
         for r in rows:
@@ -1847,7 +1965,7 @@ async def _posts_page(request: Request, user: dict, tid: UUID, *, form: dict | N
             t = manifest.comment_templates[0]
             form.update(keywords=list(t.keywords), public_variants=list(t.public_variants), private_variants=dict(t.private_variants),
                         repeat_variants=list(t.repeat_variants))
-    return _page(request, "posts.html", {"user": user, "account": account, "dm": dm, "form": form, "media": media, "problems": problems,
+    return _page(request, "posts.html", {"user": user, "account": account, "dm": dm, "form": form, "media": media, "problems": problems, "drafts": drafts,
                                          "saved": saved, "notice": notice, "templates": manifest.comment_templates,
                                          "min_public": cfg.comments.min_public_variants,
                                          "questions": questions if questions is not None else list((dm or {}).get("quick_questions") or manifest.quick_questions),
@@ -2014,9 +2132,10 @@ def _date(v) -> str:
 
 
 async def _post_page(request: Request, user: dict, tid: UUID, media_id: UUID, *, form: dict | None = None, problems=(),
-                     saved: str | None = None, status_code: int = 200) -> HTMLResponse:
+                     saved: str | None = None, notice: str | None = None, status_code: int = 200) -> HTMLResponse:
     from agentplatform.core.comments.settings import effective, effective_for, load_settings
     from agentplatform.core.orchestration.conversations import utcnow
+    from agentplatform.runtime import get_runtime
     cfg, manifest = await _comment_context(tid)
     async with tenant_tx(tid) as conn:
         m = await (await conn.execute("select * from channel_media where id=%s", (media_id,))).fetchone()
@@ -2027,7 +2146,9 @@ async def _post_page(request: Request, user: dict, tid: UUID, media_id: UUID, *,
         eff = await effective_for(conn, m["channel_account_id"], m, utcnow())
         funnel = (await _funnel(conn, tid, manifest.won_stage)).get(m["external_media_id"], _NO_FUNNEL)
         comments = await _comment_rows(conn, tid, media=m["external_media_id"], limit=30)
+        scopes = await (await conn.execute("select scopes from channel_accounts where id=%s", (m["channel_account_id"],))).fetchone()
     a = auto or {}
+    adapter = get_runtime().adapters.get("instagram")
     form = form or {"mode": a.get("mode") or "default", "trigger_kind": a.get("trigger_kind") or "", "keywords": list(a.get("keywords") or []),
                     "public_variants": list(a.get("public_variants") or []), "private_variants": dict(a.get("private_variants") or {}),
                     "valid_from": _date(a.get("valid_from")), "valid_to": _date(a.get("valid_to")),
@@ -2035,16 +2156,317 @@ async def _post_page(request: Request, user: dict, tid: UUID, media_id: UUID, *,
     specs = {s.name: s for s in manifest.slots}
     default_mode = effective(settings, None, utcnow()).mode
     return _page(request, "post.html", {
-        "user": user, "m": m, "eff": eff, "form": form, "problems": problems, "saved": saved, "funnel": funnel, "comments": comments,
+        "user": user, "m": m, "eff": eff, "form": form, "problems": problems, "saved": saved, "notice": notice, "funnel": funnel, "comments": comments,
+        "can_comments": ui.can_change_comments(m, adapter), "can_remove": ui.can_remove_post(m, adapter, scopes["scopes"] or [], cfg.operations.posts),
         "inherited": _settings_form(settings), "default_label": ui.mode_label(default_mode), "templates": manifest.comment_templates,
         "context_slots": [specs[n] for n in manifest.media_context_slots if specs[n].type == "enum"],
         "backfill_days": cfg.comments.backfill_window_days, "back": f"/console/posts/{media_id}"}, status_code)
 
 
-@router.get("/posts/{media_id}", response_class=HTMLResponse)
-async def post_page(request: Request, media_id: UUID, saved: str | None = None):
+# ======================= posts written here (ADR-024) =======================
+async def _post_setup(tid: UUID):
+    from agentplatform.runtime import get_runtime
+    rt = get_runtime()
+    tr = await rt.tenant_for_setup(tid)
+    return tr.config, [*tr.package.manifest.allowed_urls, *tr.config.conversation.allowed_urls], rt.adapters.get("instagram")
+
+
+def _draft_problems(cfg, urls: list[str], p: dict) -> list:
+    from agentplatform.core.posts import drafts as D
+    return [*D.caption_problems(cfg, p["caption"], urls), *D.file_problems(p["kind"], p["files"], cfg.operations.posts)]
+
+
+async def _draft_page(request: Request, user: dict, tid: UUID, post_id: UUID | None, *, saved: str | None = None, notice: str | None = None,
+                      status_code: int = 200) -> HTMLResponse:
+    from agentplatform.core.posts import drafts as D
+    from agentplatform.core.posts.publisher import publish_block
+    cfg, urls, adapter = await _post_setup(tid)
+    media = None
+    async with tenant_tx(tid) as conn:
+        account = await _media_account(conn)
+        p = await D.load(conn, post_id) if post_id else None
+        if post_id and not p:
+            raise HTTPException(404)
+        if p and p["external_media_id"]:
+            media = await (await conn.execute("select id, permalink, removed_at from channel_media where external_media_id=%s", (p["external_media_id"],))).fetchone()
+    return _page(request, "post_draft.html", {
+        "user": user, "post": p, "media": media, "saved": saved, "notice": notice, "limits": cfg.operations.posts,
+        "blocked": publish_block(cfg.operations.posts, adapter, account),
+        "problems": _draft_problems(cfg, urls, p) if p and p["status"] == "draft" else []}, status_code)
+
+
+async def _store_post_files(tid: UUID, post_id: UUID, files: list, cfg) -> str | None:
+    """Each file on its own: one refused does not take the others with it."""
+    from agentplatform.core.posts import drafts as D
+    refused = None
+    for f in files:
+        if not getattr(f, "filename", None):
+            continue
+        try:
+            async with tenant_tx(tid) as conn:
+                await D.add_file(conn, tid, post_id, f.read, cfg.operations.posts)
+        except D.Refused as e:
+            refused = ui.post_refusal(e.code, e.detail)
+    return refused
+
+
+def _post_kind(v) -> str:
+    from agentplatform.core.posts.drafts import KINDS
+    if v not in KINDS:
+        raise HTTPException(400)
+    return v
+
+
+def _draft_url(post_id: UUID, **query) -> RedirectResponse:
+    return RedirectResponse(f"/console/posts/drafts/{post_id}" + ("?" + urlencode(query) if query else ""), status_code=303)
+
+
+def _moment(v: str):
+    try:
+        return datetime.strptime(v, "%Y-%m-%dT%H:%M").replace(tzinfo=ZoneInfo(get_settings().display_timezone))
+    except ValueError:
+        return None
+
+
+@router.get("/posts/drafts/new", response_class=HTMLResponse)
+async def post_draft_new(request: Request):
     user = require(request, "tenant_owner", "seller")
-    return await _post_page(request, user, _tid(user), media_id, saved=saved)
+    return await _draft_page(request, user, _tid(user), None)
+
+
+@router.post("/posts/drafts")
+async def post_draft_create(request: Request):
+    from agentplatform.core.posts import drafts as D
+    user = await require_post(request, "tenant_owner", "seller")
+    tid = _tid(user)
+    cfg, _, _ = await _post_setup(tid)
+    f = await request.form()
+    async with tenant_tx(tid) as conn:
+        account = await _media_account(conn)
+        if not account:
+            return RedirectResponse("/console/posts?" + urlencode({"notice": "Conecte uma conta em Canais para escrever posts."}), status_code=303)
+        post_id = await D.create(conn, tid, account["id"], UUID(user["id"]), _post_kind(f.get("kind")), str(f.get("caption") or "").strip())
+        await _audit(conn, tid, UUID(user["id"]), "posts.create", str(post_id))
+    refused = await _store_post_files(tid, post_id, f.getlist("files"), cfg)
+    return _draft_url(post_id, notice=refused) if refused else _draft_url(post_id, saved="Rascunho salvo.")
+
+
+@router.get("/posts/drafts/{post_id}", response_class=HTMLResponse)
+async def post_draft_page(request: Request, post_id: UUID, saved: str | None = None, notice: str | None = None):
+    user = require(request, "tenant_owner", "seller")
+    return await _draft_page(request, user, _tid(user), post_id, saved=saved, notice=notice)
+
+
+@router.post("/posts/drafts/{post_id}")
+async def post_draft_save(request: Request, post_id: UUID):
+    user = await require_post(request, "tenant_owner", "seller")
+    tid = _tid(user)
+    cfg, _, _ = await _post_setup(tid)
+    f = await request.form()
+    async with tenant_tx(tid) as conn:
+        row = await (await conn.execute("update post_drafts set kind=%s, caption=%s, updated_at=now() where id=%s and status='draft' returning id",
+                                        (_post_kind(f.get("kind")), str(f.get("caption") or "").strip(), post_id))).fetchone()
+    if not row:
+        return _draft_url(post_id, notice="Só um rascunho pode ser mudado.")
+    refused = await _store_post_files(tid, post_id, f.getlist("files"), cfg)
+    return _draft_url(post_id, notice=refused) if refused else _draft_url(post_id, saved="Rascunho salvo.")
+
+
+@router.get("/posts/drafts/{post_id}/files/{file_id}")
+async def post_draft_file(request: Request, post_id: UUID, file_id: UUID):
+    from agentplatform.core.posts.drafts import read_chunk
+    user = require(request, "tenant_owner", "seller")
+    tid = _tid(user)
+    async with tenant_tx(tid) as conn:
+        f = await (await conn.execute("select id, content_type, size_bytes, chunks from post_draft_files where id=%s and draft_id=%s", (file_id, post_id))).fetchone()
+    if not f:
+        raise HTTPException(404)
+
+    async def pieces():
+        for seq in range(f["chunks"]):
+            async with tenant_tx(tid) as conn:
+                piece = await read_chunk(conn, tid, f["id"], seq)
+            if piece is None:
+                return
+            yield piece
+    return StreamingResponse(pieces(), media_type=f["content_type"], headers={"Content-Length": str(f["size_bytes"])})
+
+
+@router.post("/posts/drafts/{post_id}/files/{file_id}/remove")
+async def post_draft_file_remove(request: Request, post_id: UUID, file_id: UUID):
+    user = await require_post(request, "tenant_owner", "seller")
+    async with tenant_tx(_tid(user)) as conn:
+        await conn.execute("""delete from post_draft_files f using post_drafts p where f.id=%s and f.draft_id=%s and p.id=f.draft_id and p.status='draft'""", (file_id, post_id))
+    return _draft_url(post_id)
+
+
+@router.post("/posts/drafts/{post_id}/files/{file_id}/move")
+async def post_draft_file_move(request: Request, post_id: UUID, file_id: UUID, to: str = Form("up")):
+    from agentplatform.core.posts import drafts as D
+    user = await require_post(request, "tenant_owner", "seller")
+    async with tenant_tx(_tid(user)) as conn:
+        p = await D.load(conn, post_id)
+        if not p:
+            raise HTTPException(404)
+        ids = [f["id"] for f in p["files"]]
+        if p["status"] == "draft" and file_id in ids:
+            i = ids.index(file_id)
+            j = i - 1 if to == "up" else i + 1
+            if 0 <= j < len(ids):
+                ids[i], ids[j] = ids[j], ids[i]
+                for position, fid in enumerate(ids):
+                    await conn.execute("update post_draft_files set position=%s where id=%s", (position, fid))
+    return _draft_url(post_id)
+
+
+@router.post("/posts/drafts/{post_id}/approve")
+async def post_draft_approve(request: Request, post_id: UUID):
+    from agentplatform.core.orchestration.conversations import utcnow
+    from agentplatform.core.posts import drafts as D
+    from agentplatform.core.posts.publisher import publish_block
+    from agentplatform.jobs.app import defer_jobs
+    user = await require_post(request, "tenant_owner", "seller")
+    tid = _tid(user)
+    cfg, urls, adapter = await _post_setup(tid)
+    f = await request.form()
+    now_chosen, now = f.get("action") == "now", utcnow()
+    when = now if now_chosen else _moment(str(f.get("when") or ""))
+    notice = None
+    async with tenant_tx(tid) as conn:
+        p = await D.load(conn, post_id)
+        if not p:
+            raise HTTPException(404)
+        account = await (await conn.execute("select scopes from channel_accounts where id=%s", (p["channel_account_id"],))).fetchone()
+        block = publish_block(cfg.operations.posts, adapter, account)
+        if block:
+            notice = ui.post_error_label(block)
+        elif p["status"] != "draft" or _draft_problems(cfg, urls, p):
+            notice = "Corrija o que está apontado antes de aprovar."
+        elif when is None or (not now_chosen and when <= now):
+            notice = "Escolha uma data e hora no futuro."
+        elif await D.approve(conn, p, UUID(user["id"]), when):
+            await _audit(conn, tid, UUID(user["id"]), "posts.approve", str(post_id), {"when": when.isoformat()})
+    if notice:
+        return _draft_url(post_id, notice=notice)
+    if now_chosen:
+        await defer_jobs([("post_publish", {"tenant_id": str(tid), "post_id": str(post_id)}, {"queueing_lock": f"post:{post_id}", "lock": f"post:{post_id}"})])
+        return _draft_url(post_id, saved="Aprovado. A publicação começou.")
+    return _draft_url(post_id, saved="Aprovado e agendado.")
+
+
+@router.post("/posts/drafts/{post_id}/back")
+async def post_draft_back(request: Request, post_id: UUID):
+    from agentplatform.core.posts.drafts import back_to_draft
+    user = await require_post(request, "tenant_owner", "seller")
+    tid = _tid(user)
+    async with tenant_tx(tid) as conn:
+        moved = await back_to_draft(conn, post_id)
+        if moved:
+            await _audit(conn, tid, UUID(user["id"]), "posts.back_to_draft", str(post_id))
+    return _draft_url(post_id, saved="Voltou para rascunho.") if moved else _draft_url(post_id, notice="Este post já está sendo publicado.")
+
+
+@router.post("/posts/drafts/{post_id}/delete")
+async def post_draft_delete(request: Request, post_id: UUID):
+    user = await require_post(request, "tenant_owner", "seller")
+    tid = _tid(user)
+    async with tenant_tx(tid) as conn:
+        row = await (await conn.execute("delete from post_drafts where id=%s and status in ('draft','failed') returning id", (post_id,))).fetchone()
+        if row:
+            await _audit(conn, tid, UUID(user["id"]), "posts.delete_draft", str(post_id))
+    if not row:
+        return _draft_url(post_id, notice="Só um rascunho pode ser excluído.")
+    return RedirectResponse("/console/posts?" + urlencode({"saved": "Rascunho excluído."}), status_code=303)
+
+
+@router.post("/posts/drafts/{post_id}/resolve")
+async def post_draft_resolve(request: Request, post_id: UUID, action: str = Form(...)):
+    """The provider did not confirm, and only a person looking at the account can say what happened."""
+    from agentplatform.core.posts import drafts as D
+    from agentplatform.core.posts.publisher import finish
+    if action not in ("published", "not_published"):
+        raise HTTPException(400)
+    user = await require_post(request, "tenant_owner", "seller")
+    tid = _tid(user)
+    async with tenant_tx(tid) as conn:
+        p = await D.load(conn, post_id)
+        if not p or p["status"] != "unknown":
+            return _draft_url(post_id)
+        await _audit(conn, tid, UUID(user["id"]), "posts.resolve", str(post_id), {"answer": action})
+        if action == "not_published":
+            await D.back_to_draft(conn, post_id, ("unknown",))
+            return _draft_url(post_id, saved="Voltou para rascunho.")
+    await finish(tid, p, None)
+    return _draft_url(post_id, saved="Marcado como publicado. Ele aparece na lista em até 5 minutos.")
+
+
+@router.get("/posts/{media_id}", response_class=HTMLResponse)
+async def post_page(request: Request, media_id: UUID, saved: str | None = None, notice: str | None = None):
+    user = require(request, "tenant_owner", "seller")
+    return await _post_page(request, user, _tid(user), media_id, saved=saved, notice=notice)
+
+
+async def _instagram_action(tid: UUID, media_id: UUID):
+    """The post, its account and what can act on it, or the reason it cannot."""
+    from agentplatform.core.comments.catalog import account_of_media
+    from agentplatform.runtime import get_runtime
+    async with tenant_tx(tid) as conn:
+        m = await (await conn.execute("select * from channel_media where id=%s", (media_id,))).fetchone()
+        if not m:
+            raise HTTPException(404)
+        found = await account_of_media(conn, tid, m["external_media_id"])
+        channel, account = found[0], found[1]
+        scopes = await (await conn.execute("select scopes from channel_accounts where id=%s", (m["channel_account_id"],))).fetchone()
+        paused = await registry.kill_switch_on(conn, tenant_id=tid, channel=channel, feature="posts")
+    return m, account, get_runtime().adapters.get(channel), scopes["scopes"] or [], paused
+
+
+@router.post("/posts/{media_id}/comments")
+async def post_comments_toggle(request: Request, media_id: UUID, enabled: str = Form(...)):
+    from agentplatform.core.channels.ports import AmbiguousSendError
+    from agentplatform.core.comments.catalog import CATALOG_ERRORS
+    user = await require_post(request, "tenant_owner", "seller")
+    tid = _tid(user)
+    on = enabled == "1"
+    m, account, adapter, _, paused = await _instagram_action(tid, media_id)
+    back = f"/console/posts/{media_id}?"
+    if paused or not ui.can_change_comments(m, adapter):
+        return RedirectResponse(back + urlencode({"notice": "Isto não pode ser mudado agora."}), status_code=303)
+    try:
+        await adapter.set_comments_enabled(account, m["external_media_id"], on)
+    except AmbiguousSendError:
+        return RedirectResponse(back + urlencode({"notice": "A Meta não confirmou. Confira no Instagram antes de tentar de novo."}), status_code=303)
+    except CATALOG_ERRORS as e:
+        log.warning("comments toggle refused for tenant %s: %s", tid, type(e).__name__)
+        return RedirectResponse(back + urlencode({"notice": "A Meta não aceitou agora. Nada mudou no Instagram."}), status_code=303)
+    async with tenant_tx(tid) as conn:
+        await conn.execute("update channel_media set comments_enabled=%s where id=%s", (on, media_id))
+        await _audit(conn, tid, UUID(user["id"]), "posts.comments", m["external_media_id"], {"enabled": on})
+    return RedirectResponse(back + urlencode({"saved": "Comentários ligados." if on else "Comentários desligados."}), status_code=303)
+
+
+@router.post("/posts/{media_id}/remove")
+async def post_remove(request: Request, media_id: UUID):
+    from agentplatform.core.channels.ports import AmbiguousSendError
+    from agentplatform.core.comments.catalog import CATALOG_ERRORS
+    user = await require_post(request, "tenant_owner")
+    tid = _tid(user)
+    cfg, _, _ = await _post_setup(tid)
+    m, account, adapter, scopes, paused = await _instagram_action(tid, media_id)
+    back = f"/console/posts/{media_id}?"
+    if paused or not ui.can_remove_post(m, adapter, scopes, cfg.operations.posts):
+        return RedirectResponse(back + urlencode({"notice": "Este post não pode ser apagado por aqui agora."}), status_code=303)
+    try:
+        await adapter.delete_media(account, m["external_media_id"])
+    except AmbiguousSendError:
+        return RedirectResponse(back + urlencode({"notice": "A Meta não confirmou. Confira no Instagram antes de tentar de novo."}), status_code=303)
+    except CATALOG_ERRORS as e:
+        log.warning("post removal refused for tenant %s: %s", tid, type(e).__name__)
+        return RedirectResponse(back + urlencode({"notice": "A Meta não aceitou agora. Nada mudou no Instagram."}), status_code=303)
+    async with tenant_tx(tid) as conn:
+        await conn.execute("update channel_media set removed_at=now() where id=%s", (media_id,))
+        await _audit(conn, tid, UUID(user["id"]), "posts.remove", m["external_media_id"])
+    return RedirectResponse("/console/posts?" + urlencode({"saved": "Post apagado do Instagram."}), status_code=303)
 
 
 def _day(v: str, end: bool = False):

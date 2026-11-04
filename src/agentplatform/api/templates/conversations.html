@@ -5,9 +5,9 @@
 {% set bot = rows | selectattr('ownership', 'equalto', 'BOT') | list | length %}
 <div class="page-head">
   <div><h1>Conversas</h1><p class="sub">Acompanhe o que o assistente está fazendo e assuma quando quiser.</p></div>
-  <form method="post" action="/console/kill-switch" class="actions">{{ csrf_input(user) }}<input type="hidden" name="scope" value="tenant">
+  {% if user.role in ('tenant_owner', 'platform_admin') %}<form method="post" action="/console/kill-switch" class="actions">{{ csrf_input(user) }}<input type="hidden" name="scope" value="tenant">
     <button name="on" value="1" class="btn-danger" title="Pausa o assistente em todas as conversas">{{ icon('pause', 16) }} Pausar em todas</button>
-    <button name="on" value="0">{{ icon('play', 16) }} Retomar</button></form>
+    <button name="on" value="0">{{ icon('play', 16) }} Retomar</button></form>{% endif %}
 </div>
 
 {% if unnotified %}<div class="alert warn">{{ icon('alert', 16) }}<p><b>{{ unnotified }} {{ 'pedido' if unnotified == 1 else 'pedidos' }} de atendimento sem aviso ao vendedor.</b>
@@ -24,27 +24,26 @@
 
 <div class="card flush">
   <div class="card-head"><div><h2>Caixa de entrada</h2><p class="sub">Ordenada pela última mensagem do cliente.</p></div></div>
-  <div class="table-wrap"><table>
-    <thead><tr><th>Contato</th><th>Origem</th><th>Estágio</th><th>Com quem está</th><th>Última mensagem</th><th>Resumo</th><th></th></tr></thead>
+  <div class="table-wrap"><table class="inbox">
+    <thead><tr><th>Contato</th><th>Estágio</th><th>Com quem está</th><th>Resumo</th><th>Última mensagem</th><th></th></tr></thead>
     <tbody>
     {% for r in rows %}<tr>
-      <td><div class="who-cell"><span class="avatar">{{ (r.first_name or r.username or r.channel or '?') | initials }}</span>
+      <td class="who"><div class="who-cell"><span class="avatar">{{ (r.first_name or r.username or r.channel or '?') | initials }}</span>
         <div><a href="/console/conversations/{{ r.id }}">{{ r | contact_name }}</a>
-        {% if r.username and r.first_name %}<div class="muted small">@{{ r.username }}</div>{% elif not r.first_name and not r.username %}<div class="muted small">ainda sem nome</div>{% endif %}
-        {% if r.unanswered %}<div class="bad small">Sem resposta há mais de 1 h</div>{% endif %}</div></div></td>
-      <td class="small">{{ r.entrypoint | entry_label }}{% if r.pending_comments %} <a class="warn" href="/console/comments?f=attention">· {{ r.pending_comments }} comentário{{ 's' if r.pending_comments > 1 }}</a>{% endif %}</td>
-      <td><span class="badge plain">{{ stage_label(r.stage, labels) }}</span></td>
-      <td><span class="badge {{ r.ownership | owner_tone }}">{{ r.ownership | owner_label }}</span>
-        {% if r.handoff_pending %}<div class="muted small">aviso ao vendedor no próximo horário</div>{% endif %}</td>
-      <td class="muted nowrap">{{ r.last_inbound_at | dt }}</td>
-      <td><div class="clip">{{ r.summary or '—' }}</div></td>
-      <td style="text-align:right"><form method="post" action="/console/conversations/{{ r.id }}/ownership" class="inline">{{ csrf_input(user) }}
+        <div class="muted small">{% if r.username and r.first_name %}@{{ r.username }} · {% endif %}{{ r.entrypoint | entry_label }}{% if r.pending_comments %} · <a class="warn" href="/console/comments?f=attention">{{ r.pending_comments }} comentário{{ 's' if r.pending_comments > 1 }}</a>{% endif %}</div></div></div></td>
+      <td class="state"><span class="badge">{{ stage_label(r.stage, labels) }}</span></td>
+      <td class="state"><span class="badge {{ r.ownership | owner_tone }}">{{ r.ownership | owner_label }}</span>
+        {% if r.unanswered %}<div class="bad small nowrap" style="margin-top:3px">Sem resposta há +1 h</div>{% endif %}
+        {% if r.handoff_pending %}<div class="muted small" style="margin-top:3px">Aviso ao vendedor no próximo horário</div>{% endif %}</td>
+      <td class="about"><div class="clip{{ ' empty-text' if not r.summary }}">{{ r.summary or '—' }}</div></td>
+      <td class="muted nowrap when">{{ r.last_inbound_at | dt }}</td>
+      <td class="act" style="text-align:right">{% if user.role != 'reviewer' %}<form method="post" action="/console/conversations/{{ r.id }}/ownership" class="inline">{{ csrf_input(user) }}
         <input type="hidden" name="next" value="/console/">
         {% if r.ownership == 'BOT' %}<button name="to" value="PAUSED" class="btn-sm btn-ghost" title="Pausar o assistente só nesta conversa">{{ icon('pause', 14) }} Pausar</button>
         {% elif r.ownership in ('PAUSED', 'CLOSED') %}<button name="to" value="BOT" class="btn-sm" title="O assistente volta a responder nesta conversa">{{ icon('play', 14) }} Retomar</button>{% endif %}
-      </form></td>
+      </form>{% endif %}</td>
     </tr>{% else %}
-    <tr><td colspan="7"><div class="empty">{{ icon('chat', 28) }}<div>Nenhuma conversa ainda.</div>
+    <tr><td colspan="6"><div class="empty">{{ icon('chat', 28) }}<div>Nenhuma conversa ainda.</div>
       <div class="small">Quando um cliente escrever no Instagram, a conversa aparece aqui.</div></div></td></tr>{% endfor %}
     </tbody></table></div>
 </div>
@@ -56,13 +55,14 @@
     <form method="post" action="/console/kill-switch">{{ csrf_input(user) }}
       <div class="row">
         <div class="field"><label>O que pausar</label><select name="scope"><option value="agent">Respostas do assistente</option>
-          <option value="comments">Automação de comentários</option><option value="followups">Follow-ups</option><option value="campaigns">Campanhas</option></select></div>
+          <option value="comments">Automação de comentários</option><option value="followups">Follow-ups</option><option value="campaigns">Campanhas</option><option value="posts">Publicação de posts</option></select></div>
         <div class="field"><label>Motivo</label><input name="reason" placeholder="ex.: revisão de texto" required maxlength="200"></div>
       </div>
       <div class="actions" style="margin-top:12px"><button name="on" value="1">{{ icon('pause', 16) }} Pausar</button><button name="on" value="0">{{ icon('play', 16) }} Retomar</button></div>
     </form></div>{% endif %}
-  <div class="card"><h2>Uso da chave de IA</h2><p class="muted small">Em reais pela cotação {{ fx_note() }}. O provedor cobra em dólar.</p>
-    {% for b in budget %}{% set used = (b.spent_usd / b.cap_usd * 100) if b.cap_usd else 0 %}
+  <div class="card"><div class="actions" style="justify-content:space-between"><h2 style="margin:0">Uso da chave de IA</h2>{% if user.role in ('tenant_owner','platform_admin') %}<a class="small" href="/console/budget">Ver orçamento</a>{% endif %}</div>
+    <p class="muted small" style="margin-top:6px">Em reais pela cotação {{ fx_note() }}. O provedor cobra em dólar.</p>
+    {% for b in budget[-2:] %}{% set used = (b.spent_usd / b.cap_usd * 100) if b.cap_usd else 0 %}
       <div style="margin-bottom:12px"><div class="row" style="justify-content:space-between"><span class="small">{{ 'Total da chave' if b.scope.endswith(':total') else 'Dia ' ~ b.scope[-2:] ~ '/' ~ b.scope[-5:-3] ~ ' (UTC)' }}</span>
         <span class="small">{{ b.spent_usd | money }} de {{ b.cap_usd | money(2) }}</span></div>
         <div class="bar {{ 'bad' if used >= 90 else ('warn' if used >= 70) }}" style="margin-top:6px"><span style="width:{{ [used, 100] | min }}%"></span></div></div>

@@ -50,6 +50,8 @@ async def retention_sweep(conn: AsyncConnection, cfg: PlatformConfig, tenant_id:
               d.get("dead_letters", 30))
     await run("comments", "update comment_actions set text_masked = null, author_username = null where tenant_id=%s "
               "and text_masked is not null and created_at < now() - make_interval(days => %s)", d.get("comments", 365))
+    await run("post_drafts", "delete from post_drafts where tenant_id=%s and status in ('draft', 'failed', 'unknown') "
+              "and updated_at < now() - make_interval(days => %s)", d.get("post_drafts", 90))
     await run("lead_forms", "update lead_forms set fields_enc = null where tenant_id=%s and fields_enc is not null "
               "and coalesce(submitted_at, expires_at) < now() - make_interval(days => %s)", d.get("lead_forms", 730))
     await run("reviews", "update conversation_reviews set note_masked = null where tenant_id=%s and note_masked is not null "

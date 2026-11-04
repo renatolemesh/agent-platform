@@ -20,7 +20,7 @@ from uuid import UUID
 import httpx
 from pydantic import BaseModel
 
-from agentplatform.core.config.schema import ModelRef, NodeModel
+from agentplatform.core.config.schema import ModelRef, NodeModel, ProviderPolicy
 from agentplatform.core.models import pricing
 from agentplatform.core.models.budget import BudgetService, ScopeCap, utc_day
 from agentplatform.core.ops.tracing import span
@@ -58,6 +58,11 @@ class ModelCallError(RuntimeError):
     def __init__(self, message: str = "", *, transient: bool = False, out_of_credit: bool = False):
         super().__init__(message)
         self.transient, self.out_of_credit = transient, out_of_credit
+
+
+def _provider_policy(policy: ProviderPolicy) -> dict:
+    """What OpenRouter receives. To it an empty `only` means no provider at all (HTTP 404 on every call), so empty lists stay out."""
+    return {k: v for k, v in policy.model_dump().items() if v != []}
 
 
 def _http_error(what: str, r: httpx.Response) -> ModelCallError:
@@ -147,6 +152,15 @@ class ModelGateway:
         return model
 
     # ------------------------------------------------------------------ chat
+    async def _post(self, path: str, timeout_s: float, **kwargs: Any) -> httpx.Response:
+        """The real limit of a call. httpx only counts the time between reads, and OpenRouter sends blank bytes every few seconds while it waits,
+        so without this a stuck provider holds the turn until the turn's own limit."""
+        try:
+            async with asyncio.timeout(timeout_s):
+                return await self._client.post(path, timeout=timeout_s, **kwargs)
+        except TimeoutError as e:
+            raise httpx.ReadTimeout(f"no answer from {path} in {timeout_s}s") from e
+
     async def chat(self, spec: NodeModel, messages: list[dict], ctx: CallContext,
                    output_model: type[T] | None = None) -> ChatResult:
         with span("llm.chat", node=ctx.node, purpose=ctx.purpose, tenant_id=ctx.tenant_id, model=spec.primary,
@@ -173,20 +187,21 @@ class ModelGateway:
         result: ChatResult | None = None
         last_err: Exception | None = None
         try:
-            models_to_try = chain if self.provider == "openai" else [chain[0]]   # OpenRouter does fallback server-side
-            for model in models_to_try:
+            # OpenRouter also falls back by itself, but never past our own timeout, nor to a model that refuses the parameters of the first one
+            for position, model in enumerate(chain):
                 for attempt in range(spec.retries + 1):
                     try:
-                        result = await self._chat_once(model, chain, spec, messages, output_model)
+                        result = await self._chat_once(model, chain[position:], spec, messages, output_model)
                         break
                     # ValueError covers invalid JSON and schema errors; Key/Index/Type a reply without the expected shape
                     except (httpx.HTTPError, ModelCallError, ValueError, KeyError, IndexError, TypeError) as e:
                         last_err = e
                         log.warning("model %s failed for node %s: %s", model, ctx.node, type(e).__name__)
-                        if not (isinstance(e, httpx.HTTPError) or getattr(e, "transient", False)) or attempt == spec.retries:
+                        slow_with_another_left = isinstance(e, httpx.TimeoutException) and position < len(chain) - 1
+                        if slow_with_another_left or not (isinstance(e, httpx.HTTPError) or getattr(e, "transient", False)) or attempt == spec.retries:
                             break
                         await asyncio.sleep(RETRY_WAIT_S * (attempt + 1))
-                if result is not None:
+                if result is not None or getattr(last_err, "out_of_credit", False):
                     break
             if result is None:
                 if getattr(last_err, "out_of_credit", False):
@@ -219,10 +234,10 @@ class ModelGateway:
                 "name": output_model.__name__, "strict": True, "schema": strict_schema(output_model)}}
         if self.provider == "openrouter":
             body["models"] = chain
-            body["provider"] = spec.provider.model_dump(exclude_defaults=False)
+            body["provider"] = _provider_policy(spec.provider)
             body["usage"] = {"include": True}
         t0 = time.monotonic()
-        r = await self._client.post("/chat/completions", json=body, timeout=spec.timeout_s)
+        r = await self._post("/chat/completions", spec.timeout_s, json=body)
         latency = int((time.monotonic() - t0) * 1000)
         if r.status_code >= 400:
             raise _http_error(f"from {self.provider}", r)
@@ -253,13 +268,14 @@ class ModelGateway:
             raise BudgetDenied(res.denied_scope)
         cost = estimate
         status = "error"
+        t0 = time.monotonic()
         try:
             body: dict[str, Any] = {"model": self._wire_model(spec.model), "input": texts}
             if spec.dims:
                 body["dimensions"] = spec.dims
             if self.provider == "openrouter":
-                body["provider"] = spec.provider.model_dump()
-            r = await self._client.post("/embeddings", json=body, timeout=spec.timeout_s)
+                body["provider"] = _provider_policy(spec.provider)
+            r = await self._post("/embeddings", spec.timeout_s if len(texts) == 1 else spec.batch_timeout_s, json=body)
             if r.status_code >= 400:
                 raise _http_error("embeddings", r)
             data = r.json()
@@ -272,7 +288,7 @@ class ModelGateway:
             raise ModelCallError(f"embeddings failed: {type(e).__name__}", transient=isinstance(e, httpx.HTTPError)) from e
         finally:
             await self.budget.settle(res, cost)
-            await self._record(ctx, spec.model, spec.model, tokens, 0, cost, status, None, 0, "computed")
+            await self._record(ctx, spec.model, spec.model, tokens, 0, cost, status, None, int((time.monotonic() - t0) * 1000), "computed")
 
     # ---------------------------------------------------------- transcription
     async def transcribe(self, spec: ModelRef, audio: bytes, filename: str, seconds: float, ctx: CallContext,
@@ -282,15 +298,16 @@ class ModelGateway:
         if res.denied:
             raise BudgetDenied(res.denied_scope)
         status = "error"
+        t0 = time.monotonic()
         try:
             if self.provider == "openrouter":   # JSON is the only form that carries the provider policy: voice is personal data (ZDR)
-                r = await self._client.post("/audio/transcriptions", timeout=spec.timeout_s, json={
+                r = await self._post("/audio/transcriptions", spec.timeout_s, json={
                     "model": spec.model, "language": language,
                     "input_audio": {"data": base64.b64encode(audio).decode("ascii"), "format": _audio_format(audio)},
                     "provider": {"zdr": spec.provider.zdr, "data_collection": spec.provider.data_collection}})
             else:
-                r = await self._client.post("/audio/transcriptions", timeout=spec.timeout_s, files={"file": (filename, audio)},
-                                            data={"model": self._wire_model(spec.model), "language": language})
+                r = await self._post("/audio/transcriptions", spec.timeout_s, files={"file": (filename, audio)},
+                                     data={"model": self._wire_model(spec.model), "language": language})
             if r.status_code >= 400:
                 raise _http_error("transcription", r)
             text = r.json().get("text", "")
@@ -300,7 +317,7 @@ class ModelGateway:
             raise ModelCallError(f"transcription failed: {type(e).__name__}") from e
         finally:
             await self.budget.settle(res, estimate)
-            await self._record(ctx, spec.model, spec.model, None, None, estimate, status, None, 0, "estimate")
+            await self._record(ctx, spec.model, spec.model, None, None, estimate, status, None, int((time.monotonic() - t0) * 1000), "estimate")
 
     async def _record(self, ctx: CallContext, requested: str, used: str | None, in_t: int | None, out_t: int | None,
                       cost: Decimal | None, status: str, prompt_version: str | None, latency_ms: int,

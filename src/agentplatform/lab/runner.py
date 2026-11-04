@@ -70,22 +70,41 @@ def eval_input_guard(cfg: PlatformConfig, pkg: SegmentPackage) -> Score:
 
 
 # ------------------------------------------------------------------ live: node level
-async def eval_analyze(cfg: PlatformConfig, pkg: SegmentPackage, gateway) -> Score:
-    """F1-like slot accuracy of analyze_turn through the real prompt + policy (code acceptance rules included)."""
+async def _analyze(cfg: PlatformConfig, pkg: SegmentPackage, gateway, case: dict):
     import secrets
 
     from agentplatform.core.agent.prompts import render
     from agentplatform.core.agent.state import AnalyzeOutput
     from agentplatform.core.models.gateway import CallContext
+    m = pkg.manifest
+    msgs = render(cfg.models.analyze_turn.prompt_version, nonce=secrets.token_hex(4),
+                  slot_catalog=m.slot_catalog(), intent_catalog=m.intent_catalog(),      # same text the turn renders
+                  objection_catalog=", ".join(m.objections), scope=m.scope,
+                  stage_catalog=", ".join(x.name for x in m.stages), stage=case["stage"], profile="{}", summary="-",
+                  recent="(início)", turn_input="\n".join(f"- {t}" for t in case["msgs"]), origin=[])
+    return await gateway.chat(cfg.models.analyze_turn, msgs, CallContext(None, "lab:analyze_turn", purpose="lab"), AnalyzeOutput)
+
+
+async def eval_opt_out(cfg: PlatformConfig, pkg: SegmentPackage, gateway) -> Score:
+    """Who asked to stop and who did not. Past the threshold the assistant stops for good on the model's word, so a wrong score loses a customer who only
+    wanted a summary, or keeps writing to one who asked to stop."""
+    s = Score("opt_out_intent")
+    for c in load_jsonl("core/opt-out-v1.jsonl"):
+        r = await _analyze(cfg, pkg, gateway, c)
+        s.cost_usd += r.cost_usd
+        score = r.parsed.understanding.opt_out_intent
+        injection = "injection_suspected" in input_guard(c["msgs"][0], cfg.input_guard, pkg.manifest, cfg.handoff.disabled_reasons).reasons
+        taken = policy.opt_out_from_model(score, injection, cfg.input_guard) is not None      # the same decision a real turn makes
+        s.add(taken == c["stop"], f"{c['id']} {'pediu' if c['stop'] else 'não pediu'} para parar, nota {score}")
+    return s
+
+
+async def eval_analyze(cfg: PlatformConfig, pkg: SegmentPackage, gateway) -> Score:
+    """F1-like slot accuracy of analyze_turn through the real prompt + policy (code acceptance rules included)."""
     s = Score("analyze_slots")
     m = pkg.manifest
     for c in load_jsonl(f"{m.name}/understand-v1.jsonl"):
-        msgs = render(cfg.models.analyze_turn.prompt_version, nonce=secrets.token_hex(4),
-                      slot_catalog=m.slot_catalog(), intent_catalog=m.intent_catalog(),      # same text the turn renders
-                      objection_catalog=", ".join(m.objections), scope=m.scope,
-                      stage_catalog=", ".join(x.name for x in m.stages), stage=c["stage"], profile="{}", summary="-",
-                      recent="(início)", turn_input="\n".join(f"- {t}" for t in c["msgs"]), origin=[])
-        r = await gateway.chat(cfg.models.analyze_turn, msgs, CallContext(None, "lab:analyze_turn", purpose="lab"), AnalyzeOutput)
+        r = await _analyze(cfg, pkg, gateway, c)
         s.cost_usd += r.cost_usd
         dec = policy.apply_slots(m, {}, r.parsed.understanding, "\n".join(c["msgs"]), cfg.funnel, None)
         got = {k: str(v["value"]) for k, v in dec.accepted.items()}
@@ -343,8 +362,10 @@ def grade_scenario(scn: dict, out: dict, cfg: PlatformConfig) -> tuple[bool, str
         problems.append("not opted out")
     from agentplatform.core.packages.contract import load_package
     from agentplatform.settings import get_settings
+    m = load_package(cfg.segment_package.name).manifest
+    form = (get_settings().public_base_url.rstrip("/") + "/f/",) if m.form_sent_stage else ()
     ctx = OutputContext(cfg.compliance, [" ".join(out["transcript"])], policy.config_numbers(), [], 1000,      # the links the real guard allows
-                        allowed_url_prefixes=(get_settings().public_base_url.rstrip("/") + "/f/", *load_package(cfg.segment_package.name).manifest.allowed_urls, *cfg.conversation.allowed_urls))
+                        allowed_url_prefixes=(*form, *m.allowed_urls, *cfg.conversation.allowed_urls))
     if e.get("no_blocked_text"):
         for t in out["bot_texts"]:
             bad = [v.rule_id for v in failed(output_guard(t, ctx)) if v.verdict == "block" and v.rule_id != "numbers_provenance"]

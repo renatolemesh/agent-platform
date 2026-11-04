@@ -8,7 +8,8 @@
 {% for name, spec in nodes %}<tr data-node="{{ name }}"><td><b>{{ labels.get(name, name) }}</b></td>
 <td><select name="{{ name }}_primary">{% for m in choices.chat %}<option value="{{ m.name }}" {{ 'selected' if m.name == spec.primary }}>{{ m.name }} · {{ m.input | usd }} / {{ m.output | usd }}</option>{% endfor %}
 {% if spec.primary not in choices.chat | map(attribute='name') | list %}<option value="{{ spec.primary }}" selected>{{ spec.primary }} (atual)</option>{% endif %}</select></td>
-<td><select name="{{ name }}_fallback"><option value="">Nenhuma</option>{% for m in choices.chat %}<option value="{{ m.name }}" {{ 'selected' if spec.fallbacks and m.name == spec.fallbacks[0] }}>{{ m.name }}</option>{% endfor %}</select></td></tr>{% endfor %}
+<td><select name="{{ name }}_fallback"><option value="">Nenhuma</option>{% for m in choices.chat %}<option value="{{ m.name }}" {{ 'selected' if spec.fallbacks and m.name == spec.fallbacks[0] }}>{{ m.name }}</option>{% endfor %}
+{% if spec.fallbacks and spec.fallbacks[0] not in choices.chat | map(attribute='name') | list %}<option value="{{ spec.fallbacks[0] }}" selected>{{ spec.fallbacks[0] }} (atual)</option>{% endif %}</select></td></tr>{% endfor %}
 <tr><td><b>Transcrição de áudio</b></td><td colspan="2"><select name="transcription">{% for m in choices.transcription %}<option value="{{ m.name }}" {{ 'selected' if m.name == cfg.models.transcription.model }}>{{ m.name }} · {{ m.per_min | usd }} por minuto</option>{% endfor %}
 {% if cfg.models.transcription.model not in choices.transcription | map(attribute='name') | list %}<option value="{{ cfg.models.transcription.model }}" selected>{{ cfg.models.transcription.model }} (atual)</option>{% endif %}</select></td></tr>
 </tbody></table></div></div>

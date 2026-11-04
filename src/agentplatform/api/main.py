@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from agentplatform.api import console, console_setup, legal
@@ -263,6 +263,29 @@ def create_app(on_persisted=None) -> FastAPI:
                      and (%s::timestamptz is null or m.created_at > %s::timestamptz) order by m.created_at""",
                 (session_id, after, after))).fetchall()
         return {"messages": [{"id": str(r["id"]), "text": r["text_masked"], "at": r["created_at"].isoformat()} for r in rows]}
+
+    @app.api_route("/pm/{token}", methods=["GET", "HEAD"])
+    async def post_media(request: Request, token: str):
+        """The file of a post, for the provider, only while that post is being published (ADR-024)."""
+        from agentplatform.core.posts.drafts import find_public_file, read_chunk
+        if not await limiter.allow(request):
+            raise HTTPException(429)
+        async with platform_tx() as conn:
+            f = await find_public_file(conn, token)
+        if not f:
+            raise HTTPException(404)
+
+        async def pieces():
+            for seq in range(f["chunks"]):
+                async with tenant_tx(f["tenant_id"]) as conn:
+                    piece = await read_chunk(conn, f["tenant_id"], f["id"], seq)
+                if piece is None:
+                    return
+                yield piece
+        headers = {"Content-Length": str(f["size_bytes"])}
+        if request.method == "HEAD":
+            return Response(media_type=f["content_type"], headers=headers)
+        return StreamingResponse(pieces(), media_type=f["content_type"], headers=headers)
 
     @app.get("/f/{token}", response_class=HTMLResponse)
     async def form_page(request: Request, token: str):

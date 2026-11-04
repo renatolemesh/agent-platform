@@ -90,7 +90,7 @@ Preços do OpenRouter consultados em 09/10/2026 (`18-fontes-externas.md`), em US
 | embedding | 1 por turno com busca | 50 | — |
 | transcrição | 10% dos turnos, 30 s cada | — | — |
 
-**Cenário econômico (padrão do MVP, todos os provedores com ZDR):** `analyze_turn` e `summarize` em `google/gemini-2.5-flash-lite` (0,10/0,40); `respond` em `deepseek/deepseek-v4-flash` via DeepInfra (0,09/0,18); juiz em `openai/gpt-5-nano` (0,05/0,40, outra família); embedding `qwen/qwen3-embedding-8b` (0,01); transcrição `whisper-large-v3-turbo` via `/audio/transcriptions` (≈ US$ 0,0007/min no pior caso).
+**Cenário econômico (padrão do MVP, todos os provedores com ZDR):** `analyze_turn` em `mistralai/mistral-small-2603` (0,15/0,60); `summarize` e `comment_intent` em `openai/gpt-5-nano`; `respond` em `deepseek/deepseek-v4-flash` via Crusoe (0,14/0,28), com DeepInfra (0,09/0,18) em seguida porque é três vezes mais lenta; juiz em `openai/gpt-5-nano` (0,05/0,40, outra família); embedding `qwen/qwen3-embedding-8b` (0,01); transcrição `whisper-large-v3-turbo` via `/audio/transcriptions` (≈ US$ 0,0007/min no pior caso).
 
 | Item | Conta por dia | US$/dia |
 | --- | --- | --- |

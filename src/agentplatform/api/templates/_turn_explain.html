@@ -1,7 +1,7 @@
 {# Why the assistant said that: one turn, in words. `e` comes from core/ops/turn_explain.py. #}
 <dl class="kv" data-explain>
   <dt>Resultado</dt><dd><span class="badge {{ e.status | status_tone }}">{{ e.status | status_label }}</span>{% if e.failed_with %} <span class="muted small">{{ e.failed_with }}</span>{% endif %}</dd>
-  <dt>Entendeu</dt><dd>{% for i in e.intents %}<span class="badge plain" style="margin:0 4px 4px 0">{{ i | humanize }}</span>{% else %}—{% endfor %}</dd>
+  <dt>Entendeu</dt><dd>{% for i in e.intents %}<span class="badge" style="margin:0 4px 4px 0">{{ (labels.intents or {}).get(i, i | humanize) }}</span>{% else %}—{% endfor %}</dd>
   <dt>Estágio</dt><dd>{{ stage_label(e.stage_before, labels) }} → {{ stage_label(e.stage_after, labels) if e.stage_after else '—' }}</dd>
   {% if e.handoff %}<dt>Chamou o vendedor</dt><dd><span class="badge warn">{{ e.handoff | reason_label }}</span></dd>{% endif %}
   {% if e.tools %}<dt>Ferramentas</dt><dd>{% for x in e.tools %}<span class="badge info plain" style="margin:0 4px 4px 0">{{ x }}</span>{% endfor %}</dd>{% endif %}

@@ -2,6 +2,7 @@
 small inline icon set (no external assets; the CSP only allows our own origin plus the htmx CDN)."""
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
@@ -38,7 +39,7 @@ REASON = {"knowledge_gap": "Pergunta sem resposta aprovada", "opt_out": "Pediu p
           "explicit_request": "Pediu um vendedor", "hot_lead": "Lead quente", "frustration": "Cliente irritado",
           "no_progress": "Conversa sem avanço", "guard_blocked": "Resposta bloqueada pela revisão", "media_review": "Mídia para revisar",
           "complaint_or_abuse": "Reclamação", "legal": "Assunto jurídico", "requires_sensitive_data": "Exige dado sensível",
-          "simulation_request": "Pediu simulação", "post_sale": "Pós-venda", "cancellation": "Cancelamento",
+          "simulation_request": "Pediu simulação", "specialist_question": "Pergunta para o vendedor", "post_sale": "Pós-venda", "cancellation": "Cancelamento",
           "out_of_scope": "Fora do escopo", "budget_exhausted": "Orçamento de IA esgotado"}
 ROLE = {"platform_admin": "Administrador da plataforma", "tenant_owner": "Responsável", "seller": "Vendedor",
         "reviewer": "Revisor"}
@@ -64,6 +65,19 @@ OAUTH_ERROR = {
 MODE = {"off": "Inativo", "register": "Só registrar", "public": "Só resposta no comentário", "private": "Só direct",
         "both": "Comentário + direct"}
 TRIGGER = {"keyword": "Comentários com as palavras abaixo", "any": "Qualquer comentário", "intent": "Interesse identificado por IA (custa por comentário)"}
+POST_KIND = {"feed": "Foto ou carrossel", "reel": "Reel", "story": "Story"}
+POST_STATUS = {"draft": ("Rascunho", "muted"), "approved": ("Aprovado", "warn"), "publishing": ("Publicando", "warn"), "published": ("Publicado", "ok"),
+               "failed": ("Não saiu", "bad"), "unknown": ("Conferir no Instagram", "bad")}
+POST_ERROR = {"publishing_off": "A publicação está desligada. Você pode escrever e guardar rascunhos: ela só liga depois que a Meta liberar a permissão.",
+              "no_account": "Conecte a conta em Canais para publicar.", "unsupported": "Este canal não publica posts.",
+              "missing_permission": "A conta ainda não tem a permissão da Meta para publicar. Depois da liberação, reconecte a conta em Canais.",
+              "changed_after_approval": "O conteúdo mudou depois da aprovação.", "caption_refused": "A legenda não passa mais nas regras.",
+              "files_refused": "Os arquivos não servem para este tipo de post.", "late": "O horário passou há muito tempo. Por segurança, o post não saiu sozinho.",
+              "daily_limit": "O limite de posts por dia foi atingido.", "container_error": "A Meta não aceitou o arquivo. Confira o formato, a duração e o tamanho.",
+              "container_timeout": "A Meta demorou demais para processar o arquivo.", "token": "A conexão com a conta expirou. Reconecte em Canais.",
+              "refused": "A Meta recusou a publicação.", "unconfirmed": "A Meta não confirmou se o post saiu."}
+POST_REFUSAL = {"unsupported_file": "Use JPEG para imagem e MP4 ou MOV para vídeo: a Meta não aceita outros formatos.",
+                "file_too_big": "Arquivo grande demais: o limite é {detail} MB.", "too_many_files": "Este post já tem o máximo de {detail} arquivos."}
 MEDIA_KIND = {"post": "Post", "reel": "Reel", "story": "Story", "ad": "Anúncio", "live": "Live"}
 COMMENT_DECISION = {
     "acted": ("Respondido", "ok"), "registered": ("Interessado registrado", "info"), "human_queue": ("Encaminhado ao vendedor", "warn"),
@@ -89,6 +103,14 @@ TEXT_PROBLEM = {
     "intent_unavailable": "A identificação de interesse por IA não está disponível nesta configuração.",
     "missing_disclosure": "O direct é a primeira mensagem ao cliente: diga que é o assistente virtual.",
     "too_long": "Texto longo demais.",
+    "too_many_hashtags": "São hashtags demais para o Instagram.",
+    "too_many_mentions": "São menções demais para o Instagram.",
+    "no_file": "Adicione um arquivo.",
+    "reel_one_video": "Um Reel é um único vídeo.",
+    "story_one_file": "Um Story é um único arquivo.",
+    "feed_single_video": "Um vídeo sozinho sai como Reel: mude o tipo.",
+    "too_many_files": "São arquivos demais para um carrossel.",
+    "image_shape": "Tem imagem fora da proporção que a Meta aceita no feed: corte em quadrado ou na vertical.",
     "unknown_placeholder": "Só {seller} pode ser usado entre chaves.",
     "numbers_provenance": "Não use valores ou números: eles saem da tabela quando o cliente responder.",
     "forbidden_phrase": "Tem uma promessa ou termo proibido.",
@@ -102,6 +124,9 @@ TEXT_PROBLEM = {
     "empty": "Texto vazio.",
 }
 KB_REFUSAL = {
+    "passage_too_long": "Trecho longo demais: o limite é {detail} caracteres.",
+    "passage_personal_data": "Este texto tem CPF, cartão, telefone ou e-mail. Dados de pessoas não entram na base.",
+    "in_use": "Está em uso. Tire de uso primeiro e depois exclua.",
     "unknown_model": "Este modelo não tem preço cadastrado, então o sistema não pode usá-lo.",
     "same_model": "Esse já é o modelo em uso.",
     "reindex_running": "Já tem uma troca de modelo em andamento.",
@@ -136,7 +161,7 @@ KB_FLAG = {"forbidden_phrase": "Promessa ou termo proibido", "required_context":
 KB_PII = {"cpf": "CPF", "cnpj": "CNPJ", "card": "cartão", "email": "e-mail", "phone": "telefone", "rg": "RG", "bank": "dados bancários", "address": "endereço", "health": "saúde"}
 KB_USE = {"citable": "Pode citar ao cliente", "guidance_only": "Só orienta o assistente"}
 KB_AUDIENCE = {"customer": "Feito para o cliente", "internal": "Interno"}
-_TEXT_FIELD = {"message": "Mensagem", "faq_question": "Pergunta", "faq_answer": "Resposta", "question": "Pergunta pronta", "public": "Resposta no comentário", "private": "Direct", "repeat": "Resposta a quem já está em conversa", "keywords": "Palavras", "trigger": "Acionamento"}
+_TEXT_FIELD = {"caption": "Legenda", "files": "Arquivos", "followup": "Texto", "message": "Mensagem", "faq_question": "Pergunta", "faq_answer": "Resposta", "question": "Pergunta pronta", "public": "Resposta no comentário", "private": "Direct", "repeat": "Resposta a quem já está em conversa", "keywords": "Palavras", "trigger": "Acionamento"}
 CHANNEL_PAUSE = {"token_invalid": "o acesso à Meta expirou ou foi revogado. Reconecte com o Facebook para liberar."}
 
 
@@ -170,6 +195,34 @@ def trigger_label(v: str | None) -> str:
     return TRIGGER.get(v or "", humanize(v))
 
 
+def post_status_label(v: str | None) -> str:
+    return POST_STATUS.get(v or "", (humanize(v), "muted"))[0]
+
+
+def post_status_tone(v: str | None) -> str:
+    return POST_STATUS.get(v or "", (humanize(v), "muted"))[1]
+
+
+def post_error_label(v: str | None) -> str:
+    return POST_ERROR.get(v or "", "O post não saiu.")
+
+
+def post_refusal(code: str, detail: str = "") -> str:
+    return POST_REFUSAL.get(code, "Arquivo recusado.").format(detail=detail)
+
+
+def can_change_comments(m: dict, adapter) -> bool:
+    return hasattr(adapter, "set_comments_enabled") and m["media_kind"] in ("post", "reel") and not m["ad_id"] and not m["removed_at"]
+
+
+def can_remove_post(m: dict, adapter, scopes: list[str], c) -> bool:
+    """A permission of its own at the provider, and it cannot be undone: only with publishing on, and never an ad."""
+    if not c.publishing_enabled or not hasattr(adapter, "delete_media") or m["media_kind"] not in ("post", "reel", "story") or m["ad_id"] or m["removed_at"]:
+        return False
+    scope = getattr(adapter, "delete_scope", None)
+    return not scope or scope in scopes
+
+
 def media_kind_label(v: str | None) -> str:
     return MEDIA_KIND.get(v or "", humanize(v))
 
@@ -192,7 +245,7 @@ EVAL_STATUS = {"queued": "Na fila", "running": "Rodando", "passed": "Passou", "f
 EVAL_TONE = {"queued": "info", "running": "info", "passed": "ok", "failed": "bad", "error": "warn"}
 EVAL_LEVEL = {"fast": "Checagem rápida", "full": "Avaliação completa"}
 EVAL_SCORE = {"compliance_block_rate": "Barra o que é proibido", "compliance_false_positive_free": "Não barra resposta boa", "input_guard": "Reconhece pedidos de parar e de falar com alguém",
-              "analyze_slots": "Entende o que o cliente diz", "respond": "Qualidade da resposta", "rag": "Acha o trecho certo", "scenarios": "Conversas simuladas de ponta a ponta"}
+              "analyze_slots": "Entende o que o cliente diz", "opt_out_intent": "Sabe quem pediu para parar", "respond": "Qualidade da resposta", "rag": "Acha o trecho certo", "scenarios": "Conversas simuladas de ponta a ponta"}
 GUARD_RULE = {"url_not_allowed": "Link não permitido", "numbers_provenance": "Número sem fonte", "forbidden_phrase": "Frase proibida", "required_context": "Faltou o complemento obrigatório",
               "never_request": "Pediu dado sensível", "guidance_quoted": "Copiou material interno", "answered_without_basis": "Afirmou sem ter base", "pii_placeholder": "Marcador de dado pessoal", "pii_in_output": "Dado pessoal na resposta",
               "human_impersonation": "Disse ser uma pessoa", "one_question": "Mais de uma pergunta", "repetition": "Repetiu mensagem", "length": "Longa demais", "missing_link": "Faltou o link",
@@ -230,6 +283,100 @@ CONFIG_FIELD = {
     "rag.active_index_id": "Índice de busca", "models.embedding.model": "Modelo de busca", "models.embedding.dims": "Dimensões do modelo de busca",
     "budget.pilot_total_cap_usd": "Teto de gasto", "models.transcription.model": "Transcrição de áudio",
 }
+
+
+@dataclass(frozen=True)
+class Setting:
+    path: str
+    label: str
+    kind: str                                # usd, int, number, text, line, bool, choice, lines, percents, map_text, map_int
+    help: str = ""
+    optional: bool = False                   # blank is a valid answer: off, or no limit
+    options: dict = field(default_factory=dict)        # choice: value -> label; map_*: key -> label
+    placeholders: tuple = ()                 # the {names} this text may use
+
+
+RETENTION = {"inbound_raw": "Eventos recebidos, como chegaram", "media": "Áudios e imagens", "messages_original": "Mensagens originais", "comments": "Comentários",
+             "llm_calls": "Registro das chamadas de IA", "checkpoints": "Estado interno das conversas", "ownership_evidence": "Provas de quem respondeu",
+             "dead_letters": "Envios que falharam", "tool_call_args": "Dados usados nas simulações", "handoff_summaries": "Resumos da passagem ao vendedor",
+             "lead_forms": "Pré-cadastros", "audit_log": "Registro de auditoria", "reviews": "Revisões de conversa", "post_drafts": "Rascunhos de posts que não saíram", "invites": "Convites"}
+IMAGE_MODE = {"local_ocr_masked": "Ler o texto da imagem aqui, sem dados pessoais", "refuse_and_handoff": "Não ler e chamar o vendedor", "llm_describe": "Enviar para a IA descrever"}
+DOCUMENT_MODE = {"local_extract_masked": "Ler o texto do arquivo aqui, sem dados pessoais", "refuse_and_handoff": "Não ler e chamar o vendedor"}
+TRANSFER = {"pending": "Pendente", "anpd_scc": "Cláusulas-padrão da ANPD", "adequacy": "Decisão de adequação", "not_applicable": "Não se aplica"}
+CADENCE = {"no_reply": "Parou de responder", "seller_offer_unanswered": "Oferta do vendedor sem resposta"}
+FOLLOWUP_EVENT = {"bot_message_unanswered": "O assistente falou e a pessoa não respondeu", "stage_entered": "A conversa entrou na etapa"}
+FOLLOWUP_STATUS = {"scheduled": ("Agendado", "info"), "queued": ("Na fila de envio", "info"), "sent": ("Enviado", "ok"),
+                   "skipped": ("Não enviado", "muted"), "stopped": ("Cancelado", "muted")}
+FOLLOWUP_STOP = {"inbound_message": "A pessoa respondeu", "opt_out": "A pessoa pediu para não receber", "window_closed": "A janela do canal fechou",
+                 "window_closed_before_open_hours": "A janela fecharia antes do horário de envio", "frequency_cap": "Limite de mensagens por pessoa",
+                 "no_template": "Regra sem texto", "cadence_removed": "Regra removida", "cadence_disabled": "Regra desligada"}
+
+MORE_SETTINGS = [
+    {"id": "orcamento", "title": "Orçamento de IA", "about": "Até onde o assistente pode gastar. Passou do teto, ele para de usar IA e chama o vendedor. Em dólar, como o provedor cobra.", "settings": [
+        Setting("budget.daily_cap_usd", "Teto por dia", "usd"),
+        Setting("budget.per_conversation_cap_usd", "Teto por conversa", "usd"),
+        Setting("budget.per_turn_cap_usd", "Teto por resposta", "usd"),
+        Setting("budget.experiment_cap_usd", "Teto por avaliação", "usd", "Uma avaliação para sozinha ao chegar aqui."),
+        Setting("budget.alert_thresholds", "Avisar quando chegar em", "percents", "Em % do teto, separados por vírgula. Ex.: 50, 80, 100"),
+    ]},
+    {"id": "passagem", "title": "Passagem para o vendedor", "about": "O que acontece quando ninguém assume uma conversa.", "settings": [
+        Setting("handoff.auto_return_after_min", "Falha técnica volta para o assistente depois de (minutos)", "int", "Em branco: fica com o vendedor. Uma conversa que o vendedor assumiu nunca volta sozinha.", optional=True),
+        Setting("handoff.auto_return_max_per_day", "Vezes por dia, por conversa", "int"),
+        Setting("handoff.escalate_to_owner_after_min", "Avisar o dono se ninguém responder em (minutos)", "int", "Em branco: não avisa.", optional=True),
+        Setting("handoff.closed_reopens_on_inbound", "Conversa encerrada reabre quando o cliente escreve", "bool"),
+        Setting("handoff.already_notified_guideline", "O que o assistente faz enquanto o vendedor não chega", "text"),
+    ]},
+    {"id": "conducao", "title": "Como ele conduz a conversa", "about": "Orientações internas que o assistente recebe em cada situação. O cliente nunca vê estes textos.", "settings": [
+        Setting("conversation.tone_instructions", "O que cada tom significa", "map_text", options=TONE),
+        Setting("guidelines.no_progress", "Quando a conversa não avança", "text"),
+        Setting("guidelines.out_of_scope", "Quando perguntam algo fora do negócio", "text"),
+        Setting("guidelines.asks_if_bot", "Quando perguntam se é um robô", "text"),
+        Setting("guidelines.opt_out_check", "Quando parece querer parar", "text"),
+    ]},
+    {"id": "ritmo", "title": "Ritmo e tamanho", "about": "Como as mensagens chegam ao cliente.", "settings": [
+        Setting("agent.slow_after_s", "Mandar a mensagem de espera depois de (segundos)", "number"),
+        Setting("conversation.bubble_delay_ms", "Pausa entre uma mensagem e a seguinte (milissegundos)", "int"),
+        Setting("funnel.question_cooldown_turns", "Esperar quantas mensagens antes de repetir uma pergunta", "int"),
+        Setting("output_guard.max_bytes", "Tamanho máximo de uma resposta (caracteres, aproximado)", "int"),
+    ]},
+    {"id": "comentarios", "title": "Comentários", "about": "Regras gerais da automação. As respostas de cada post ficam em Posts.", "settings": [
+        Setting("comments.enabled", "Automação de comentários ligada", "bool"),
+        Setting("comments.sensitive_topics_to_human", "Comentário sobre assunto sensível vai para o vendedor", "bool"),
+        Setting("comments.min_public_variants", "Mínimo de respostas diferentes por post", "int", "Evita a mesma frase repetida em massa."),
+        Setting("comments.public_max_chars", "Tamanho máximo da resposta no comentário", "int"),
+        Setting("comments.private_max_chars", "Tamanho máximo do direct", "int"),
+        Setting("comments.person_contact_window_days", "Não chamar de novo a mesma pessoa por (dias)", "int"),
+        Setting("comments.private_reply_dedup_window_days", "Não repetir o direct do mesmo post por (dias)", "int"),
+    ]},
+    {"id": "midia", "title": "Áudio, imagem e arquivo", "about": "O que fazer quando o cliente manda algo além de texto.", "settings": [
+        Setting("media.transcribe_audio", "Transcrever áudios", "bool"),
+        Setting("media.max_audio_seconds", "Áudio mais longo que isto vai para o vendedor (segundos)", "int"),
+        Setting("media.images", "Imagens", "choice", options=IMAGE_MODE),
+        Setting("media.documents", "Arquivos", "choice", options=DOCUMENT_MODE),
+    ]},
+    {"id": "posts", "title": "Publicação de posts", "about": "Posts escritos no console. Nada sai sem uma pessoa aprovar.", "settings": [
+        Setting("operations.posts.publishing_enabled", "Publicação ligada", "bool", "Ligue só depois que a Meta liberar a permissão e a conta for reconectada em Canais."),
+        Setting("operations.posts.max_per_day", "Máximo de posts por dia", "int"),
+        Setting("operations.posts.late_after_min", "Post atrasado espera uma pessoa depois de (minutos)", "int", "Evita que posts antigos saiam todos de uma vez depois de uma pausa."),
+    ]},
+    {"id": "dados", "title": "Proteção de dados", "about": "Decisões para quem responde pela LGPD. O que vem do segmento só pode ficar mais rigoroso.", "settings": [
+        Setting("compliance.opt_out_keywords", "Palavras que descadastram na hora", "lines", "Uma por linha."),
+        Setting("compliance.required_disclosures", "Avisos obrigatórios", "map_text"),
+        Setting("operations.retention_days", "Guardar por (dias)", "map_int", options=RETENTION),
+    ]},
+    {"id": "equipe", "title": "Equipe e revisão", "about": "Como a equipe trabalha no console.", "settings": [
+        Setting("operations.review.daily_sample", "Conversas para revisar por dia", "int"),
+        Setting("operations.review.findings_window_days", "Olhar os problemas dos últimos (dias)", "int"),
+        Setting("operations.invite_valid_hours", "Convite vale por (horas)", "int"),
+        Setting("operations.datasets.two_person_activation", "Tabela precisa de outra pessoa para ativar", "bool"),
+        Setting("operations.knowledge.faq_answer_max_chars", "Tamanho máximo da resposta de uma pergunta frequente", "int"),
+        Setting("operations.knowledge.passage_max_chars", "Tamanho máximo de um trecho editado", "int"),
+    ]},
+]
+
+
+CONFIG_FIELD.update({x.path: x.label for g in MORE_SETTINGS for x in g["settings"]})
+CONFIG_FIELD.update({"followups.cadences": "Lembretes: quando saem", "followups.texts": "Lembretes: texto", "followups.stalled_after": "Contato parado depois de", "subprocessors": "Operadores de dados", "operations.feature_flags.go_live": "Atender clientes de verdade"})
 
 
 def config_field(path: str) -> str:
@@ -330,6 +477,11 @@ def text_problem(p) -> str:
     msg = TEXT_PROBLEM.get(p.rule, "Texto não permitido.")
     quoted = f' "{p.text[:60]}"' if p.text else ""
     return f"{_TEXT_FIELD.get(p.field, p.field)}{quoted}: {msg}"
+
+
+def followup_stop(v: str | None) -> str:
+    key, _, owner = (v or "").partition(":")
+    return f"Conversa em: {owner_label(owner)}" if key == "ownership" else FOLLOWUP_STOP.get(key, humanize(v))
 
 
 def owner_label(v: str | None) -> str:
@@ -473,6 +625,7 @@ def pct(part, whole) -> str:
 
 _PATHS = {
     "chat": '<path d="M4 5h16v10H8l-4 4z"/>',
+    "clock": '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     "inbox": '<path d="M4 4h16v16H4z"/><path d="M4 13h4l2 3h4l2-3h4"/>',
     "book": '<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/>',
     "chart": '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
@@ -495,6 +648,7 @@ _PATHS = {
     "download": '<path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/>',
     "table": '<path d="M3 5h18v14H3z"/><path d="M3 10h18M3 14.5h18M9 5v14"/>',
     "sparkle": '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
+    "plus": '<path d="M12 5v14M5 12h14"/>',
     "image": '<path d="M4 5h16v14H4z"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4 3 2 4-4 4 4"/>',
     "comment": '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12.5h5"/>',
 }
@@ -507,14 +661,14 @@ def icon(name: str, size: int = 18) -> Markup:
 
 
 def install(env) -> None:
-    env.filters.update(owner_label=owner_label, owner_tone=owner_tone, status_label=status_label,
+    env.filters.update(followup_stop=followup_stop, owner_label=owner_label, owner_tone=owner_tone, status_label=status_label,
                        status_tone=status_tone, humanize=humanize, usd=usd, brl=brl, brnum=brnum, money=money, dt=dt,
                        initials=initials, contact_name=contact_name,
                        entry_label=entry_label, reason_label=reason_label, oauth_error=oauth_error,
                        pause_reason=pause_reason, mode_label=mode_label, trigger_label=trigger_label,
                        media_kind_label=media_kind_label, decision_label=decision_label, decision_tone=decision_tone,
-                       text_problem=text_problem)
-    env.globals.update(icon=icon, pct=pct, DIRECTION=DIRECTION, MESSAGE_KIND=MESSAGE_KIND, DM_SCOPE=DM_SCOPE, ROLE=ROLE, fx_note=fx_note, stage_label=stage_label,
+                       text_problem=text_problem, post_status_label=post_status_label, post_status_tone=post_status_tone, post_error_label=post_error_label)
+    env.globals.update(icon=icon, pct=pct, POST_KIND=POST_KIND, DIRECTION=DIRECTION, MESSAGE_KIND=MESSAGE_KIND, DM_SCOPE=DM_SCOPE, ROLE=ROLE, fx_note=fx_note, stage_label=stage_label,
                        slot_label=slot_label, slot_value=slot_value, slot_confidence=slot_confidence, KB_ERROR=KB_ERROR, KB_FLAG=KB_FLAG, KB_PII=KB_PII,
                        KB_USE=KB_USE, KB_AUDIENCE=KB_AUDIENCE, TONE=TONE, OFF_HOURS_MODE=OFF_HOURS_MODE, NOTIFY_OFF_HOURS=NOTIFY_OFF_HOURS,
                        EVAL_STATUS=EVAL_STATUS, EVAL_TONE=EVAL_TONE, EVAL_LEVEL=EVAL_LEVEL, EVAL_SCORE=EVAL_SCORE, GUARD_RULE=GUARD_RULE)

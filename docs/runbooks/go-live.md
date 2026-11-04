@@ -11,6 +11,9 @@ Ordem para colocar o assistente na conta real. **Não conecte a conta real antes
 ## 2. Servidor e provedores
 
 - [ ] VPS, DNS, S3 (WAL), SMTP e chave OpenRouter com limite e ZDR ativado na conta.
+- [ ] Revisão jurídica do caminho de quem compra a carta para vender depois: o que o assistente e o vendedor podem dizer sobre o resultado.
+- [ ] FAQs sugeridas pelo pacote revisadas no console. Elas chegam como rascunho, e o texto sobre regulamentação, desistência e reajuste precisa valer para os grupos da conta.
+- [ ] `lab gate --level full` passou com `analyze_turn@v5`, `respond@v11` e os casos novos.
 - [ ] `docker/prod.env` preenchido. A aplicação **não sobe** sem `OPS_ALERT_EMAIL` ou `OPS_ALERT_WHATSAPP`, e nem com `LLM_PROVIDER` diferente de `openrouter`.
 - [ ] `HEARTBEAT_URL` de um vigia externo (por exemplo, healthchecks.io), com alerta se o ping parar por 5 min.
 - [ ] Monitor externo em `https://<domínio>/health/deep`, que dá 503 sem banco ou sem worker.
@@ -32,13 +35,19 @@ Ordem para colocar o assistente na conta real. **Não conecte a conta real antes
 - [ ] Em **Assistente**, **Regras** e **Modelos**: nome, tom, instruções, mensagens, horários, feriados da cidade. Cada um vira um rascunho em **Configuração**.
 - [ ] Em **Configuração**, clique em **Avaliação completa** no rascunho. Roda no worker, em conversas simuladas, e o custo aparece na tela. Com os workers no ar não há problema: nada chega a um cliente.
 - [ ] Outra pessoa aprova. Em produção, só aprova se a avaliação daquele rascunho passou. Se aparecer "feito a partir de outra versão", use **Atualizar rascunho** e avalie de novo.
-- [ ] Sem o console: `agentplatform lab gate --level full --slug <slug>` e `agentplatform config-activate --slug <slug> --experiment <id>`, que recusa se o arquivo mudou depois do gate.
+- [ ] Sem o console: `agentplatform lab gate --level full --slug <slug>` e `agentplatform config-activate --slug <slug> --experiment <id>`, que recusa se o arquivo mudou depois do gate. Só a avaliação completa libera: com `--max-scenarios` ou menos de 3 repetições ela mede, mas não aprova. Custo medido: cerca de US$ 0,15 a 0,20 com os modelos de produção.
 
 Até aqui `go_live` está desligado: em produção, nada chega a um cliente, e só o simulador do console responde. Mensagens que chegarem ficam pendentes.
 
 ## 4. Meta
 
-- [ ] Verificação da empresa.
+- [ ] Verificação da empresa, no portfólio ao qual o app está ligado.
+- [ ] Identificar o app como Provedor de Tecnologia (ADR-025). **Não pode ser desfeito.**
+- [ ] Verificação de acesso, se o painel pedir. A Meta responde em cerca de 5 dias.
+- [ ] Definir `LEGAL_CONTROLLER_NAME` e `LEGAL_CONTACT_EMAIL` e passar o texto de `/privacy` e `/data-deletion` pela revisão jurídica. Sem os dois valores, as páginas respondem 404.
+- [ ] Conferir de fora do servidor que `/privacy`, `/data-deletion` e `/meta/*` são públicos no proxy.
+- [ ] Preencher no painel: URL de privacidade, URL de exclusão de dados, domínio, categoria e ícone.
+- [ ] Antes de deixar o console acessível para a análise: conferir que o banco desse ambiente não tem nenhuma conta criada por testes, e ligar o segundo fator.
 - [ ] App Review (o roteiro fica em `docs/privado/`).
 
 ## 5. Conectar a conta real (só depois do Advanced Access)
@@ -77,8 +86,8 @@ Use uma conta de teste **sem papel no app**. Olhe o JSON em `inbound_events` e n
 | T19 | Revogar a permissão do app | Erro 190: canal pausa, alerta sai, mensagens ficam pendentes e reconectar libera |
 | T20 | Cliente bloqueia a conta | Erro 551 sem handoff |
 | T21 | Conta nova abre o direct **pelo celular** e toca em uma pergunta pronta | Postback chega com a pergunta; o assistente responde e a origem fica como pergunta pronta. Publicar e retirar foram confirmados em 01/11 na conta de teste; o toque só existe no celular |
-| T23 | Trocar o modelo de busca em Base de conhecimento, com o OpenRouter | Índice novo pronto, rascunho criado, busca segue no atual até aprovar, e depois responde pelo novo. Nunca testado com provedor real |
-| T22 | Aprovar um documento e uma FAQ com o OpenRouter | Vetores gerados, custo em `llm_calls`, resposta usando o trecho e a FAQ. Nunca testado com provedor real: em dev a chave direta recusa, de propósito |
+| T23 | Trocar o modelo de busca em Base de conhecimento, com o OpenRouter | Índice novo pronto, rascunho criado, busca segue no atual até aprovar, e depois responde pelo novo. Vetores e busca testados com o provedor real em 02/11 (`tests/integration/test_live_openrouter.py`, material inventado); falta refazer pela tela, em produção |
+| T22 | Aprovar um documento e uma FAQ com o OpenRouter | Vetores gerados, custo em `llm_calls`, resposta usando o trecho e a FAQ. Testado com o provedor real em 02/11 (`tests/integration/test_live_openrouter.py`, material inventado); falta refazer pela tela, em produção |
 
 ## 7. Ligar
 
@@ -92,3 +101,17 @@ Use uma conta de teste **sem papel no app**. Olhe o JSON em `inbound_events` e n
 ## O que está coberto só por documentação, sem teste real
 
 Estes pontos seguem a documentação da Meta e só se confirmam nos testes acima: `app_id` no eco (T4), formato do `standby` em Instagram (T6), anúncio (T2) e reentrega (T17, T18). Na conta de teste foi confirmado que o `id` da API de conversas é igual ao `mid` do webhook, o que sustenta a recuperação de direct sem duplicar mensagem.
+
+## Publicação de posts (depois do go-live, ADR-024)
+
+Fica desligada até aqui. Nada disso é necessário para o atendimento.
+
+- [ ] Pedir `instagram_content_publish` e `instagram_manage_contents` à Meta, separados do pedido de mensagens e comentários, para não atrasá-lo.
+- [ ] Depois da aprovação: acrescentar as duas em `META_OAUTH_SCOPES` (ou na configuração do Facebook Login for Business), e **reconectar a conta** em Canais, para ela receber as permissões.
+- [ ] Conferir que `https://<domínio>/pm/qualquer-coisa` responde 404 de fora do servidor, e não o 404 do proxy: a Meta busca os arquivos por esse caminho.
+- [ ] Ligar em Configuração, Publicação de posts.
+- [ ] **Com a conta de teste**, publicar uma vez cada: foto, carrossel, reel e story. Conferir legenda, ordem e que o post entra em Posts.
+- [ ] Ligar e desligar os comentários de um post de teste.
+- [ ] Apagar um post de teste. A documentação da Meta diverge entre `DELETE` e `POST`: o adaptador usa `DELETE`. Se falhar, ajustar antes de usar na conta real.
+- [ ] Consultar `content_publishing_limit` e conferir se `operations.posts.max_per_day` continua abaixo dele.
+

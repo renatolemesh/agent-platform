@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% block title %}Mais ajustes{% endblock %}{% block body %}
+<a class="crumb" href="/console/assistant">{{ icon('back', 14) }} Assistente</a>
+<div class="page-head"><div><h1>Mais ajustes</h1><p class="sub">O resto do que dá para mudar, sem mexer em arquivo. Salvar cria um <b>rascunho</b>: nada muda para os clientes até outra pessoa aprovar em <a href="/console/config">Configuração</a>.</p></div></div>
+{% for e in errors %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ e }}</p></div>{% endfor %}
+{% if saved %}<div class="alert info">{{ icon('check', 16) }}<p>{{ saved }}</p></div>{% endif %}
+<form method="post" action="/console/assistant/more">{{ csrf_input(user) }}
+
+<section class="section" id="ar"><div class="section-head"><h2>Entrada no ar</h2><p>Enquanto isto estiver desligado em produção, o assistente não atende ninguém. Só liga quando nenhum operador estiver pendente.</p></div><div class="card">
+  <label class="check"><input type="checkbox" name="go_live" {{ 'checked' if go_live }}> <span>Atender clientes de verdade{% if env == 'dev' %} <span class="muted small">(não vale em ambiente de testes)</span>{% endif %}</span></label>
+  {% if subs %}<h3 style="margin-top:14px">Operadores de dados</h3><p class="muted small">Quem recebe dados pessoais e com que base legal. Decisão de quem responde pela LGPD.</p>
+  <div class="table-wrap"><table><thead><tr><th>Operador</th><th>Para quê</th><th>País</th><th>Base para a transferência</th></tr></thead><tbody>
+  {% for s in subs %}<tr><td><b>{{ s.name }}</b></td><td class="small">{{ s.purpose }}</td><td class="muted">{{ s.country }}</td>
+    <td><select name="sub_{{ s.i }}" aria-label="Base de {{ s.name }}">{% for k, label in TRANSFER.items() %}<option value="{{ k }}" {{ 'selected' if s.mechanism == k }}>{{ label }}</option>{% endfor %}</select></td></tr>{% endfor %}
+  </tbody></table></div>{% endif %}
+</div></section>
+
+<section class="section" id="lembretes"><div class="section-head"><h2>Lembretes</h2><p>As regras, os textos e os contatos parados ficam em <a href="/console/followups">Follow-ups</a>.</p></div></section>
+
+{% for g in groups %}<section class="section" id="{{ g.id }}"><div class="section-head"><h2>{{ g.title }}</h2><p>{{ g.about }}</p></div><div class="card">
+  {% for r in g.rows %}{% set s = r.s %}
+    {% if s.kind == 'bool' %}<label class="check"><input type="checkbox" name="{{ s.path }}" {{ 'checked' if r.value }}> <span>{{ s.label }}</span></label>{% if s.help %}<p class="help">{{ s.help }}</p>{% endif %}
+    {% elif s.kind == 'map_text' %}<h3>{{ s.label }}</h3>{% for k, v in r.value.items() %}<div class="field">{% if s.options.get(k) %}<label>{{ s.options[k] }}</label>{% endif %}<textarea name="{{ s.path }}:{{ k }}" rows="2" aria-label="{{ s.label }}">{{ v }}</textarea></div>{% endfor %}
+    {% elif s.kind == 'map_int' %}<h3>{{ s.label }}</h3><div class="form-grid" style="margin-bottom:14px">{% for k, v in r.value.items() %}<div class="field" style="margin:0"><label>{{ s.options.get(k, k | replace('_', ' ') | capitalize) }}</label><input type="number" min="1" name="{{ s.path }}:{{ k }}" value="{{ v }}" required></div>{% endfor %}</div>
+    {% else %}<div class="field"><label>{{ s.label }}</label>
+      {% if s.kind == 'text' %}<textarea name="{{ s.path }}" rows="2">{{ r.value }}</textarea>
+      {% elif s.kind == 'lines' %}<textarea name="{{ s.path }}" rows="5">{{ r.value }}</textarea>
+      {% elif s.kind == 'choice' %}<select name="{{ s.path }}">{% for k, label in s.options.items() %}<option value="{{ k }}" {{ 'selected' if r.value == k }}>{{ label }}</option>{% endfor %}</select>
+      {% elif s.kind == 'int' %}<input type="number" min="0" style="max-width:220px" name="{{ s.path }}" value="{{ r.value }}" {{ 'required' if not s.optional }}>
+      {% elif s.kind in ('number', 'usd') %}<div class="row" style="align-items:center;gap:8px">{% if s.kind == 'usd' %}<span class="muted">US$</span>{% endif %}<input style="max-width:180px;flex:1" inputmode="decimal" name="{{ s.path }}" value="{{ r.value }}" required></div>
+      {% else %}<input name="{{ s.path }}" value="{{ r.value }}" {{ 'required' if not s.optional }}>{% endif %}
+      {% if s.help %}<span class="help">{{ s.help }}</span>{% endif %}</div>{% endif %}
+  {% endfor %}
+</div></section>{% endfor %}
+
+<div class="savebar"><div class="field"><label>O que mudou (anotação)</label><input name="note" maxlength="300" value="{{ note }}" placeholder="ex.: teto por dia maior para a campanha de novembro"></div>
+<button class="btn-primary">{{ icon('check', 16) }} Criar rascunho</button></div>
+</form>
+<p class="muted small" style="margin-top:18px">O que não aparece aqui é técnico, ou define o segmento em si, como os estágios do funil. Isso fica no YAML em <a href="/console/config">Configuração</a>.</p>
+{% endblock %}

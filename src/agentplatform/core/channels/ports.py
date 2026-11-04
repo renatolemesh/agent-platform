@@ -60,6 +60,16 @@ class MediaInfo:
     comments_count: int | None = None
 
 
+@dataclass(frozen=True)
+class PostItem:
+    """One file of a post to be published. `url` must be reachable by the provider when this is created."""
+    kind: str                                 # feed | reel | story
+    url: str
+    is_video: bool
+    caption: str | None = None
+    carousel_item: bool = False
+
+
 class SendError(Exception):
     """Base. retryable=False means do not retry (permanent). `scope` says what the refusal is about: account (nothing can be
     sent from this account), recipient (this person cannot receive), object (the comment is gone), window (outside the
@@ -115,6 +125,20 @@ class MediaCatalog(Protocol):
     async def list_comments(self, account: AccountRef, media_id: str, kind: str, limit: int) -> list[CanonicalEvent]: ...
     async def get_username(self, account: AccountRef, external_user_id: str) -> str | None: ...
     async def list_conversation_contacts(self, account: AccountRef, after: str | None, limit: int) -> tuple[list[str], str | None]: ...
+
+
+class PostPublisher(Protocol):
+    """Channels that publish posts (ADR-024). A container is what will be posted; only publish_post makes it public."""
+    channel: str
+    publish_scope: str | None                 # the permission publish_post needs on the account, when the provider has one
+    delete_scope: str | None
+
+    async def create_post_item(self, account: AccountRef, item: PostItem) -> str: ...
+    async def create_carousel(self, account: AccountRef, children: list[str], caption: str) -> str: ...
+    async def post_status(self, account: AccountRef, container_id: str) -> str: ...
+    async def publish_post(self, account: AccountRef, container_id: str) -> str: ...
+    async def set_comments_enabled(self, account: AccountRef, media_id: str, enabled: bool) -> None: ...
+    async def delete_media(self, account: AccountRef, media_id: str) -> None: ...
 
 
 @dataclass(frozen=True)

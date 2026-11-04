@@ -9,7 +9,7 @@ pytestmark = [pytest.mark.db, pytest.mark.e2e]
 
 
 def see(page, text: str) -> None:
-    page.get_by_text(text, exact=False).first.wait_for(state="visible")
+    page.get_by_text(text, exact=False).locator("visible=true").first.wait_for(state="visible")
 
 
 # ------------------------------------------------------------------ access
@@ -339,15 +339,16 @@ def test_answering_a_question_the_assistant_could_not(visit, login, run_jobs, wo
     see(page, "Preparando para uso")
     run_jobs()
     page.reload()
-    row = page.locator("tr", has_text="Posso pagar com boleto?").first
+    row = page.locator(".item", has_text="Posso pagar com boleto?").first
     see(row, "Aprovado")
     assert sql("select count(*) as n from faq_variant_vectors where tenant_id=%s", world.tenant)[0]["n"] == 1
 
+    page.get_by_role("link", name="Nova pergunta").click()
     page.fill('input[name="question"]', "Rascunho de pergunta?")
     page.fill('textarea[name="answer"]', "Resposta em rascunho.")
     page.get_by_role("button", name="Salvar rascunho").click()
     see(page, "o assistente ainda não usa")
-    page.locator("tr", has_text="Rascunho de pergunta?").first.get_by_role("button", name="Retirar").click()
+    page.locator(".item", has_text="Rascunho de pergunta?").first.get_by_role("button", name="Retirar").click()
     see(page, "o assistente não usa mais")
 
 
@@ -466,3 +467,47 @@ def test_someone_invited_creates_their_own_password(visit, login, world, sql):
     guest.locator("button.btn-primary").click()
     guest.wait_for_load_state()
     assert sql("select role from tenant_users where display_name='Pessoa Nova'")[0]["role"] == "reviewer"
+
+
+# ------------------------------------------------------------------ posts written here (ADR-024)
+def test_writing_a_post_stays_a_draft_while_publishing_is_off(visit, login, tmp_path):
+    import io
+
+    from PIL import Image
+    buffer = io.BytesIO()
+    Image.new("RGB", (1080, 1080), (40, 90, 160)).save(buffer, "JPEG")
+    photo = tmp_path / "foto.jpg"
+    photo.write_bytes(buffer.getvalue())
+    wrong = tmp_path / "foto.png"
+    wrong.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
+
+    page = visit()
+    login(page, "seller")
+    see(page, "Conversas")
+    page.goto("/console/posts")
+    page.get_by_role("link", name="Novo post").click()
+    see(page, "A publicação está desligada")
+    page.locator("textarea[name=caption]").fill("Legenda escrita no navegador")
+    page.locator("input[name=files]").set_input_files(str(wrong))
+    page.get_by_role("button", name="Salvar rascunho").click()
+    see(page, "Use JPEG para imagem")
+
+    page.locator("input[name=files]").set_input_files(str(photo))
+    page.get_by_role("button", name="Salvar rascunho").click()
+    see(page, "Rascunho salvo")
+    assert page.locator("textarea[name=caption]").input_value() == "Legenda escrita no navegador"
+    preview = page.locator('img[src*="/files/"]').first
+    preview.wait_for(state="visible")
+    assert preview.evaluate("e => e.complete && e.naturalWidth") == 1080, "the page policy must let the preview load"
+    assert page.get_by_role("button", name="Aprovar e publicar agora").is_disabled()
+    assert page.get_by_role("button", name="Aprovar e agendar").is_disabled()
+    draft_url = page.url.split("?")[0]
+
+    page.goto("/console/posts")
+    see(page, "Escritos aqui")
+    see(page, "Legenda escrita no navegador")
+
+    page.goto(draft_url)
+    page.on("dialog", lambda d: d.accept())
+    page.get_by_role("button", name="Excluir rascunho").click()
+    see(page, "Rascunho excluído")

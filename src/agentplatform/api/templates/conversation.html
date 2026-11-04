@@ -5,10 +5,10 @@
     <p class="sub"><span class="badge {{ c.ownership | owner_tone }}" data-ownership="{{ c.ownership }}">{{ c.ownership | owner_label }}</span>
     <span class="badge plain">{{ stage_label(c.stage, labels) }}</span>
     <span class="muted small">· última mensagem {{ c.last_inbound_at | dt }}</span></p></div>
-  <form method="post" action="/console/conversations/{{ c.id }}/ownership" class="actions">{{ csrf_input(user) }}
+  {% if can_act %}<form method="post" action="/console/conversations/{{ c.id }}/ownership" class="actions">{{ csrf_input(user) }}
     {% if c.ownership != 'HUMAN' %}<button name="to" value="HUMAN" class="btn-primary">{{ icon('users', 16) }} Assumir conversa</button>{% endif %}
     {% if c.ownership != 'CLOSED' %}<button name="to" value="CLOSED" class="btn-ghost">Encerrar</button>{% endif %}
-  </form>
+  </form>{% endif %}
 </div>
 
 <div class="grid g-side">
@@ -24,15 +24,15 @@
     <div class="card flush">
       <div class="card-head"><div><h2>Turnos do assistente</h2><p class="sub">O que ele entendeu, consultou e decidiu em cada resposta.</p></div></div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Quando</th><th>Resultado</th><th>Estágio</th><th class="num">Chamadas</th><th class="num">Custo</th><th>Detalhes</th></tr></thead>
-        <tbody>{% for t in turns %}<tr>
+        <thead><tr><th>Quando</th><th>Resultado</th><th>Estágio</th><th class="num">Chamadas</th><th class="num">Custo</th></tr></thead>
+        <tbody>{% for t in turns %}<tr class="turn">
           <td class="muted nowrap">{{ t.started_at | dt('%d/%m %H:%M:%S') }}</td>
           <td><span class="badge {{ t.status | status_tone }}">{{ t.status | status_label }}</span></td>
           <td class="nowrap">{{ stage_label(t.stage_before, labels) }} → {{ stage_label(t.stage_after, labels) if t.stage_after else '—' }}</td>
-          <td class="num">{{ t.llm_calls }}</td><td class="num">{{ t.cost_usd | money }}</td>
-          <td><details data-why><summary>por que respondeu isso</summary>{% set e = explained.get(t.id) %}{% if e %}<div style="margin-top:8px">{% include "_turn_explain.html" %}</div>{% endif %}
+          <td class="num">{{ t.llm_calls }}</td><td class="num">{{ t.cost_usd | money }}</td></tr>
+        <tr class="turn-why"><td colspan="5"><details data-why><summary class="small">Por que respondeu isso</summary>{% set e = explained.get(t.id) %}{% if e %}<div style="margin-top:8px">{% include "_turn_explain.html" %}</div>{% endif %}
 <details style="margin-top:8px"><summary class="small">ver trace</summary><pre>{{ t.trace | tojson(indent=1) }}</pre></details></details></td>
-        </tr>{% else %}<tr><td colspan="6"><div class="empty">Nenhum turno ainda.</div></td></tr>{% endfor %}</tbody>
+        </tr>{% else %}<tr><td colspan="5"><div class="empty">Nenhum turno ainda.</div></td></tr>{% endfor %}</tbody>
       </table></div>
     </div>
   </div>
@@ -59,7 +59,7 @@
         <p class="small"><span class="badge muted">{{ c.ownership | owner_label }}</span></p>
         <p class="muted small">Conversa encerrada. Se o cliente escrever de novo, o assistente volta a responder.</p>
       {% endif %}
-      {% if contact_flag != 'blocked' %}<form method="post" action="/console/conversations/{{ c.id }}/ownership">{{ csrf_input(user) }}
+      {% if can_act %}{% if contact_flag != 'blocked' %}<form method="post" action="/console/conversations/{{ c.id }}/ownership">{{ csrf_input(user) }}
         {% if c.ownership == 'BOT' %}<button name="to" value="PAUSED" style="width:100%">{{ icon('pause', 16) }} Pausar assistente nesta conversa</button>
         {% else %}<button name="to" value="BOT" class="btn-primary" style="width:100%">{{ icon('play', 16) }} Retomar assistente</button>
         <p class="muted small" style="margin:8px 0 0">Ao retomar, ele responde o que ficou sem resposta e volta a atender.</p>{% endif %}
@@ -67,7 +67,7 @@
       <form method="post" action="/console/conversations/{{ c.id }}/contact" style="margin-top:8px">{{ csrf_input(user) }}
         {% if contact_flag == 'blocked' %}<button name="status" value="allowed" class="btn-primary" style="width:100%">{{ icon('play', 16) }} Voltar a atender esta pessoa</button>
         {% else %}<button name="status" value="blocked" class="btn-ghost" style="width:100%">Nunca atender esta pessoa</button>{% endif %}
-      </form>
+      </form>{% endif %}
     </div>
     <div class="card"><h2>De onde veio</h2>
       <p class="small"><span class="badge plain">{{ c.entrypoint | entry_label }}</span>{% if c.username %} <span class="muted">@{{ c.username }}</span>{% endif %}</p>
@@ -81,11 +81,17 @@
       {% if c.profile %}<dl class="kv">{% for k, v in c.profile.items() %}<dt>{{ slot_label(k, labels) }}</dt>
         <dd>{{ slot_value(k, v, labels) }}{% if slot_confidence(v) %} <span class="muted small" title="confiança da extração">· {{ slot_confidence(v) }}</span>{% endif %}</dd>{% endfor %}</dl>
       {% else %}<p class="muted">Ainda sem informações coletadas.</p>{% endif %}
+      {% if user.role in ('tenant_owner', 'platform_admin') %}<a class="btn btn-sm" style="margin-top:12px" href="/console/lgpd/contact/{{ c.contact_id }}">Corrigir dados</a>{% endif %}
     </div>
-    <div class="card"><h2>Venda</h2>
-      <p class="muted small">Marque quando o cliente fechar, para medir a conversão do assistente.</p>
+    {% if can_act and stages %}<div class="card"><h2>Estágio e venda</h2>
+      {% if c.stage == opt_out_stage or c.opted_out_at %}<p class="muted small">Esta pessoa pediu para não receber mensagens. O estágio não muda por aqui.</p>
+      {% else %}<form method="post" action="/console/conversations/{{ c.id }}/stage" class="row" style="margin-bottom:10px">{{ csrf_input(user) }}
+        <div class="field"><label>Estágio</label><select name="stage">{% for st in stages if st.name != opt_out_stage %}<option value="{{ st.name }}" {{ 'selected' if st.name == c.stage }}>{{ st.label }}</option>{% endfor %}</select></div>
+        <button>Mudar</button></form>
+      {% if c.stage != won_stage %}<p class="muted small">Marque quando o cliente fechar, para medir a conversão do assistente.</p>
       <form method="post" action="/console/conversations/{{ c.id }}/won">{{ csrf_input(user) }}<button>{{ icon('check', 16) }} Marcar venda</button></form>
-    </div>
+      {% else %}<p class="muted small">Venda marcada. Se foi engano, escolha outro estágio acima.</p>{% endif %}{% endif %}
+    </div>{% endif %}
     <div class="card"><h2>Revisão</h2>
       <p class="muted small">Anote o que achou da conversa: é o que mede se o assistente está acertando.</p>
       {% for r in reviews %}<div class="small" style="margin-bottom:8px"><span class="badge {{ 'ok' if r.verdict == 'ok' else 'warn' }}">{{ 'Tudo certo' if r.verdict == 'ok' else review_cfg.categories.get(r.category, 'Problema') }}</span>
@@ -104,4 +110,5 @@
     </div>
   </div>
 </div>
+<script>document.querySelectorAll('.chat').forEach(function(c){c.scrollTop=c.scrollHeight})</script>
 {% endblock %}

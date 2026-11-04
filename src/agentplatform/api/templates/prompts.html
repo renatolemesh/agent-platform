@@ -14,7 +14,7 @@ proibidas, dados sensíveis) são verificadas pelo sistema mesmo que o prompt mu
   <a class="btn btn-sm" href="/console/config">Aprovar em Configuração</a></div></div></div>{% endif %}
 {% if errors %}<div class="alert bad">{{ icon('alert', 16) }}<div><p><b>Não foi salvo:</b></p>{% for e in errors %}<p>· {{ e }}</p>{% endfor %}</div></div>{% endif %}
 
-<div class="grid" style="grid-template-columns:280px minmax(0,1fr)">
+<div class="grid g-nav">
 <div>
   {% for n, title, desc in nodes %}<a href="/console/prompts?node={{ n }}" class="card" style="display:block;text-decoration:none;color:inherit;padding:14px;{{ 'border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)' if n == node }}">
     <b>{{ title }}</b><div class="muted small" style="margin:4px 0 6px">{{ desc }}</div>
@@ -34,9 +34,9 @@ proibidas, dados sensíveis) são verificadas pelo sistema mesmo que o prompt mu
           {% for v in versions %}<option value="{{ v.label }}" {{ 'selected' if v.label == version }}>{{ v.label }}{% if v.label == active[node] %} · ativa{% endif %}{% if v.kind == 'seed' %} · original{% else %} · editada #{{ v.n }}{% if v.note %} — {{ v.note[:40] }}{% endif %}{% endif %}</option>{% endfor %}
         </select></div></form>
     </div>
-    <form method="post" action="/console/prompts/save">{{ csrf_input(user) }}
+    {% if user.role in ('tenant_owner', 'platform_admin') %}<form method="post" action="/console/prompts/save">{{ csrf_input(user) }}
       <input type="hidden" name="node" value="{{ node }}"><input type="hidden" name="base_version" value="{{ version }}">
-      <textarea name="body" rows="30" spellcheck="false" style="font-size:12.5px;line-height:1.55">{{ body }}</textarea>
+      <textarea class="code" name="body" rows="30" spellcheck="false">{{ body }}</textarea>
       <div class="row" style="margin-top:12px">
         <div class="field"><label>O que mudou (anotação)</label><input name="note" maxlength="300" value="{{ note }}" placeholder="ex.: não repetir explicação; usar exemplos"></div>
         <button class="btn-primary">{{ icon('sparkle', 16) }} Salvar e testar</button>
@@ -45,6 +45,7 @@ proibidas, dados sensíveis) são verificadas pelo sistema mesmo que o prompt mu
     {% if version != active[node] %}<form method="post" action="/console/prompts/use" style="margin-top:10px">{{ csrf_input(user) }}
       <input type="hidden" name="node" value="{{ node }}"><input type="hidden" name="version" value="{{ version }}">
       <button class="btn-sm">Criar rascunho usando esta versão como está</button></form>{% endif %}
+    {% else %}<pre>{{ body }}</pre>{% endif %}
   </div>
 
   {% if diff %}<div class="card"><h2>O que mudou</h2><pre>{% for line in diff.splitlines() %}<span class="{{ 'diff-add' if line.startswith('+') else ('diff-del' if line.startswith('-') else '') }}">{{ line }}</span>

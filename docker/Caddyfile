@@ -52,7 +52,16 @@
 		reverse_proxy api:8000
 	}
 
-	@app path /f/* /console /console/* /health /health/* /actions/* /privacy /data-deletion /data-deletion/* /meta/*
+	# Files of a post: the only other big thing (operations.posts.max_video_bytes). Provider fetches and logs keep only the first path segment.
+	@post_upload path /console/posts/drafts /console/posts/drafts/*
+	handle @post_upload {
+		request_body {
+			max_size 110MB
+		}
+		reverse_proxy api:8000
+	}
+
+	@app path /f/* /pm/* /console /console/* /health /health/* /actions/* /privacy /data-deletion /data-deletion/* /meta/*
 	handle @app {
 		request_body {
 			max_size 10MB

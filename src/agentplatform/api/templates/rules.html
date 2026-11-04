@@ -1,13 +1,13 @@
 {% extends "base.html" %}{% block title %}Regras{% endblock %}{% block body %}
 <a class="crumb" href="/console/assistant">{{ icon('back', 14) }} Assistente</a>
-<div class="page-head"><div><h1>Regras do assistente</h1><p class="sub">O que ele faz em cada situação, quando chama o vendedor e o que nunca diz. Salvar cria um rascunho. As regras de segurança e o que o pacote trava não aparecem para desligar.</p></div></div>
+<div class="page-head"><div><h1>Regras do assistente</h1><p class="sub">O que ele faz em cada situação, quando chama o vendedor e o que nunca diz. Salvar cria um rascunho. As regras de segurança valem acima de tudo isto e não aparecem para desligar.</p></div></div>
 {% for e in errors or [] %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ e }}</p></div>{% endfor %}
 <form method="post" action="/console/assistant/rules">{{ csrf_input(user) }}
 
 <div class="card flush"><div class="card-head"><div><h2>Diretrizes do pacote</h2><p class="sub">Orientações que entram na resposta quando a situação aparece. Número menor vem primeiro; no máximo {{ cfg.guidelines.max_per_turn }} por mensagem.</p></div></div>
 <div class="table-wrap"><table><thead><tr><th>Ligada</th><th>O que faz</th><th>Quando</th><th class="num">Ordem</th></tr></thead><tbody>
 {% for g in guidelines %}<tr data-guideline="{{ g.spec.id }}"><td><input type="checkbox" name="g_on_{{ g.spec.id }}" aria-label="Ligar {{ g.spec.id }}" {{ 'checked' if g.enabled }}></td>
-<td class="small">{{ g.spec.action }}</td><td class="small muted">{% for i in g.spec.when_intents %}<span class="badge plain" style="margin:0 4px 4px 0">{{ i | humanize }}</span>{% endfor %}{% if g.spec.when_keywords %}<div>{{ g.spec.when_keywords[:4] | join(', ') }}{% if g.spec.when_keywords | length > 4 %}…{% endif %}</div>{% endif %}</td>
+<td style="min-width:380px"><textarea name="g_action_{{ g.spec.id }}" rows="{{ (g.action | length // 85) + 1 }}" maxlength="1500" aria-label="O que faz: {{ g.spec.id }}">{{ g.action }}</textarea>{% if g.changed %}<span class="help">Editada por você. Apague tudo e salve para voltar ao texto original.</span>{% endif %}</td><td class="small muted">{% for i in g.spec.when_intents %}<span class="badge" style="margin:0 4px 4px 0">{{ intent_labels.get(i, i | humanize) }}</span>{% endfor %}{% if g.spec.when_keywords %}<div>{{ g.spec.when_keywords[:4] | join(', ') }}{% if g.spec.when_keywords | length > 4 %}…{% endif %}</div>{% endif %}</td>
 <td class="num"><input type="number" name="g_priority_{{ g.spec.id }}" value="{{ g.priority }}" style="width:76px"></td></tr>{% endfor %}
 </tbody></table></div></div>
 

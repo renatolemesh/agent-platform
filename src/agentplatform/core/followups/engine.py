@@ -24,33 +24,52 @@ def parse_delay(s: str) -> timedelta:
     return {"s": timedelta(seconds=n), "m": timedelta(minutes=n), "h": timedelta(hours=n), "d": timedelta(days=n)}[unit]
 
 
+def trigger_stages(trigger: dict) -> list[str]:
+    return trigger.get("stages") or ([trigger["stage"]] if trigger.get("stage") else [])
+
+
+def _live(cfg: PlatformConfig, event: str) -> list[Cadence]:
+    return [c for c in cfg.followups.cadences if cfg.followups.enabled and c.enabled and c.trigger.get("event") == event]
+
+
 async def on_stage_entered(conn: AsyncConnection, cfg: PlatformConfig, tenant_id: UUID, conversation_id: UUID,
                            stage: str, now: datetime) -> int:
     n = 0
-    for cad in cfg.followups.cadences if cfg.followups.enabled else []:
-        if cad.trigger.get("event") == "stage_entered" and cad.trigger.get("stage") == stage:
+    for cad in _live(cfg, "stage_entered"):
+        if stage in trigger_stages(cad.trigger):
             n += await _schedule(conn, tenant_id, conversation_id, cad, now)
     return n
 
 
-async def on_bot_message(conn: AsyncConnection, cfg: PlatformConfig, tenant_id: UUID, conversation_id: UUID,
-                         stage: str, now: datetime) -> int:
+async def on_bot_message(conn: AsyncConnection, cfg: PlatformConfig, tenant_id: UUID, conversation_id: UUID, now: datetime) -> int:
+    """The silence counts from the assistant's last message, whatever the turn did to the stage."""
+    cadences = _live(cfg, "bot_message_unanswered")
+    if not cadences:
+        return 0
+    lead = await (await conn.execute(
+        "select l.stage from conversations c join leads l on l.contact_id = c.contact_id where c.id = %s", (conversation_id,))).fetchone()
     n = 0
-    for cad in cfg.followups.cadences if cfg.followups.enabled else []:
-        t = cad.trigger
-        if t.get("event") == "bot_message_unanswered" and stage in t.get("stages", []):
-            n += await _schedule(conn, tenant_id, conversation_id, cad, now + parse_delay(t.get("after", "3h")))
+    for cad in cadences:
+        if lead and lead["stage"] in trigger_stages(cad.trigger):
+            n += await _schedule(conn, tenant_id, conversation_id, cad, now, restart=True)
     return n
 
 
-async def _schedule(conn, tenant_id, conversation_id, cad: Cadence, base: datetime) -> int:
+# A reply stops the run and the row stays, so the silence after the next message needs it back. Once a reminder
+# reached the outbox the row keeps its outbox_id and is never armed again: attempts are per conversation.
+_ONCE = "do nothing"
+_RESTART = """do update set status = 'scheduled', due_at = excluded.due_at, stop_reason = null
+              where followup_runs.outbox_id is null"""
+
+
+async def _schedule(conn, tenant_id, conversation_id, cad: Cadence, base: datetime, *, restart: bool = False) -> int:
     due = base
     n = 0
     for i, step in enumerate(cad.steps[: cad.max_attempts]):
         due = due + parse_delay(step.delay)
         r = await conn.execute(
             """insert into followup_runs (tenant_id, conversation_id, cadence_id, step, status, due_at)
-               values (%s,%s,%s,%s,'scheduled',%s) on conflict (conversation_id, cadence_id, step) do nothing""",
+               values (%s,%s,%s,%s,'scheduled',%s) on conflict (conversation_id, cadence_id, step) """ + (_RESTART if restart else _ONCE),
             (tenant_id, conversation_id, cad.id, i, due))
         n += r.rowcount
     return n
@@ -84,8 +103,10 @@ async def tick(conn: AsyncConnection, cfg: PlatformConfig, tenant_id: UUID, temp
     for r in rows:
         cad = cadences.get(r["cadence_id"])
         reason = None
-        if cad is None:
+        if cad is None or r["step"] >= len(cad.steps):
             reason = "cadence_removed"
+        elif not (cfg.followups.enabled and cad.enabled):
+            reason = "cadence_disabled"
         elif r["opted_out_at"]:
             reason = "opt_out"
         elif r["ownership"] != "BOT":
@@ -116,7 +137,8 @@ async def tick(conn: AsyncConnection, cfg: PlatformConfig, tenant_id: UUID, temp
             res.skipped += 1
             continue
         step = cad.steps[r["step"]]
-        text = templates.get(step.template_key or "") if step.content_kind == "template" else templates.get("no_reply_nudge")
+        words = {**templates, **cfg.followups.texts}
+        text = words.get(step.template_key or "") if step.content_kind == "template" else words.get("no_reply_nudge")
         if not text:
             await conn.execute("update followup_runs set status='skipped', stop_reason='no_template' where id=%s", (r["id"],))
             res.skipped += 1

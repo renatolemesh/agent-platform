@@ -24,3 +24,14 @@
 {"id": "optout_sentence_4", "text": "não quero receber agora, pode ser semana que vem?", "opt_out": true}
 {"id": "optout_sentence_5", "text": "não quero parcela alta", "opt_out": false}
 {"id": "optout_sentence_6", "text": "para de pagar o boleto não dá", "opt_out": false}
+{"id": "continue_on_whatsapp", "text": "me chama no whatsapp amanhã cedo", "handoff": "explicit_request"}
+{"id": "continue_on_zap", "text": "vamos pelo zap", "handoff": "explicit_request"}
+{"id": "sent_a_number", "text": "esse é meu número [TELEFONE]", "handoff": "explicit_request"}
+{"id": "asks_to_call", "text": "pode me ligar à tarde?", "handoff": "explicit_request"}
+{"id": "call_1", "text": "dá pra gente fazer uma videochamada?", "handoff": "explicit_request"}
+{"id": "call_2", "text": "prefiro falar pessoalmente", "handoff": "explicit_request"}
+{"id": "start_1", "text": "beleza, como começo?", "handoff": "hot_lead"}
+{"id": "start_2", "text": "quais documentos vocês precisam?", "handoff": "hot_lead"}
+{"id": "detail_1", "text": "me passa o histórico de lances desse grupo", "handoff": "specialist_question"}
+{"id": "detail_2", "text": "estou com o nome sujo, consigo entrar?", "handoff": "specialist_question"}
+{"id": "detail_3", "text": "vocês têm carta já contemplada?", "handoff": "specialist_question"}

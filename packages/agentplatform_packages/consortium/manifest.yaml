@@ -9,15 +9,16 @@ glossary:
   fundo de reserva: valor para cobrir eventuais inadimplências do grupo, em percentual do crédito
 persona_template: "Você é o assistente virtual de {seller_name}, consultor(a){company}. Tom próximo e didático. Consórcio NÃO é financiamento: nunca chame o consórcio de financiamento, empréstimo ou crédito bancário."
 slots:
-  - {name: goal, type: enum, values: [real_estate, vehicle, heavy_vehicle, services, other_movable],
+  - {name: goal, type: enum, values: [real_estate, vehicle, heavy_vehicle, services, other_movable, resale],
      synonyms: {real_estate: [imovel, casa, apartamento, ape, terreno, sala comercial, reforma],
                 vehicle: [carro, moto, veiculo, automovel, suv, seminovo, zero km],
                 heavy_vehicle: [caminhao, onibus, trator, maquina, maquinario, implemento],
                 services: [servico, servicos, viagem, festa, estudo, cirurgia plastica, tratamento, intercambio, curso, faculdade, mba, formatura, casamento],
-                other_movable: [barco, lancha, aeronave, aviao, equipamento]},
+                other_movable: [barco, lancha, aeronave, aviao, equipamento],
+                resale: [vender a carta, venda de carta, vender carta, vender depois, pra vender, para vender, vender, venda, revender, revenda, alavancagem, alavancar, investir, investimento]},
      question: "Você está pensando em imóvel, carro, moto, caminhão ou outro objetivo?", required_for: [pronto_para_proposta],
-     label: Objetivo, value_labels: {real_estate: Imóvel, vehicle: Carro ou moto, heavy_vehicle: Veículo pesado, services: Serviços, other_movable: Outro bem móvel},
-     hint: "o bem ou serviço que o cliente vai comprar com a carta (services = viagem, intercâmbio, curso, MBA, faculdade, festa, casamento, tratamento). As palavras carta, carta de crédito, crédito e consórcio sozinhas NÃO dizem o objetivo: nesse caso não extraia goal",
+     label: Objetivo, value_labels: {real_estate: Imóvel, vehicle: Carro ou moto, heavy_vehicle: Veículo pesado, services: Serviços, other_movable: Outro bem móvel, resale: Vender a carta},
+     hint: "o bem ou serviço que o cliente vai comprar com a carta; resale quando ele quer a carta para vender depois, fala em alavancagem ou quer a carta como investimento, sem citar um bem (services = viagem, intercâmbio, curso, MBA, faculdade, festa, casamento, tratamento). As palavras carta, carta de crédito, crédito e consórcio sozinhas NÃO dizem o objetivo: nesse caso não extraia goal",
      not_evidence: [carta, cartas, credito, consorcio, quero, queria, preciso, gostaria, fazer, pegar, contratar, comprar, valor, bem]}
   - {name: credit_amount, type: money, question: "Mais ou menos de quanto seria o valor do bem?", label: Valor do bem}
   - {name: monthly_budget, type: money, question: "Qual parcela caberia no seu bolso hoje?", label: Parcela que cabe}
@@ -33,9 +34,8 @@ stages:
   - {name: engajado, label: Engajado, goal: "Entender o objetivo", max_turns_without_progress: 3}
   - {name: qualificando, label: Qualificando, goal: "Preencher o perfil mínimo, uma pergunta por vez", max_turns_without_progress: 5, tools: [simulate_consortium]}
   - {name: educando, label: Tirando dúvidas, goal: "Tirar dúvidas com base aprovada", max_turns_without_progress: 4, tools: [group_history]}
-  - {name: pronto_para_proposta, label: Pronto para proposta, goal: "Fechar o próximo passo: pré-cadastro ou conversa com o vendedor", max_turns_without_progress: 3, tools: [create_lead_form_link]}
+  - {name: pronto_para_proposta, label: Pronto para proposta, goal: "Fechar o próximo passo: a conversa com o vendedor", max_turns_without_progress: 3}
   - {name: objecao, label: Objeção, goal: "Tratar a objeção com texto aprovado", max_turns_without_progress: 3}
-  - {name: pre_cadastro_enviado, label: Pré-cadastro enviado, goal: "Lembrar do formulário dentro da janela", max_turns_without_progress: 2}
   - {name: com_vendedor, label: Com vendedor, goal: "Apoiar enquanto o vendedor negocia, sem refazer a qualificação"}
   - {name: nutricao, label: Nutrição, goal: "Follow-up leve"}
   - {name: cliente, label: Cliente, goal: "Cliente", is_terminal: true, marked_by_seller_only: true}
@@ -54,8 +54,6 @@ transitions:
   - {from: pronto_para_proposta, to: objecao}
   - {from: objecao, to: pronto_para_proposta}
   - {from: objecao, to: qualificando, regression: true}
-  - {from: pronto_para_proposta, to: pre_cadastro_enviado}
-  - {from: pre_cadastro_enviado, to: com_vendedor}
   - {from: pronto_para_proposta, to: com_vendedor}
   - {from: com_vendedor, to: cliente}
   - {from: com_vendedor, to: nutricao}
@@ -67,8 +65,12 @@ transitions:
 initial_stage: novo
 opt_out_stage: opt_out
 form_stage: pronto_para_proposta
-form_sent_stage: pre_cadastro_enviado
-form_resend_keywords: [link, formulário, formulario, pré-cadastro, pre-cadastro, cadastro]
+# No form goes out in the conversation: with the minimum profile, the next step is the person.
+ready_question: "Posso chamar o consultor para seguir com você?"
+# The model rewords that question: a question matching this is the same offer.
+ready_offer_pattern: '\bchamo\b|\b(quer|prefere|gostaria) que (ele|o consultor|o vendedor)\b|\b(quer|queria|posso|pode|prefere|gostaria|deseja|vamos|bora|que tal)\b.*\b(chamar|chame|falar com|fale com|conversar com|converse com|contato com|consultor|vendedor|para ele|pra ele)\b'
+# Right after that question, a message made only of these words is a yes.
+short_yes: [sim, pode, ser, claro, bora, quero, ok, okay, beleza, blz, show, fechado, vamos, vamo, dale, tá, bom, com, certeza, por, favor, pfv, pf, uhum, aham, isso, "👍", "👌"]
 seller_stage: com_vendedor
 won_stage: cliente
 # no term question: the plans table already has the terms; the customer sees the entry installment and is pulled to the next step
@@ -79,15 +81,43 @@ flow:
   - {id: bid_and_urgency, collect_optional: [has_bid_funds, urgency]}
 flow_stages: [novo, engajado, qualificando, educando]
 intents: [greeting, product_question, bid_question, price_question, simulation_request, compare_financing, wants_fast,
-          insurance_question, post_sale, cancellation, legal, wants_human, opt_out, out_of_scope, provide_info, objection, ready_to_buy,
-          asks_if_bot, other]
-objections: [expensive, prefer_financing, distrust, no_time, will_think, not_now]
+          insurance_question, post_sale, cancellation, legal, wants_human, opt_out, out_of_scope, provide_info, objection, ready_to_buy, resale_question,
+          asks_if_bot, business_contact, not_interested, other]
+intent_labels:
+  greeting: Cumprimento
+  product_question: Dúvida sobre o produto
+  how_it_works: Como funciona
+  bid_question: Dúvida sobre lance
+  price_question: Pergunta sobre valores
+  simulation_request: Pediu simulação
+  compare_financing: Compara com financiamento
+  wants_fast: Quer rápido
+  insurance_question: Dúvida sobre seguro
+  post_sale: Pós-venda
+  cancellation: Cancelamento
+  legal: Assunto jurídico
+  wants_human: Quer falar com alguém
+  opt_out: Quer parar
+  out_of_scope: Fora do assunto
+  provide_info: Passou informação
+  objection: Objeção
+  ready_to_buy: Quer fechar
+  resale_question: Pergunta sobre vender a carta
+  asks_if_bot: Pergunta se é robô
+  business_contact: Não é cliente (vendedor, parceria, emprego)
+  not_interested: Recusou sem pedir para parar
+  other: Outro
+objections: [expensive, prefer_financing, distrust, no_time, will_think, not_now, already_has]
+# Someone saying no, or not now, is not asked the next question of the flow.
+stop_asking_on: [not_interested, not_now, no_time, will_think, already_has]
 guidelines:
+  - {id: resale_interest, priority: 8, when_intents: [resale_question], when_keywords: [vender a carta, venda de carta, vender carta, revender, revenda, alavancagem, alavancar, investir, investimento],
+     action: "O cliente quer comprar a carta para vender depois. Trate como um objetivo normal, sem julgar. Não fale de lucro, ganho, preço de venda ou em quanto tempo sai a contemplação, e não compare com investimento: nada disso é garantido, e quem explica é o consultor. Se ele chamar de investimento, não confirme: consórcio é uma compra planejada. Se houver opção em tool_results, mostre a parcela; se não houver, pergunte de quanto seria a carta."}
   - {id: how_it_works, when_intents: [product_question, how_it_works],
      when_keywords: ["como funciona", "explica", "explicar", "entender", "não entendi", "nao entendi", "detalha"], priority: 10,
      action: "Explique o consórcio em no máximo duas frases simples, com uma comparação do dia a dia (uma compra planejada em grupo: paga-se uma parcela por mês e quem é contemplado, por sorteio ou lance, recebe a carta de crédito para comprar à vista). Se o cliente ainda não disse o que quer comprar, pergunte isso para explicar com o exemplo dele. Se ele já disse o bem e o valor, explique usando esses dados. Só dê o passo a passo completo se ele pedir mais detalhe. Se a explicação já foi dada, não repita: aprofunde um ponto diferente."}
   - {id: offer_from_table, when_tools: [simulate_consortium], priority: 5,
-     action: "Use a simulação para puxar o cliente, sem esperar ele pedir: numa frase animada e direta, diga que com parcelas a partir de uns R$ (entry_approx) ele já tem uma carta de (credit). Use a primeira opção de tool_results com os números exatamente como estão lá; se o cliente ainda não disse o objetivo, cite o tipo do plano (goal). Se a opção tiver reduced_installment, diga que essa parcela vale até a contemplação. Se você já disse esse valor na sua mensagem anterior, não repita a frase: confirme em poucas palavras e siga. Termine com UMA pergunta: a pergunta do fluxo, se houver; senão, puxe para garantir a carta (pré-cadastro ou consultor). Não pergunte prazo."}
+     action: "Use a simulação para puxar o cliente, sem esperar ele pedir: numa frase animada e direta, diga que com parcelas a partir de uns R$ (entry_approx) ele já tem uma carta de (credit). Use a primeira opção de tool_results com os números exatamente como estão lá; se o cliente ainda não disse o objetivo, cite o tipo do plano (goal). Se a opção tiver reduced_installment, diga que essa parcela vale até a contemplação. Se você já disse esse valor na sua mensagem anterior, não repita a frase: confirme em poucas palavras e siga. Termine com UMA pergunta: a pergunta do fluxo, se houver; senão, pergunte se pode chamar o consultor para seguir. Não pergunte prazo."}
   - {id: bid_question, when_intents: [bid_question], stages: [educando, qualificando, pronto_para_proposta],
      action: "Explique lance livre, fixo e embutido só com base aprovada. Nunca prometa contemplação nem prazo. Ofereça o vendedor para as regras do grupo."}
   - {id: vs_financing, when_intents: [compare_financing],
@@ -98,19 +128,36 @@ guidelines:
      action: "Seguro prestamista: fale só do que está no material aprovado; as regras constam no contrato do grupo. Nunca colete dado de saúde."}
   - {id: cost, when_intents: [price_question], when_keywords: ["juros", "taxa", "custa", "parcela"],
      action: "Não existe juros, mas existe taxa de administração, fundo de reserva, seguro e reajuste conforme o regulamento, em percentual do crédito. Não invente números: sem tabela oficial, ofereça a simulação com o vendedor."}
-  - {id: not_now, when_keywords: ["ano que vem", "agora não", "agora nao", "mais pra frente", "mais para frente", "tá alto", "ta alto", "está alto", "esta alto", "apertado", "sem grana"],
-     action: "O cliente disse que o momento ou o orçamento está apertado. Acolha em uma frase, sem insistir. Se fizer sentido, mostre que dá para começar com um crédito menor ou com prazo mais longo (parcela menor), sem números fora das fontes. Se ele quiser só mais para frente, respeite e pergunte se pode retomar o contato na época que ele indicou."}
+  - {id: declined, priority: 3, when_intents: [not_interested], when_keywords: ["não tenho interesse", "sem interesse", "não me interessa", "não é pra mim", "por enquanto não"],
+     action: "O cliente recusou. Agradeça em uma frase, sem insistir, sem perguntar o motivo e sem oferecer outra coisa. Diga que ele pode chamar quando quiser. Não diga que vai parar de enviar mensagens: ele não pediu isso."}
+  - {id: financial_hardship, priority: 1, when_keywords: ["desempregad", "endividad", "muita dívida", "cheio de dívida", "pior fase", "fase difícil", "momento difícil", "passando por dificuldade", "perdi o emprego"],
+     action: "O cliente contou que passa por um momento financeiro difícil. Acolha em uma frase, com respeito. Não ofereça produto, parcela nem crédito menor, e não pergunte sobre as finanças dele. Diga que a porta fica aberta para quando fizer sentido."}
+  - {id: not_now, priority: 4, when_keywords: ["ano que vem", "mês que vem", "agora não", "agora nao", "no momento não", "mais pra frente", "mais para frente", "tá alto", "ta alto", "está alto", "esta alto", "apertado", "sem grana", "sem dinheiro", "não tenho dinheiro", "sem condição", "sem condições", "não tá sobrando", "não está sobrando", "quando receber", "quando sair o pagamento", "vou pensar", "vou ver", "falar com minha esposa", "falar com meu marido", "falar com minha mulher"],
+     action: "O cliente disse que o momento ou o orçamento está apertado, ou que quer pensar. Acolha em uma frase, sem insistir e sem criar pressa. Só fale em crédito menor ou prazo mais longo se ele disser que o problema é o valor da parcela, sem números fora das fontes. Se ele quiser só mais para frente, respeite e pergunte se pode retomar o contato na época que ele indicou."}
+  - {id: already_has, when_keywords: ["já tenho consórcio", "já tenho um consórcio", "já tenho carta", "já tenho uma carta", "já fiz consórcio", "já tive consórcio"],
+     action: "O cliente já tem ou já teve consórcio. Reconheça em uma frase, sem insistir e sem falar de outras administradoras. Pergunte se ele tem alguma dúvida ou se pensa em outro objetivo."}
+  - {id: commission_question, priority: 2, when_keywords: ["comissão", "comissões", "quanto você ganha", "quanto vc ganha", "quanto tu ganha"],
+     action: "Perguntaram quanto o consultor ganha. Não fale disso nem repita essa palavra. Diga em uma frase que os custos do cliente constam no contrato e no regulamento do grupo, e ofereça o consultor para qualquer dúvida sobre eles."}
   - {id: goal_tradeoff, when_keywords: ["carro ou casa", "veículo ou imóvel", "veiculo ou imovel", "qual compensa", "qual vale mais", "o que você indica", "o que voce indica", "o que me indica"],
      action: "Compare de forma simples: no consórcio de veículo o prazo costuma ser menor e a parcela proporcionalmente maior; no de imóvel o prazo é longo e a parcela fica menor para o mesmo esforço. Pergunte qual objetivo pesa mais para o cliente agora. Não recomende um produto específico como melhor investimento."}
   - {id: pf_pj, when_keywords: ["pj", "cnpj", "pessoa jurídica", "pessoa juridica", "no nome da empresa", "pf ou pj"],
      action: "Dá para fazer como pessoa física ou jurídica; a escolha e os documentos são vistos com o consultor no sistema oficial. Não peça dados da empresa nem do cliente."}
   - {id: ready_to_buy, when_intents: [ready_to_buy],
-     action: "O cliente quer fechar. Não faça mais perguntas de qualificação: diga em uma frase que vai chamar o consultor para concluir no sistema oficial. Nunca envie link de pagamento, PIX ou ficha cadastral."}
-  - {id: distrust, when_keywords: ["golpe", "é confiável", "e confiavel", "é seguro", "e seguro", "medo de cair"],
-     action: "O cliente desconfia, o que é normal numa compra grande. Acolha em uma frase, sem dizer que é seguro ou garantido e sem citar dados que não estejam nas fontes, e ofereça falar com o consultor, que mostra o contrato e o regulamento antes de qualquer pagamento."}
+     action: "O cliente quer fechar. Não faça mais perguntas de qualificação: diga em uma frase que vai chamar o consultor para concluir no sistema oficial. Nunca envie link de pagamento, PIX, ficha cadastral ou formulário."}
+  - {id: distrust, when_keywords: ["golpe", "é confiável", "e confiavel", "é seguro", "e seguro", "medo de cair", "pirâmide", "é real", "é uma empresa", "qual empresa", "qual a empresa", "qual é a empresa", "nome da empresa", "tem contrato", "é regulamentado", "banco central", "por qual banco", "qual banco"],
+     action: "O cliente desconfia ou quer saber quem está por trás, o que é normal numa compra grande. Acolha em uma frase e responda com o que estiver na base aprovada, sem dizer que é seguro ou garantido e sem citar dados que não estejam nas fontes. Ofereça falar com o consultor, que mostra o contrato e o regulamento antes de qualquer pagamento."}
   - {id: sensitive_data, when_keywords: ["cpf", "rg", "renda", "salário"],
      action: "Agradeça e diga que não precisa desse dado por aqui; o vendedor cuida disso no sistema oficial. Não repita o dado."}
 handoff_triggers:
+  # Continuing elsewhere is asking for the person, and a phone number sent here means the same. "[telefone]" is how a number reads after masking.
+  - {id: continue_elsewhere, locked: true, reason: explicit_request, keywords: [whatsapp, whats, wpp, zap, me liga, me ligue, pode me ligar, te ligar, "[telefone]", videochamada, "vídeo chamada", "chamada de vídeo", meet, "marcar uma reunião", "marcar reunião", "fazer uma reunião", "reunião online", "falar pessoalmente", "conversar pessoalmente", "ir na loja", "ir até a loja", "passar na loja", "ir no escritório", "ir até o escritório", "passar no escritório"]}
+  - {id: resale_question, intents: [resale_question], reason: specialist_question}
+  # Facts of one person or one group, which no approved text answers.
+  - {id: group_history_question, reason: specialist_question, keywords: ["histórico de lances", "histórico do grupo", "últimas assembleias", "últimos lances", "média de lance", "média dos lances", "lances do grupo", "estudo do grupo"]}
+  - {id: credit_restriction, reason: specialist_question, keywords: ["nome sujo", "negativado", "negativada", "nome no serasa", "nome no spc", "restrição no nome", "restrição no cpf"]}
+  - {id: contemplated_letter, reason: specialist_question, keywords: ["comprar carta contemplada", "comprar uma carta contemplada", "tem carta contemplada", "têm carta contemplada", "trabalha com carta contemplada", "trabalham com carta contemplada", "carta já contemplada", "preciso de uma carta contemplada"]}
+  # Another seller, someone looking for a job or offering a service: nothing to sell here, and the owner wants to know.
+  - {id: business_contact, intents: [business_contact], reason: specialist_question}
   - {id: simulation_request, intents: [simulation_request], reason: simulation_request}
   # Keywords only for what can only be said by someone already involved; "como funciona a assembleia?" or "e se eu desistir?" are questions
   # of someone deciding, and the classifier (intents) still catches the customer who really is post-sale.
@@ -118,15 +165,32 @@ handoff_triggers:
   - {id: post_sale, locked: true, intents: [post_sale], keywords: ["meu boleto", "segunda via", "2a via", "fui contemplado", "fui contemplada", "minha cota", "minha assembleia"], reason: post_sale}
   - {id: legal, locked: true, intents: [legal], keywords: ["processo judicial", "processar vocês", "processar voces", "vou processar", "entrar na justiça", "entrar na justica", "meu advogado", "procon", "reclame aqui"], reason: legal}
   - {id: ready_to_buy, intents: [ready_to_buy], reason: hot_lead,
-     keywords: ["quero fechar", "vamos fechar", "bora fechar", "quero contratar", "quero aderir", "como faço pra entrar", "como faco pra entrar", "manda o pix", "me manda a ficha", "como eu pago", "pode ser essa", "quero entrar", "me cadastrar", "fazer o cadastro", "fazer o pré-cadastro", "fazer o pre-cadastro"]}
+     keywords: ["quero fechar", "vamos fechar", "bora fechar", "quero contratar", "quero aderir", "como faço pra entrar", "como faco pra entrar", "manda o pix", "me manda a ficha", "como eu pago", "pode ser essa", "quero entrar", "como começo", "como começar", "por onde começo", "como faço pra começar", "como faço para começar", "como faço para entrar", "onde eu contrato", "onde contrato", "como contrato", "quero fazer também", "vou querer fazer", "quero montar", "vamos iniciar", "quais documentos", "lista de documentos", "me cadastrar", "fazer o cadastro", "pré-cadastro", "manda o formulário", "preencher o formulário", "tem formulário", "tem algum formulário", "pode chamar", "chama ele", "chama o consultor", "chama o vendedor"]}
 compliance:
   forbidden_phrases:
+    # The next step is the person: nothing to fill in the conversation. Naming what the customer asked for is not offering it.
+    - '\b(preench\w*|envi\w*|mand\w*|pass\w*|segue|devolv\w*|respond\w*)\b.{0,30}\b(formulário|pré-cadastro|ficha)\b'
+    - '\bpreench\w* (o |a |os |um |uma |seu |sua |seus |esse |essa |esses )?(cadastro|dados|proposta)\b'
     - "contempla(ção|do|da) garantid"
     - "garant\\w* (a |de |sua )?contempla"
     - "aprova(ção|do|da) garantid"
     - "(em|no) (\\d+|poucos) (dias|meses) (você )?(é|será|vai ser) contemplad"
     - "grupo que (mais )?contempla (mais )?rápido"
     - "comiss(ão|ões)"
+    # A result nobody can promise, and pressure that a person may not repeat here
+    - '\blucr(o|os|ar|ativ\w*)\b'
+    - '\brentabilidade\b|\brentável\b'
+    - 'retorno (garantid|cert|alt)'
+    - 'chances? .{0,30}(enorme|alta|grande|muito boa)'
+    - '(poucas|últimas) vagas|vagas limitadas'
+    - 'só (vale )?até hoje|última chance|oportunidade única'
+    - 'contempl\w+ (rápido|em pouco tempo|logo)'
+    - '(até|ate) (a )?meia[- ]noite|(fecha|acaba|encerra)\w* hoje|fechamento (do |de )?(mês|hoje)|cotas? reservad'
+    - '(empresa|administradora|ela) (compra|recompra|garante a compra)|compra (garantida|de todas)|comprador(es)? garantid|venda garantida'
+    - '(fazer|ganhar|tirar) (uma |um(a)? boa )?grana|dinheiro no bolso|mud(a|ar) (a |de |sua )?vida|renda (extra|mensal|passiva) (garantid|cert)'
+    - 'investimento (seguro|garantid|sem risco|certo)|(melhor|ótimo|excelente|grande|baita) (investimento|negócio)'
+    - '\b(cdb|cdi)\b'
+    - 'sem (consulta|análise) (de |do )?(crédito|cpf|nome)|sem burocracia'
     - "deposit\\w* na minha conta"
     - "já (fechei|garanti) (a |sua )?cota"
     # calling the product a loan is the violation; comparing ("diferente do financiamento...") is what the approved FAQ does
@@ -139,6 +203,7 @@ compliance:
   never_request: [cpf, rg, income, assets, bank_data, health_data]
   require_with:
     'sem juros': 'taxa de administra'
+    'sem entrada': 'primeira parcela|taxa de administra'
   extra_rules: [contracting_only_in_official_system, no_contemplation_confirmation, credit_paid_to_seller_of_good_only]
 faqs_seed:
   - id: what_is
@@ -153,6 +218,30 @@ faqs_seed:
     question: O seguro prestamista é obrigatório?
     variants: ["preciso fazer seguro", "seguro é obrigatório", "o que é seguro prestamista"]
     answer: "As regras do seguro prestamista constam no contrato do grupo. O custo é sempre informado."
+  - id: regulated
+    question: Consórcio é regulamentado?
+    variants: ["quem fiscaliza o consórcio", "consórcio é legal", "é pirâmide?", "tem algum órgão por trás"]
+    answer: "Sim. O consórcio é regulado pela Lei 11.795/2008, e as administradoras são autorizadas e fiscalizadas pelo Banco Central. Antes de qualquer pagamento, o consultor mostra o contrato e o regulamento do grupo."
+  - id: down_payment
+    question: Precisa de entrada?
+    variants: ["tem entrada", "preciso dar entrada", "quanto preciso ter para começar"]
+    answer: "O consórcio não pede entrada como um financiamento: você começa pagando a primeira parcela, que também inclui taxa de administração e fundo de reserva, conforme o regulamento do grupo."
+  - id: never_contemplated
+    question: E se eu nunca for contemplado?
+    variants: ["e se eu não for sorteado", "e se chegar no fim e eu não for contemplado", "o dinheiro é meu no final"]
+    answer: "Não existe prazo garantido para a contemplação: ela acontece nas assembleias, por sorteio ou lance, ao longo do grupo. O que acontece até o encerramento do grupo está no contrato e no regulamento, e o consultor mostra essas regras antes de você decidir."
+  - id: giving_up
+    question: E se eu desistir?
+    variants: ["posso cancelar depois", "se eu cancelar pego o dinheiro de volta", "se eu parar de pagar"]
+    answer: "Quem desiste tem direito à devolução do que pagou ao fundo do grupo, com os descontos previstos, mas não na hora: o momento e o valor seguem a lei e o contrato. O consultor mostra as regras do grupo antes de você decidir."
+  - id: readjustment
+    question: A parcela aumenta com o tempo?
+    variants: ["a parcela sobe com a inflação", "a parcela é fixa", "tem reajuste"]
+    answer: "A parcela e o crédito são reajustados pelo índice previsto no contrato do grupo, normalmente uma vez por ano. O índice de cada grupo está no regulamento."
+  - id: cheaper_good
+    question: E se o bem custar menos que o crédito?
+    variants: ["se o imóvel for mais barato que a carta", "e se sobrar crédito"]
+    answer: "O que sobra do crédito pode ter outro destino, como abater parcelas, conforme o contrato e o regulamento do grupo. O consultor confirma como funciona no seu caso."
 lead_form_fields: [first_name, city, contact, goal, credit_amount, monthly_budget, term_months, has_bid_funds]
 lead_form_labels:
   first_name: "Primeiro nome"
@@ -165,24 +254,28 @@ lead_form_labels:
   has_bid_funds: "Tem recurso para lance?"
 allowed_urls: []      # each account's own sites: conversation.allowed_urls
 templates:
-  form_reminder: "Oi! Conseguiu dar uma olhada no formulário? Se preferir, posso chamar o consultor para te ajudar."
+  seller_offer_reminder: "Oi! Quer que eu chame o consultor para seguir com você? Se ficou alguma dúvida, pode me perguntar."
   no_reply_nudge: "Fico à disposição. Quer que eu te explique mais alguma coisa sobre o consórcio?"
 auto_transitions:
   - {from: [novo], to: engajado, when: customer_replied}
   - {from: [novo, engajado], to: qualificando, when: slot_filled}
 scope: "consórcio (imóveis, veículos, pesados, serviços), carta de crédito, contemplação, lance, taxas do consórcio, seguro prestamista, liberação de crédito, documentos, o consultor e o atendimento"
 intent_hints:
+  resale_question: "SÓ quando PERGUNTA pelo resultado ou pela forma da venda: quanto ganha ou lucra, por quanto vende, em quanto tempo vende, para quem vende, quem compra, se é obrigado a usar a carta, se vale como investimento. Dizer que quer a carta para vender depois, ou falar em alavancagem, NÃO é isto: é provide_info ou product_question"
+  wants_human: "quer falar com uma pessoa, ou pede para continuar no WhatsApp, por telefone, em videochamada ou pessoalmente"
   product_question: "dúvida sobre como funciona o consórcio, a carta, o seguro, a liberação"
   bid_question: "dúvida sobre lance"
   price_question: "pergunta sobre valores, parcela, taxas, juros"
   simulation_request: "pede EXPLICITAMENTE uma simulação, proposta ou o valor da parcela (informar valor, prazo ou objetivo NÃO é pedir simulação)"
   wants_fast: "quer o bem rápido ou pergunta em quanto tempo será contemplado"
-  post_sale: "JÁ TEM uma cota e fala do SEU boleto, da SUA assembleia ou da contemplação DELE (quem pergunta como funciona ou como se paga, sem dizer que já tem cota, ainda está decidindo: isso é product_question)"
+  post_sale: "JÁ TEM uma cota conosco e fala do SEU boleto, da SUA assembleia ou da contemplação DELE (dizer que tem consórcio em outra empresa não é isto: é objection already_has; quem pergunta como funciona ou como se paga, sem dizer que já tem cota, ainda está decidindo: isso é product_question)"
   cancellation: "JÁ TEM uma cota e quer cancelar (perguntar o que acontece se desistir, antes de entrar, é product_question)"
   out_of_scope: "assunto sem relação com o escopo do negócio"
   provide_info: "informa dados do perfil (objetivo, valor, parcela, prazo, cidade)"
-  asks_if_bot: "pergunta se está falando com robô ou pessoa"
-  ready_to_buy: "decidiu entrar: quer fechar, aderir, pagar a primeira parcela ou escolheu uma opção (perguntar preço ou tirar dúvida NÃO é querer fechar)"
+  asks_if_bot: "pergunta se está falando com robô ou pessoa, ou se é mesmo o consultor quem responde"
+  not_interested: "recusa a oferta (não tenho interesse, não é pra mim, por enquanto não, obrigado). Pedir que parem de escrever é opt_out, não isto"
+  business_contact: "não veio comprar: é de outro vendedor, procura emprego, quer vender um serviço ou propõe parceria. Quem pergunta se dá para ganhar indicando alguém também entra aqui"
+  ready_to_buy: "decidiu entrar: quer fechar, aderir, pagar a primeira parcela, escolheu uma opção ou disse sim quando o assistente ofereceu chamar o consultor (perguntar preço ou tirar dúvida NÃO é querer fechar)"
 media_context_slots: [goal]
 # The one the tests use. An account's own go in its file: operations.knowledge.never_import_name_hashes.
 never_import_name_hashes:
@@ -218,7 +311,24 @@ comment_templates:
     repeat_variants:
       - "Já te chamei no direct 😊"
       - "Te respondo por lá, no direct!"
+  - id: carta
+    label: Vídeo sobre a carta de crédito
+    keywords: [carta, cartas, crédito, credito, eu quero]
+    public_variants:
+      - "Te chamei no direct! Se não aparecer, olha em Solicitações 😊"
+      - "Mandei uma mensagem no seu direct. Se não aparecer, confere em Solicitações."
+      - "Oi! Te respondi por mensagem, dá uma olhada no direct ou em Solicitações."
+    private_variants:
+      A: "Oi! Aqui é o assistente virtual do {seller}. Vi seu comentário no vídeo 😊 Quer que eu te explique como funciona a carta de crédito?"
+      B: "Oi! Sou o assistente virtual do {seller} e vi seu comentário no vídeo. Posso te explicar como funciona a carta de crédito?"
+    repeat_variants:
+      - "Já te chamei no direct 😊"
+      - "Te respondo por lá, no direct!"
 reply_examples:
+  - customer: "sem dinheiro agora, quem sabe no ano que vem"
+    reply: "Tranquilo, sem pressa nenhuma! Quando fizer sentido pra você, é só me chamar aqui."
+  - customer: "quero comprar uma carta pra vender depois"
+    reply: "Entendi! Pra te mostrar a parcela, de quanto seria a carta? A parte da venda o consultor te explica direitinho."
   - customer: "Olá"
     reply: "Oi! 😊 Sou o assistente virtual do consultor. Você tá pensando em comprar o quê: casa, carro ou outra coisa?"
   - customer: "Como funciona?"

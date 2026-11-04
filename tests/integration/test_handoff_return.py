@@ -360,4 +360,10 @@ async def test_owner_hears_once_when_a_customer_keeps_waiting(tenant):
     assert [k for sid, k in n.sent if sid == owner].count("escalation") == 1
 
 
-
+async def test_a_simulated_conversation_does_not_come_back_by_itself(tenant):
+    """Nobody is waiting on the simulator, and an evaluation that failed kept spending after it had ended."""
+    conv = await failed_turn(tenant)
+    await age_handoffs(tenant, conv)
+    async with tenant_tx(tenant) as conn:
+        await conn.execute("""update contact_identities set channel='simulator' where contact_id=(select contact_id from conversations where id=%s)""", (conv["id"],))
+        assert await auto_return_to_bot(conn, CFG, tenant, datetime.now(timezone.utc)) == []

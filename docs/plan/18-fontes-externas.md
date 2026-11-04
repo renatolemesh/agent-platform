@@ -32,6 +32,18 @@ Todas as fontes abaixo foram **consultadas em 09/10/2026** por três pesquisas p
 | Handover Protocol substituído por Conversation Routing (23/10/2025); exige conta ligada a página | [O] https://developers.facebook.com/documentation/business-messaging/instagram-messaging/features/conversation-routing | — |
 | URL de anexo em CDN "privacy-aware", sem prazo documentado | [O] instagram-platform overview | Lacuna |
 
+### Publicação de posts (consultado em 03/11/2026, ADR-024)
+
+| Fato | Fonte |
+| --- | --- |
+| Foto, vídeo, reels, carrossel e story: `POST /{IG_ID}/media` cria o container e `POST /{IG_ID}/media_publish` com `creation_id` publica. Permissões: `instagram_basic`, `instagram_content_publish`, `pages_read_engagement` | [O] https://developers.facebook.com/docs/instagram-platform/content-publishing/ |
+| `GET /{container}?fields=status_code`: `EXPIRED`, `ERROR`, `FINISHED`, `IN_PROGRESS`, `PUBLISHED`. O container expira em 24 horas. Consultar 1 vez por minuto, por até 5 minutos | [O] mesma página |
+| O limite diário aparece como 100 e como 50 posts, na mesma documentação. Dá para consultar em `content_publishing_limit` | [O] mesma página |
+| O arquivo precisa estar em URL pública na hora da criação. Imagem só em JPEG | [O] mesma página |
+| Legenda: até 2.200 caracteres, 30 hashtags, 20 menções. Imagem: até 8 MB, proporção de 4:5 a 1,91:1, largura a partir de 320 px. Reels: até 300 MB. Vídeo em story: até 100 MB | [O] https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media/ |
+| Atualizar um post só muda `comment_enabled` (com `instagram_manage_comments`). Legenda e arquivo não mudam | [O] https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/ |
+| Apagar só com Facebook Login, com `instagram_manage_contents`. O título e o exemplo dizem `DELETE`, a sintaxe diz `POST`, e uma cópia antiga diz que não existe: **testar no primeiro uso** | [O] mesma página |
+
 ## 2. WhatsApp Cloud API (notificador e fase 4)
 
 | Fato | Fonte | Diverge? |
@@ -74,7 +86,7 @@ Todas as fontes abaixo foram **consultadas em 09/10/2026** por três pesquisas p
 | Taxa de 5,5% na compra de créditos | [O] https://openrouter.ai/docs/faq |
 | Prompt caching por provedor | [O] https://openrouter.ai/docs/guides/best-practices/prompt-caching |
 | STT: `POST /api/v1/audio/transcriptions` (só `zdr`/`data_collection`) | [O] https://openrouter.ai/docs/guides/overview/multimodal/stt |
-| Preços (in/out por 1M): gemini-2.5-flash-lite 0,10/0,40; gemini-3.1-flash-lite 0,25/1,50; gpt-5-nano 0,05/0,40; gpt-5-mini 0,25/2,00; gpt-5.4-nano 0,20/1,25; gpt-5.4-mini 0,75/4,50; deepseek-v4-flash (DeepInfra) 0,09/0,18; mistral-small-2603 0,15/0,60; llama-4-maverick 0,19/0,65; claude-haiku-4.5 1,00/5,00; gpt-oss-120b 0,037/0,17 | [O] https://openrouter.ai/api/v1/models (preço por endpoint; conferir `usage.cost`) |
+| Preços (in/out por 1M): gemini-2.5-flash-lite 0,10/0,40 (sem rota ZDR em 02/11/2026, fora da configuração); gemini-3.1-flash-lite 0,25/1,50; gpt-5-nano 0,05/0,40; gpt-5-mini 0,25/2,00; gpt-5.4-nano 0,20/1,25; gpt-5.4-mini 0,75/4,50; deepseek-v4-flash (DeepInfra) 0,09/0,18; mistral-small-2603 0,15/0,60; llama-4-maverick 0,19/0,65; claude-haiku-4.5 1,00/5,00; gpt-oss-120b 0,037/0,17 | [O] https://openrouter.ai/api/v1/models (preço por endpoint; conferir `usage.cost`) |
 
 ## 5. Dados, filas, observabilidade, avaliação, ingestão
 

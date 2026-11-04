@@ -1,0 +1,104 @@
+{% extends "base.html" %}{% block title %}{{ 'Novo post' if not post else 'Post escrito aqui' }}{% endblock %}{% block body %}
+<a class="crumb" href="/console/posts">{{ icon('back', 14) }} Posts</a>
+<div class="page-head">
+  <div><h1>{{ 'Novo post' if not post else 'Post escrito aqui' }}</h1>
+    <p class="sub">{% if post %}<span class="badge {{ post.status | post_status_tone }}">{{ post.status | post_status_label }}</span>
+      {% if post.status == 'approved' %}<span class="muted small">· sai em {{ post.scheduled_at | dt }}</span>{% endif %}
+      {% if post.status == 'published' and post.published_at %}<span class="muted small">· em {{ post.published_at | dt }}</span>{% endif %}
+      {% else %}Escreva, confira e só depois aprove. Nada vai para o Instagram sem uma pessoa aprovar.{% endif %}</p></div>
+</div>
+{% if saved %}<div class="alert ok">{{ icon('check', 16) }}<p>{{ saved }}</p></div>{% endif %}
+{% if notice %}<div class="alert warn">{{ icon('alert', 16) }}<p>{{ notice }}</p></div>{% endif %}
+{% if blocked and (not post or post.status == 'draft') %}<div class="alert warn">{{ icon('alert', 16) }}<p>{{ blocked | post_error_label }}</p></div>{% endif %}
+{% if post and post.status in ('failed', 'unknown') %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ post.error | post_error_label }}{% if post.error_detail %} <span class="muted small">({{ post.error_detail }})</span>{% endif %}</p></div>{% endif %}
+{% for x in problems %}<div class="alert bad">{{ icon('alert', 16) }}<p>{{ x | text_problem }}</p></div>{% endfor %}
+
+<div class="grid g-side">
+  <div>
+    {% if not post or post.status == 'draft' %}
+    <div class="card"><h2>Conteúdo</h2>
+      <form method="post" enctype="multipart/form-data" action="{{ '/console/posts/drafts/' ~ post.id if post else '/console/posts/drafts' }}">{{ csrf_input(user) }}
+        <div class="field"><label>Tipo</label><select name="kind">
+          {% for key, label in POST_KIND.items() %}<option value="{{ key }}" {{ 'selected' if (post.kind if post else 'feed') == key }}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Legenda</label><textarea name="caption" rows="9" maxlength="{{ limits.caption_max_chars * 2 }}">{{ post.caption if post }}</textarea>
+          <span class="help">Até {{ limits.caption_max_chars }} caracteres, {{ limits.caption_max_hashtags }} hashtags e {{ limits.caption_max_mentions }} menções. Passa pelas mesmas regras das respostas automáticas. Story não mostra legenda.</span></div>
+        <div class="field"><label>Adicionar arquivos</label><input type="file" name="files" multiple accept="image/jpeg,video/mp4,video/quicktime">
+          <span class="help">Imagem em JPEG, até {{ (limits.max_image_bytes / 1000000) | int }} MB. Vídeo em MP4 ou MOV, até {{ (limits.max_video_bytes / 1000000) | int }} MB. Carrossel: até {{ limits.carousel_max_items }} arquivos.</span></div>
+        <button class="btn-primary">{{ icon('check', 16) }} Salvar rascunho</button>
+      </form>
+    </div>
+    {% else %}
+    <div class="card"><h2>Conteúdo</h2>
+      <dl class="kv"><dt>Tipo</dt><dd>{{ POST_KIND.get(post.kind, post.kind) }}</dd></dl>
+      <p class="small" style="white-space:pre-wrap">{{ post.caption or 'Sem legenda.' }}</p>
+    </div>
+    {% endif %}
+
+    {% if post and post.status == 'draft' %}
+    <div class="card"><h2>Aprovar</h2>
+      <p class="muted small">Ao aprovar, você confirma este texto e estes arquivos. Qualquer mudança pede uma nova aprovação.</p>
+      <form method="post" action="/console/posts/drafts/{{ post.id }}/approve">{{ csrf_input(user) }}
+        <div class="field"><label>Data e hora, para agendar</label><input type="datetime-local" name="when"></div>
+        <div class="actions">
+          <button class="btn-primary" name="action" value="now" {{ 'disabled' if blocked or problems }} onclick="return confirm('Publicar agora no Instagram?')">{{ icon('play', 16) }} Aprovar e publicar agora</button>
+          <button name="action" value="schedule" {{ 'disabled' if blocked or problems }}>Aprovar e agendar</button></div>
+      </form>
+    </div>
+    <form method="post" action="/console/posts/drafts/{{ post.id }}/delete" onsubmit="return confirm('Excluir este rascunho?')">{{ csrf_input(user) }}
+      <button class="btn-sm btn-ghost">Excluir rascunho</button></form>
+    {% endif %}
+
+    {% if post and post.status == 'approved' %}
+    <div class="card"><h2>Aprovado</h2>
+      <p class="muted small">Para mudar alguma coisa, volte para rascunho. Depois é preciso aprovar de novo.</p>
+      <form method="post" action="/console/posts/drafts/{{ post.id }}/back">{{ csrf_input(user) }}<button>Cancelar e voltar para rascunho</button></form></div>
+    {% endif %}
+
+    {% if post and post.status == 'publishing' %}
+    <div class="card"><h2>Publicando</h2><p class="muted small">A Meta está processando os arquivos. Isto pode levar alguns minutos, e a página não precisa ficar aberta.</p></div>
+    {% endif %}
+
+    {% if post and post.status == 'failed' %}
+    <div class="card"><h2>O post não saiu</h2>
+      <p class="muted small">Nada foi publicado. Volte para rascunho, ajuste se precisar e aprove de novo.</p>
+      <div class="actions"><form method="post" action="/console/posts/drafts/{{ post.id }}/back">{{ csrf_input(user) }}<button class="btn-primary">Voltar para rascunho</button></form>
+        <form method="post" action="/console/posts/drafts/{{ post.id }}/delete" onsubmit="return confirm('Excluir este post?')">{{ csrf_input(user) }}<button class="btn-ghost">Excluir</button></form></div></div>
+    {% endif %}
+
+    {% if post and post.status == 'unknown' %}
+    <div class="card"><h2>Confira no Instagram</h2>
+      <p class="muted small">A Meta não confirmou. Para não correr o risco de publicar duas vezes, o sistema não tenta de novo sozinho.</p>
+      <form method="post" action="/console/posts/drafts/{{ post.id }}/resolve" class="actions">{{ csrf_input(user) }}
+        <button class="btn-primary" name="action" value="published">O post está lá</button>
+        <button name="action" value="not_published">Não saiu: voltar para rascunho</button></form></div>
+    {% endif %}
+
+    {% if post and post.status == 'published' %}
+    <div class="card"><h2>Publicado</h2>
+      {% if media and media.removed_at %}<p class="muted small">Apagado do Instagram em {{ media.removed_at | dt }}.</p>
+      {% elif media %}<p class="small"><a href="/console/posts/{{ media.id }}">Ver este post e escolher o que fazer com os comentários</a>{% if media.permalink %} · <a href="{{ media.permalink }}" target="_blank" rel="noopener noreferrer">abrir no Instagram</a>{% endif %}</p>
+      {% else %}<p class="muted small">Ele aparece na lista de Posts em até 5 minutos.</p>{% endif %}
+      <p class="muted small">A Meta não permite editar a legenda ou o arquivo depois de publicar. Para mudar, edite no app do Instagram.</p></div>
+    {% endif %}
+  </div>
+
+  <div>
+    <div class="card"><h2>Arquivos</h2>
+      {% if post and post.files and post.status != 'published' %}
+        {% for f in post.files %}
+        <div style="margin-bottom:14px">
+          {% if f.is_video %}<video src="/console/posts/drafts/{{ post.id }}/files/{{ f.id }}" controls preload="metadata" style="width:100%;border-radius:8px"></video>
+          {% else %}<img src="/console/posts/drafts/{{ post.id }}/files/{{ f.id }}" alt="" style="width:100%;border-radius:8px">{% endif %}
+          <p class="muted small" style="margin:4px 0">{{ loop.index }}. {{ 'Vídeo' if f.is_video else 'Imagem' }}{% if f.width and f.height %}, {{ f.width }} x {{ f.height }}{% endif %}, {% if f.size_bytes < 100000 %}menos de 0,1 MB{% else %}{{ ('%.1f' | format(f.size_bytes / 1000000)) | replace('.', ',') }} MB{% endif %}</p>
+          {% if post.status == 'draft' %}<div class="actions">
+            {% if not loop.first %}<form method="post" action="/console/posts/drafts/{{ post.id }}/files/{{ f.id }}/move" class="inline">{{ csrf_input(user) }}<button class="btn-sm" name="to" value="up">Subir</button></form>{% endif %}
+            {% if not loop.last %}<form method="post" action="/console/posts/drafts/{{ post.id }}/files/{{ f.id }}/move" class="inline">{{ csrf_input(user) }}<button class="btn-sm" name="to" value="down">Descer</button></form>{% endif %}
+            <form method="post" action="/console/posts/drafts/{{ post.id }}/files/{{ f.id }}/remove" class="inline">{{ csrf_input(user) }}<button class="btn-sm btn-ghost">Retirar</button></form></div>{% endif %}
+        </div>
+        {% endfor %}
+      {% elif post and post.status == 'published' %}<p class="muted small">Os arquivos foram apagados daqui depois de publicar.</p>
+      {% else %}<div class="empty">{{ icon('image', 28) }}<div>Nenhum arquivo ainda.</div></div>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

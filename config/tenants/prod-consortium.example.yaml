@@ -8,13 +8,13 @@ segment_package:
   version: 0.1.0
 models:
   analyze_turn:
-    primary: google/gemini-2.5-flash-lite
+    primary: mistralai/mistral-small-2603
     fallbacks:
-    - openai/gpt-5-nano
+    - google/gemini-3.1-flash-lite
     temperature: 0.0
     max_output_tokens: 400
-    timeout_s: 6
-    prompt_version: analyze_turn@v3
+    timeout_s: 8
+    prompt_version: analyze_turn@v5
     provider:
       allow_fallbacks: true
   respond:
@@ -24,9 +24,10 @@ models:
     temperature: 0.4
     max_output_tokens: 500
     timeout_s: 12
-    prompt_version: respond@v10
+    prompt_version: respond@v11
     provider:
       order:
+      - crusoe
       - deepinfra
       allow_fallbacks: true
   output_judge:
@@ -38,7 +39,9 @@ models:
     timeout_s: 5
     prompt_version: output_judge@v2
   summarize:
-    primary: google/gemini-2.5-flash-lite
+    primary: openai/gpt-5-nano
+    fallbacks:
+    - mistralai/mistral-small-2603
     temperature: 0.0
     max_output_tokens: 250
     timeout_s: 10
@@ -46,12 +49,18 @@ models:
   embedding:
     model: qwen/qwen3-embedding-8b
     dims: 1024
+    timeout_s: 5
+    provider:
+      order:
+      - deepinfra
+      allow_fallbacks: true
   transcription:
     model: openai/whisper-large-v3-turbo
     timeout_s: 20
   comment_intent:
-    primary: google/gemini-2.5-flash-lite
-    fallbacks: []
+    primary: openai/gpt-5-nano
+    fallbacks:
+    - mistralai/mistral-small-2603
     temperature: 0.0
     max_output_tokens: 60
     timeout_s: 5
@@ -88,14 +97,23 @@ comments:
   enabled: true
 followups:
   cadences:
-  - id: form_not_filled
+  - id: seller_offer_unanswered
     trigger:
       event: stage_entered
-      stage: pre_cadastro_enviado
+      stage: pronto_para_proposta
     steps:
     - delay: 4h
       content_kind: template
-      template_key: form_reminder
+      template_key: seller_offer_reminder
+  - id: no_reply
+    label: Parou de responder
+    trigger:
+      event: bot_message_unanswered
+      stages: [novo, engajado, qualificando, educando]
+    steps:
+    - delay: 4h
+      content_kind: template
+      template_key: no_reply_nudge
 compliance:
   forbidden_phrases:
   - contempla(ção|do) garantid

@@ -15,6 +15,6 @@ COPY evals ./evals
 RUN uv export --frozen --no-dev --no-hashes --no-emit-project -o /tmp/requirements.txt \
  && uv pip install --system --no-cache -r /tmp/requirements.txt \
  && uv pip install --system --no-cache --no-deps .
-RUN useradd --create-home --uid 10001 app && mkdir -p /var/spool/agentplatform && chown app /var/spool/agentplatform
+RUN useradd --create-home --uid 10001 app && mkdir -p /var/spool/agentplatform /var/tmp/uploads && chown app /var/spool/agentplatform /var/tmp/uploads
 USER app
 EXPOSE 8000

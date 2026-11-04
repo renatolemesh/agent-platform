@@ -40,7 +40,7 @@ def test_profile_values_use_package_labels():
     assert ui.slot_value("credit_amount", {"value": "80000", "confidence": 0.95}, labels) == "R$ 80.000"
     assert ui.slot_value("goal", {"value": "vehicle"}, labels) == "Carro ou moto"
     assert ui.slot_confidence({"value": "x", "confidence": 0.95}) == "95%"
-    assert ui.stage_label("pre_cadastro_enviado", labels) == "Pré-cadastro enviado"
+    assert ui.stage_label("pronto_para_proposta", labels) == "Pronto para proposta"
     assert ui.contact_name({"first_name": None, "username": None, "channel": "instagram", "external_user_id": "1784123456"}) \
         == "Instagram …123456"
 

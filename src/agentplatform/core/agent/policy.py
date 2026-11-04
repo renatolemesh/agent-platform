@@ -9,7 +9,7 @@ from typing import Iterable
 
 from agentplatform.core.agent.guards import extract_numbers, keyword_hit, normalize
 from agentplatform.core.agent.state import StageProposal, TurnUnderstanding
-from agentplatform.core.config.schema import FunnelConfig, GuidelinesConfig
+from agentplatform.core.config.schema import FunnelConfig, GuidelinesConfig, InputGuardConfig
 from agentplatform.core.packages.contract import PackageManifest
 
 KNOWLEDGE_INTENTS = {"product_question", "bid_question", "insurance_question", "price_question", "compare_financing",
@@ -71,6 +71,16 @@ def _meaningful_words(evidence: str, not_evidence: list[str]) -> list[str]:
     """Evidence words left after fillers, numbers and the slot's non-evidence words (e.g. "uma carta" -> [])."""
     skip = _FILLER_WORDS | {normalize(w) for w in not_evidence}
     return [w for w in re.findall(r"\w+", normalize(evidence)) if w not in skip and not any(c.isdigit() for c in w)]
+
+
+def opt_out_from_model(score: float, injection: bool, cfg: InputGuardConfig) -> str | None:
+    """"apply" records it, "confirm" asks. A message flagged as an attack on the instructions gives no answer: the model's reading of it is exactly what
+    is under attack, and a real request inside it was already caught by the words in privacy_gate."""
+    if injection:
+        return None
+    if score >= cfg.opt_out_intent_apply_threshold:
+        return "apply"
+    return "confirm" if score >= cfg.opt_out_intent_confirm_threshold else None
 
 
 def apply_slots(manifest: PackageManifest, profile: dict, u: TurnUnderstanding, turn_text: str,
@@ -158,6 +168,29 @@ def pending_questions(manifest: PackageManifest, profile: dict, optional: bool =
     return [q for q in out if q]
 
 
+def stops_asking(manifest: PackageManifest, u: TurnUnderstanding) -> bool:
+    """Someone saying no, or not now, is not asked the next question."""
+    return bool(set(manifest.stop_asking_on) & {*u.intents, *u.objections})
+
+
+def offered_the_person(manifest: PackageManifest, bot_texts: list[str]) -> bool:
+    """The model words the offer its own way, so it is recognised by what the question says."""
+    if not manifest.ready_offer_pattern:
+        return False
+    pattern = normalize(manifest.ready_offer_pattern)
+    return any("?" in sent and re.search(pattern, normalize(sent))
+               for text in bot_texts for sent in re.split(r"(?<=[.!?])\s+", text))
+
+
+def accepted_the_offer(manifest: PackageManifest, text: str, recent_bot_texts: list[str]) -> bool:
+    """A short yes right after the assistant offered the person. Alone these words mean nothing to the classifier."""
+    if not offered_the_person(manifest, recent_bot_texts[-1:]):
+        return False
+    words = [w for w in (w.strip(".,;:!…") for w in normalize(text).split()) if w]
+    yes = {normalize(w) for w in manifest.short_yes}
+    return bool(words) and all(w in yes for w in words)
+
+
 def next_question(manifest: PackageManifest, profile: dict) -> str | None:
     return next(iter(pending_questions(manifest, profile)), None)
 
@@ -205,7 +238,8 @@ def select_guidelines(manifest: PackageManifest, stage: str, u: TurnUnderstandin
             continue
         if set(g.when_intents) & set(u.intents) or any(keyword_hit(k, n) for k in g.when_keywords) \
                 or set(getattr(g, "when_tools", [])) & set(tools):
-            picked.append(g.action)
+            o = changes.get(g.id)
+            picked.append(o.action if o and o.action else g.action)
     limit = stage_limit(manifest, stage, funnel)
     if limit and turns_in_stage >= limit:
         picked.insert(0, cfg.no_progress)
