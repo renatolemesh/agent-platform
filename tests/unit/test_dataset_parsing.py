@@ -57,8 +57,8 @@ def test_rows_with_official_and_reduced_installment():
 
 
 def test_simulation_without_goal_or_term_offers_the_cheapest_entry():
-    """Amount only ("uma carta de 100 mil"): every goal, the closest credit, then the lowest entry; approx never understates."""
-    from agentplatform_packages.consortium import SimulateIn, approx_up, simulate
+    """Amount only ("uma carta de 100 mil"): every goal, the closest credit, then the lowest entry. The offer carries both installments."""
+    from agentplatform_packages.consortium import SimulateIn, simulate
     rows = [PlanRow(plan_id="A100", goal="vehicle", credit=Decimal(100000), installment=Decimal("1750.00")),
             PlanRow(plan_id="I100", goal="real_estate", credit=Decimal(100000), installment=Decimal("800.00"),
                     reduced_installment=Decimal("397.00")),
@@ -66,5 +66,12 @@ def test_simulation_without_goal_or_term_offers_the_cheapest_entry():
     out = simulate(rows, SimulateIn(credit_amount=Decimal(100000)), "d", 1)
     first = out.options[0]
     assert [o.plan_id for o in out.options] == ["I100", "A100", "I300"]
-    assert first.goal == "Imóvel" and first.entry_installment == Decimal("397.00") and first.entry_approx == Decimal(400)
-    assert approx_up(Decimal("300.00")) == 300 and approx_up(Decimal("300.01")) == 310 and approx_up(Decimal("1750")) == 1750
+    assert first.goal == "Imóvel" and first.entry_installment == Decimal("397.00")
+    assert out.required_text == "Ótimo! Temos carta de R$ 100.000,00 para imóvel, com parcela de R$ 397,00 até a contemplação e R$ 800,00 depois."
+    assert out.closing_question == "Faz sentido pra você?"
+    term = PlanRow(plan_id="T", goal="vehicle", credit=Decimal(50000), term_months=60, installment=Decimal(900), insurance_monthly_pct=Decimal("0.1"))
+    offer = simulate([term], SimulateIn(goal="vehicle"), "d", 1).required_text
+    assert offer == "Ótimo! Temos carta de R$ 50.000,00 para carro ou moto, em 60 meses, com parcela de R$ 900,00, mais seguro de R$ 50,00 por mês."
+    assert "para" not in simulate([term], SimulateIn(goal="resale"), "d", 1).required_text    # a letter to sell later has no goal of its own
+    empty = simulate([], SimulateIn(), "d", 1)
+    assert empty.required_text is None and empty.closing_question is None

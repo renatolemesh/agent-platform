@@ -1,4 +1,5 @@
 """Phase 3: plans table import/activation/rollback, simulation through the real turn."""
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -100,8 +101,7 @@ async def test_amount_alone_shows_the_table_entry_unasked(tenant):
 
     def respond(msgs):
         seen["prompt"] = msgs[0]["content"] + msgs[1]["content"]
-        return draft("Com parcelas a partir de uns R$ 400 você já tem uma carta de 100 mil no plano de imóvel (até a "
-                     "contemplação). É pra casa, carro ou outra coisa?")
+        return draft(f"{OFFER_I100} É pra casa, carro ou outra coisa?")
     g = ScriptedGateway({"analyze_turn": [analysis(intents=["provide_info"], stage="qualificando",
                                                    slots=[("credit_amount", "100k", "100k")])],
                          "respond": [respond], "output_judge": [{"violations": [], "explanation": ""}]})
@@ -110,12 +110,52 @@ async def test_amount_alone_shows_the_table_entry_unasked(tenant):
     finally:
         await _plans_active(None)
     assert res.trace["tools"] == ["simulate_consortium"] and res.status == "committed" and res.outbox_ids
-    assert "entry_approx" in seen["prompt"] and '"entry_approx": "400"' in seen["prompt"]
+    assert "required_text" in seen["prompt"] and "entry_approx" not in seen["prompt"]
     flow_q = seen["prompt"].split("Pergunta do fluxo")[-1].split("\n")[0]
     assert "imóvel" in flow_q and "prazo" not in flow_q              # the flow asks the goal, never the term
     sent = await _sent_text(tenant, conv)
     note = _sim_cfg().compliance.required_disclosures["simulation_estimate"]
     assert note in sent and sent.endswith("É pra casa, carro ou outra coisa?")     # official notice added by code
+    assert OFFER_I100 in sent
+
+
+async def test_the_offer_goes_out_as_written_and_the_person_is_offered_after_it(tenant):
+    """The model hid the installment after contemplation, even with the rule in the prompt: the offer is the code's, not its wording."""
+    await _plans_active(b"plan_id;goal;credit;term_months;installment;reduced_installment\nA95;vehicle;95000;72;1583,33;980,00\n")
+    igsid = f"IG-{uuid.uuid4().hex[:8]}"
+    conv = await inbound(tenant, ["carro de uns 100k"], igsid=igsid)
+    from agentplatform.core.db.pool import tenant_tx
+    async with tenant_tx(tenant) as conn:
+        await conn.execute("update leads set stage='qualificando' where contact_id=%s", (conv["contact_id"],))
+    seen = {}
+
+    def second(msgs):
+        seen["prompt"] = msgs[0]["content"] + msgs[1]["content"]
+        return draft("Posso chamar o consultor para seguir com você?")
+    g = ScriptedGateway({"analyze_turn": [analysis(intents=["provide_info"], stage="pronto_para_proposta",
+                                                   slots=[("goal", "vehicle", "carro"), ("credit_amount", "100k", "100k")]),
+                                          analysis(intents=["provide_info"], stage="pronto_para_proposta")],
+                         "respond": [draft("Com parcelas a partir de uns R$ 980 você já tem uma carta de R$ 95 mil. Quer que eu chame o consultor?"), second],
+                         "output_judge": [{"violations": [], "explanation": ""}, {"violations": [], "explanation": ""}]})
+    try:
+        deps = TurnDeps(config=_sim_cfg(), package=PKG, gateway=g, knowledge=None, now=NOON)
+        res = await TurnRunner(deps).run(tenant, conv["id"])
+        assert res.status == "committed"
+        sent = await _sent_text(tenant, conv)
+        note = _sim_cfg().compliance.required_disclosures["simulation_estimate"]
+        assert sent.endswith("Ótimo! Temos carta de R$ 95.000,00 para carro ou moto, em 72 meses, com parcela de R$ 980,00 até a "
+                             f"contemplação e R$ 1.583,33 depois. {note} Faz sentido pra você?")
+        assert "a partir de uns" not in sent and "chame o consultor" not in sent
+
+        await inbound(tenant, ["sim"], igsid=igsid)
+        res = await TurnRunner(deps).run(tenant, conv["id"])
+        assert res.status == "committed"                              # a yes to "makes sense" is not yet a yes to the person
+        assert "Posso chamar o consultor" in seen["prompt"].split("Pergunta do fluxo")[-1].split(chr(10))[0]
+    finally:
+        await _plans_active(None)
+
+
+OFFER_I100 = "Ótimo! Temos carta de R$ 100.000,00 para imóvel, com parcela de R$ 397,00 até a contemplação e R$ 800,00 depois."
 
 
 async def _sent_text(tenant, conv) -> str:

@@ -1,7 +1,7 @@
 """Consortium segment package. Domain tools are deterministic: numbers never come from the LLM (principle 6)."""
 from __future__ import annotations
 
-from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Literal
 
@@ -70,7 +70,6 @@ class PlanOption(BaseModel):
     insurance_monthly: Decimal
     adjustment_index: str | None = None
     entry_installment: Decimal                   # what the customer pays from the start (reduced if the plan has one)
-    entry_approx: Decimal                        # entry_installment rounded UP to R$ 10, for "a partir de uns R$ ..."
 
 
 class SimulateOut(BaseModel):
@@ -78,6 +77,8 @@ class SimulateOut(BaseModel):
     dataset_id: str
     dataset_version: int
     disclaimer_key: str = "simulation_estimate"
+    required_text: str | None = None             # the offer, written here: the model may not reword it
+    closing_question: str | None = None
 
 
 def installment(row: PlanRow) -> tuple[Decimal, Decimal]:
@@ -90,9 +91,17 @@ def installment(row: PlanRow) -> tuple[Decimal, Decimal]:
     return base.quantize(q, ROUND_HALF_UP), ins.quantize(q, ROUND_HALF_UP)
 
 
-def approx_up(v: Decimal, step: int = 10) -> Decimal:
-    """Round up to the step: an approximate installment never understates the real one."""
-    return (v / step).to_integral_value(ROUND_CEILING) * step
+def offer_text(o: PlanOption, *, name_goal: bool) -> str:
+    """Credit, term and every installment the customer will pay, exactly as in the table. A reduced installment never goes without
+    the full one: the model left it out on its own, even with the rule in the prompt."""
+    t = MANIFEST.templates
+    installments = t["plan_offer_reduced"].format(reduced=_brl(o.reduced_installment), full=_brl(o.installment)) if o.reduced_installment \
+        else _brl(o.installment)
+    return t["plan_offer"].format(
+        credit=_brl(o.credit), installments=installments,
+        goal=t["plan_offer_goal"].format(goal=o.goal.lower()) if name_goal else "",
+        term=t["plan_offer_term"].format(months=o.term_months) if o.term_months else "",
+        insurance=t["plan_offer_insurance"].format(value=_brl(o.insurance_monthly)) if o.insurance_monthly else "")
 
 
 def simulate(rows: list[PlanRow], req: SimulateIn, dataset_id: str, version: int, limit: int = 3) -> SimulateOut:
@@ -117,9 +126,13 @@ def simulate(rows: list[PlanRow], req: SimulateIn, dataset_id: str, version: int
             plan_id=r.plan_id, name=r.name, goal=GOAL_LABELS.get(r.goal, r.goal), group=r.group, credit=r.credit,
             term_months=r.term_months, installment=inst, reduced_installment=r.reduced_installment,
             admin_fee_pct=r.admin_fee_pct, reserve_fund_pct=r.reserve_fund_pct, insurance_monthly=ins,
-            adjustment_index=r.adjustment_index, entry_installment=entry, entry_approx=approx_up(entry))))
+            adjustment_index=r.adjustment_index, entry_installment=entry)))
     scored.sort(key=lambda x: x[0])               # closest credit (or budget), then the cheapest entry
-    return SimulateOut(options=[o for _, o in scored[:limit]], dataset_id=dataset_id, dataset_version=version)
+    options = [o for _, o in scored[:limit]]
+    # a letter to sell later is not for the plan's own goal
+    offer = offer_text(options[0], name_goal=req.goal != "resale") if options else None
+    return SimulateOut(options=options, dataset_id=dataset_id, dataset_version=version, required_text=offer,
+                       closing_question=MANIFEST.templates["plan_offer_question"] if options else None)
 
 
 class GroupHistoryIn(BaseModel):
@@ -151,7 +164,7 @@ PLANS = DatasetSpec(
     feature_flag="consortium.simulation_enabled",
     description="Planos em venda: crédito, prazo e taxas. É daqui que saem os valores de parcela que o assistente informa.",
     used_for="Assim que o cliente diz o valor do bem (ou a parcela que cabe no bolso), o assistente busca aqui a opção "
-             "mais próxima e já mostra a parcela de entrada arredondada para cima (\"a partir de uns R$ ...\"), para puxar o "
+             "mais próxima e já mostra o crédito, o prazo e as parcelas, com os valores exatos da tabela, para puxar o "
              "cliente ao próximo passo; se o objetivo ainda não foi dito, usa a opção de entrada mais baixa. Ele sempre "
              "avisa que são valores estimados. Sem tabela ativa, ou com o uso desligado, não informa valores e, se o "
              "cliente pedir a simulação, passa a conversa para o vendedor.",

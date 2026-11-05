@@ -52,9 +52,9 @@ def test_next_question_follows_flow():
 def test_guidelines_and_handoff():
     g = select_guidelines(M, "educando", U(intents=["bid_question"]), "como funciona o lance?", 0, GuidelinesConfig())
     assert any("lance" in x for x in g)
-    assert not any("entry_approx" in x for x in select_guidelines(M, "qualificando", U(), "100k", 0, GuidelinesConfig()))
+    assert not any("required_text" in x for x in select_guidelines(M, "qualificando", U(), "100k", 0, GuidelinesConfig()))
     g = select_guidelines(M, "qualificando", U(), "100k", 0, GuidelinesConfig(), tools=["simulate_consortium"])
-    assert "entry_approx" in g[0]                               # the table result pulls the customer, first
+    assert "required_text" in g[0]                              # the table result pulls the customer, first
     assert handoff_reason(M, U(intents=["simulation_request"]), False, "qualificando", 0) == "simulation_request"
     assert handoff_reason(M, U(intents=["simulation_request"]), True, "qualificando", 0) is None
     assert handoff_reason(M, U(intents=["wants_human"]), False, "novo", 0) == "explicit_request"

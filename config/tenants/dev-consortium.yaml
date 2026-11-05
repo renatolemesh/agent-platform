@@ -22,7 +22,7 @@ models:
     temperature: 0.4
     max_output_tokens: 500
     timeout_s: 12
-    prompt_version: respond@v11
+    prompt_version: respond@v12
     provider:
       allow_fallbacks: true
   output_judge:

@@ -292,6 +292,10 @@ Uma leitura ampla de conversas reais de atendimento mostrou o que o assistente a
 
 **Sem medir:** a avaliação completa com os casos novos, que precisa de mais orçamento antes de ir para produção.
 
+## Oferta de plano escrita pelo código (05/11/2026)
+
+A frase com crédito, prazo e parcelas vem da tabela e sai como está (`manifest.templates.plan_offer*`, `required_text` da ferramenta). Antes o modelo escrevia a frase e omitia a parcela depois da contemplação, mesmo com a regra no prompt. Se o modelo não copiar o texto, o código troca a resposta por ele e pela pergunta do turno; nesse caso, o que o modelo respondeu sobre outra dúvida se perde. O valor exato substitui o arredondado para cima (`entry_approx` saiu). A oferta termina em "Faz sentido pra você?", e o consultor é oferecido na mensagem seguinte, salvo se o fluxo ainda precisar de uma resposta. Mudou `respond@v12`.
+
 ## Quem envia responde pelos dados do arquivo (05/11/2026)
 
 Um PDF com CPF, cartão, CNPJ, telefone ou e-mail continua bloqueado por padrão, mas quem envia pode assumir a responsabilidade, no envio ou na tela do documento bloqueado. Os valores são trocados por marcadores, e a auditoria registra quem enviou. Nomes e endereços não são detectados: a revisão por trecho continua sendo a proteção. Nenhuma opção envia os valores originais à base. A aprovação segue dependendo do OpenRouter.

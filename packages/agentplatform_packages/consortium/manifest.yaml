@@ -117,7 +117,7 @@ guidelines:
      when_keywords: ["como funciona", "explica", "explicar", "entender", "não entendi", "nao entendi", "detalha"], priority: 10,
      action: "Explique o consórcio em no máximo duas frases simples, com uma comparação do dia a dia (uma compra planejada em grupo: paga-se uma parcela por mês e quem é contemplado, por sorteio ou lance, recebe a carta de crédito para comprar à vista). Se o cliente ainda não disse o que quer comprar, pergunte isso para explicar com o exemplo dele. Se ele já disse o bem e o valor, explique usando esses dados. Só dê o passo a passo completo se ele pedir mais detalhe. Se a explicação já foi dada, não repita: aprofunde um ponto diferente."}
   - {id: offer_from_table, when_tools: [simulate_consortium], priority: 5,
-     action: "Use a simulação para puxar o cliente, sem esperar ele pedir: numa frase animada e direta, diga que com parcelas a partir de uns R$ (entry_approx) ele já tem uma carta de (credit). Use a primeira opção de tool_results com os números exatamente como estão lá; se o cliente ainda não disse o objetivo, cite o tipo do plano (goal). Se a opção tiver reduced_installment, diga que essa parcela vale até a contemplação. Se você já disse esse valor na sua mensagem anterior, não repita a frase: confirme em poucas palavras e siga. Termine com UMA pergunta: a pergunta do fluxo, se houver; senão, pergunte se pode chamar o consultor para seguir. Não pergunte prazo."}
+     action: "Use a simulação para puxar o cliente, sem esperar ele pedir: copie required_text de tool_results palavra por palavra. Se você já disse esse texto na sua mensagem anterior, não repita: confirme em poucas palavras e siga. Termine com UMA pergunta: a pergunta do fluxo. Não pergunte prazo."}
   - {id: bid_question, when_intents: [bid_question], stages: [educando, qualificando, pronto_para_proposta],
      action: "Explique lance livre, fixo e embutido só com base aprovada. Nunca prometa contemplação nem prazo. Ofereça o vendedor para as regras do grupo."}
   - {id: vs_financing, when_intents: [compare_financing],
@@ -254,6 +254,12 @@ lead_form_labels:
   has_bid_funds: "Tem recurso para lance?"
 allowed_urls: []      # each account's own sites: conversation.allowed_urls
 templates:
+  plan_offer: "Ótimo! Temos carta de {credit}{goal}{term}, com parcela de {installments}{insurance}."
+  plan_offer_goal: " para {goal}"
+  plan_offer_term: ", em {months} meses"
+  plan_offer_reduced: "{reduced} até a contemplação e {full} depois"
+  plan_offer_insurance: ", mais seguro de {value} por mês"
+  plan_offer_question: "Faz sentido pra você?"
   seller_offer_reminder: "Oi! Quer que eu chame o consultor para seguir com você? Se ficou alguma dúvida, pode me perguntar."
   no_reply_nudge: "Fico à disposição. Quer que eu te explique mais alguma coisa sobre o consórcio?"
 auto_transitions:

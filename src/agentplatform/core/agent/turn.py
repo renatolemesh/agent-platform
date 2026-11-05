@@ -458,7 +458,7 @@ class TurnRunner:
                                   "reason": stage_dec.reason, "regression": stage_dec.regression,
                                   "confidence": a.stage_proposal.confidence, "evidence": a.stage_proposal.evidence},
                "stage": stage_now,
-               "next_question": None if policy.stops_asking(self.m, u) else self._next_question(s, profile_after, stage_now),
+               "next_question": None if policy.stops_asking(self.m, u) else self._closing_question(s, tool_results, self._next_question(s, profile_after, stage_now)),
                "tool_results": tool_results,
                "trace": {**s["trace"], "intents": u.intents, "slots_rejected": slots.rejected}}
         if reason:
@@ -527,6 +527,24 @@ class TurnRunner:
             return "no_basis"
         return "\n".join(f"[{c.id}][{c.visibility}] {c.text}" for c in r.chunks)
 
+    def _closing_question(self, s: TurnState, tool_results: list[dict], next_q: str | None) -> str | None:
+        """A tool may close with its own question, ahead of offering the person (who is then offered on the next turn). A question
+        the flow still needs comes first, and once the person was offered, a yes to anything else would not count as accepting."""
+        closing = next((t["result"]["closing_question"] for t in tool_results
+                        if isinstance(t.get("result"), dict) and t["result"].get("closing_question")), None)
+        offered = policy.offered_the_person(self.m, [m["text"] for m in s["recent"] if m["from"] == "assistente"])
+        return closing if closing and next_q in (None, self.m.ready_question) and not offered else next_q
+
+    def _required_reply(self, s: TurnState, text: str) -> str:
+        """A tool's required_text goes out word for word: the model has already reworded numbers away, so if it did not copy it, the
+        reply becomes that text and the turn's question. Said in the last message, it is not repeated."""
+        required = next((t["result"]["required_text"] for t in s.get("tool_results", [])
+                         if isinstance(t.get("result"), dict) and t["result"].get("required_text")), None)
+        last = [m["text"] for m in s["recent"] if m["from"] == "assistente"][-1:]
+        if not required or normalize(required) in normalize(text) or any(normalize(required) in normalize(b) for b in last):
+            return text
+        return " ".join(x for x in (required, s.get("next_question")) if x)
+
     def _next_question(self, s: TurnState, profile_after: dict, stage_now: str) -> str | None:
         n = self.d.config.funnel.question_cooldown_turns
         recent_bot = [m["text"] for m in s["recent"] if m["from"] == "assistente"][-n:] if n else []
@@ -569,7 +587,7 @@ class TurnRunner:
 
     async def n_output_guard(self, s: TurnState) -> dict:
         cfg = self.d.config
-        text = s["draft_text"] or ""
+        text = self._required_reply(s, s["draft_text"] or "")
         r = RetrievalResult.model_validate(s["retrieval"]) if s.get("retrieval") else RetrievalResult()
         sources = [*s["masked_input"], *(m["text"] for m in s["recent"] if m["from"] == "cliente"), *origin_comments(s.get("origin")),
                    *(c.text for c in r.chunks), *([r.faq_answer] if r.faq_answer else []),
