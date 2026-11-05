@@ -24,6 +24,8 @@ versão anterior.</p></div>
     <a class="btn btn-sm" href="/console/datasets/export?name={{ spec.name }}&template=1">{{ icon('download', 14) }} Baixar modelo</a>
   </div></div>
 
+{% if can_edit %}<div class="ds-tabs"><a class="btn btn-sm btn-primary" href="/console/datasets?name={{ spec.name }}">Tabela</a>
+  <a class="btn btn-sm" href="/console/datasets/import?name={{ spec.name }}">Importar arquivo</a></div>{% endif %}
 {% if specs|length > 1 %}<div class="ds-tabs">{% for s in specs %}<a class="btn btn-sm{{ ' btn-primary' if s.name == spec.name }}" href="/console/datasets?name={{ s.name }}">{{ s.label }}</a>{% endfor %}</div>{% endif %}
 
 {% if msg == 'draft' %}<div class="alert ok">{{ icon('check', 16) }}<div><p><b>Rascunho salvo.</b> Confira a prévia abaixo e clique em <b>Ativar</b> quando estiver certo.
@@ -36,6 +38,13 @@ versão anterior.</p></div>
   <a class="btn btn-sm" href="/console/config">Aprovar em Configuração</a></div></div></div>{% endif %}
 {% if ignored %}<div class="alert warn">{{ icon('alert', 16) }}<div><p>Colunas da planilha que não foram reconhecidas e ficaram de fora: <b>{{ ignored|join(', ') }}</b>.
   Use os nomes do modelo.</p></div></div>{% endif %}
+{% if file_read %}<div class="alert warn" id="file-read">{{ icon('alert', 16) }}<div><p><b>A IA leu {{ file_read.rows|length }} linha(s). Nada foi salvo ainda.</b>
+  Confira cada valor com o arquivo na tabela abaixo, corrija o que precisar e clique em <b>Salvar rascunho</b>. Salvar substitui a tabela inteira no rascunho.</p>
+  {% if file_read.dropped %}<p><b>Valores descartados por não estarem escritos no arquivo:</b></p>{% for d in file_read.dropped[:20] %}<p>· Linha {{ d.row }}, {{ d.label }}: {{ d.value }}</p>{% endfor %}{% if file_read.dropped|length > 20 %}<p>· e mais {{ file_read.dropped|length - 20 }}.</p>{% endif %}{% endif %}
+  {% if file_read.doubtful %}<p><b>Deixados em branco: estes valores estão no arquivo, mas fora da linha do item.</b> Podem ser de outro item. Se valerem para este, digite na tabela.</p>{% for d in file_read.doubtful[:20] %}<p>· Linha {{ d.row }}, {{ d.label }}: {{ d.value }}</p>{% endfor %}{% if file_read.doubtful|length > 20 %}<p>· e mais {{ file_read.doubtful|length - 20 }}.</p>{% endif %}{% endif %}
+  {% if file_read.text_cut %}<p><b>O arquivo é longo e só o começo foi lido.</b> Podem faltar linhas: envie só as páginas da tabela ou use a planilha.</p>{% endif %}
+  {% if file_read.rows_cut %}<p><b>O arquivo passou do limite de {{ dcfg.max_rows }} linhas</b> e o restante ficou de fora.</p>{% endif %}</div></div>
+<script>document.addEventListener('DOMContentLoaded',function(){document.getElementById('file-read').scrollIntoView();});</script>{% endif %}
 {% if errors %}<div class="alert bad">{{ icon('alert', 16) }}<div><p><b>Não foi salvo. Corrija e tente de novo:</b></p>{% for e in errors %}<p>· {{ e }}</p>{% endfor %}</div></div>{% endif %}
 
 <div class="kpis">
@@ -73,7 +82,7 @@ versão anterior.</p></div>
   <div class="card"><h2>{{ 'Editar' if (draft or live) else 'Cadastrar' }}</h2>
     <p class="muted small">{% if draft %}Editando a partir do rascunho v{{ draft.version }}.{% elif live and not live_is_platform %}Editando a partir da versão em uso (v{{ live.version }}).{% else %}Preencha uma linha por item.{% endif %}
     Números podem ir no formato brasileiro (<span class="mono">300.000,00</span>, <span class="mono">15%</span>). Linhas em branco são ignoradas.</p>
-    <form method="post" action="/console/datasets/save" id="ds-form">{{ csrf_input(user) }}<input type="hidden" name="name" value="{{ spec.name }}">
+    <form method="post" action="/console/datasets/save" id="ds-form">{{ csrf_input(user) }}<input type="hidden" name="name" value="{{ spec.name }}">{% if origin %}<input type="hidden" name="origin" value="{{ origin }}">{% endif %}
       <div class="table-wrap"><table class="ds-grid"><thead><tr><th></th>{% for c in cols %}<th title="{{ c.help }}">{{ c.label }}{% if c.required %} *{% endif %}</th>{% endfor %}<th></th></tr></thead>
       <tbody id="ds-rows">{% for r in grid %}<tr>
         <td class="ix">{{ loop.index }}</td>

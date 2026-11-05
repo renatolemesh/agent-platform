@@ -292,6 +292,23 @@ Uma leitura ampla de conversas reais de atendimento mostrou o que o assistente a
 
 **Sem medir:** a avaliação completa com os casos novos, que precisa de mais orçamento antes de ir para produção.
 
+## Importar tabela de um arquivo (04/11/2026)
+
+Em **Tabelas > Importar arquivo**, a pessoa envia PDF, .xlsx, .csv ou .txt, a IA monta as linhas e elas aparecem no editor de sempre, sem salvar. Depois segue o fluxo existente: salvar rascunho, testar no simulador, ativar.
+
+**Onde está:** `core/knowledge/table_import.py`, as rotas `/console/datasets/import`, `models.table_extract` (opcional; sem ele a tela avisa que está desligada), `prompts/table_extract@v1.j2` e `operations.datasets.file_read_max_*`.
+
+**Regras:**
+- **Chave de testes recusa o arquivo** antes de ler, como na aprovação de material: o envio à IA só funciona com `LLM_PROVIDER=openrouter`.
+- **Arquivo proibido da conta** é recusado pelo hash do nome. Arquivo com CPF ou cartão é recusado; e-mail, telefone e CNPJ são mascarados antes de ir à IA.
+- **Número que não está escrito no arquivo** é descartado, e a prévia diz qual foi. Código ou nome com dígitos que não estão no arquivo também.
+- **Número que está no arquivo, mas fora da linha do item,** fica em branco e é listado. Vale quando pelo menos dois números da linha coincidem com uma linha do arquivo; em layouts com um valor por linha, a checagem não se aplica e só a revisão da pessoa protege.
+- **O arquivo não é guardado.** A auditoria registra hash, tamanho e contagens, sem o nome do arquivo.
+
+**Medido com a chave direta, em PDF inventado (4 planos, uma ordem maliciosa no texto e um e-mail):** US$ 0,0002 por leitura, 3 a 5 s, os 4 planos lidos, a ordem ignorada e o e-mail mascarado. O modelo inventou, nas duas leituras, a parcela do plano que não tinha parcela, copiando um valor de outra linha; a segunda foi com a regra explícita no prompt. Foi isso que motivou a checagem por linha, testada com o mesmo caso em teste automatizado, sem nova leitura real.
+
+**Limites:** imagem solta não é aceita. O limite de 8.000 tokens de saída dá para cerca de 80 linhas; acima disso, a leitura falha ou corta, e a planilha no modelo é o caminho. Não foi testado com PDF real, nem pelo navegador contra um servidor.
+
 ## Venda da carta e WhatsApp (02/11/2026)
 
 A leitura de conversas de atendimento mostrou dois caminhos que o assistente não conhecia. O texto de tudo abaixo foi escrito para isto: nada veio de uma conversa.

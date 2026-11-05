@@ -120,5 +120,5 @@ async def save_version(conn, tenant_id, name: str, body: str, base_version: str,
 
 def config_prompt_versions(cfg) -> list[str]:
     m = cfg.models
-    nodes = [m.analyze_turn, m.respond, m.output_judge, m.summarize, m.input_classifier, m.comment_intent, m.image_describe]
+    nodes = [m.analyze_turn, m.respond, m.output_judge, m.summarize, m.input_classifier, m.comment_intent, m.image_describe, m.table_extract]
     return [n.prompt_version for n in nodes if n is not None]

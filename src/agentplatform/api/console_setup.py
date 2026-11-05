@@ -40,7 +40,7 @@ router = APIRouter(prefix="/console")
 log = logging.getLogger(__name__)
 _MESSAGE_CHECKS = ("url_not_allowed", "forbidden_phrase", "required_context", "never_request", "pii_placeholder", "pii_in_output", "human_impersonation")
 INVITE_ROLES = ("tenant_owner", "reviewer", "seller")
-MODEL_NODES = ("respond", "analyze_turn", "output_judge", "summarize", "comment_intent")
+MODEL_NODES = ("respond", "analyze_turn", "output_judge", "summarize", "comment_intent", "table_extract")
 BLANK_EXAMPLES = 2
 BLANK_GUIDELINES = 1
 

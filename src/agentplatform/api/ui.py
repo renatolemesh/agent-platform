@@ -147,6 +147,20 @@ KB_REFUSAL = {
     "no_text": "Não sobrou nenhum trecho para usar neste documento.",
     "direct_key": "Este ambiente usa a chave de testes, que não recebe material real. Aprovar só funciona com o provedor de produção.",
 }
+TABLE_FILE_ERROR = {
+    "off": "A leitura de arquivos não está ligada nesta conta. Use a planilha ou o cadastro manual.",
+    "provider_blocked": "Este ambiente usa a chave de testes, que não recebe material real. Por aqui, use a planilha ou o cadastro manual.",
+    "too_big": "Arquivo grande demais. Envie só as páginas da tabela.",
+    "never_import": "Este arquivo não pode entrar nesta conta.",
+    "unsupported": "Envie um PDF, .xlsx, .csv ou .txt.",
+    "unreadable": "Não consegui ler este arquivo: ele pode estar corrompido ou com senha. Envie outra cópia.",
+    "too_many_pages": "O arquivo tem páginas demais. Envie só as páginas da tabela.",
+    "no_text": "Não encontrei texto neste arquivo. Se for uma imagem escaneada, tente uma cópia com melhor qualidade.",
+    "personal_data": "Este arquivo tem CPF ou cartão. Dados de pessoas não vão para a IA: envie uma cópia sem eles.",
+    "budget": "O orçamento de IA não cobre esta leitura agora. Nada foi alterado.",
+    "failed": "A IA não conseguiu ler este arquivo agora. Tente de novo ou envie menos páginas; arquivos com muitas linhas funcionam melhor como planilha.",
+    "no_rows": "A IA não encontrou linhas desta tabela no arquivo. Nada foi alterado.",
+}
 KB_ERROR = {
     "unreadable": "Não consegui ler este PDF: ele pode estar corrompido ou com senha. Envie outra cópia.",
     "too_many_pages": "O PDF tem páginas demais. Envie só a parte que interessa.",
@@ -239,7 +253,7 @@ TONE = {"friendly": "Próximo e descontraído", "formal": "Mais formal", "neutra
 OFF_HOURS_MODE = {"bot_keeps_serving": "Continua atendendo, sem empurrar a venda", "await_human": "Avisa e espera o vendedor"}
 NOTIFY_OFF_HOURS = {"at_open": "Quando o horário começa", "immediately": "Na hora"}
 MODEL_NODE = {"respond": "Escrever a resposta", "analyze_turn": "Entender a mensagem", "output_judge": "Revisar a resposta", "summarize": "Resumir a conversa",
-              "comment_intent": "Entender comentários"}
+              "comment_intent": "Entender comentários", "table_extract": "Ler arquivo de tabela"}
 RAG_PRESET = {"strict": "Mais rigoroso: responde menos, confirma mais", "balanced": "Equilibrado", "broad": "Mais abrangente: acha mais, com risco de trecho só parecido"}
 EVAL_STATUS = {"queued": "Na fila", "running": "Rodando", "passed": "Passou", "failed": "Não passou", "error": "Não terminou: tente de novo"}
 EVAL_TONE = {"queued": "info", "running": "info", "passed": "ok", "failed": "bad", "error": "warn"}

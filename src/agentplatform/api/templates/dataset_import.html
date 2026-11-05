@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block title %}Importar arquivo{% endblock %}{% block body %}
+<style>.ds-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}</style>
+<div class="page-head"><div><h1>{{ spec.label }}</h1><p class="sub">Envie o arquivo que você já tem. A IA lê, monta a tabela e você confere tudo antes de salvar.</p></div></div>
+<div class="ds-tabs"><a class="btn btn-sm" href="/console/datasets?name={{ spec.name }}">Tabela</a>
+  <a class="btn btn-sm btn-primary" href="/console/datasets/import?name={{ spec.name }}">Importar arquivo</a></div>
+{% if blocked %}<div class="alert warn">{{ icon('alert', 16) }}<div><p>{{ blocked }}</p></div></div>{% endif %}
+{% if error and error != blocked %}<div class="alert bad">{{ icon('alert', 16) }}<div><p>{{ error }}</p></div></div>{% endif %}
+<div class="grid g-side">
+<div class="card"><h2>Enviar arquivo</h2>
+  <p class="muted small">PDF, .xlsx, .csv ou .txt, até {{ (dcfg.file_read_max_bytes / 1000000)|round|int }} MB. Tabelas com muitas linhas funcionam melhor como <a href="/console/datasets?name={{ spec.name }}">planilha no modelo</a>.</p>
+  <form method="post" action="/console/datasets/import" enctype="multipart/form-data" class="row" onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='Lendo o arquivo…';">{{ csrf_input(user) }}
+    <input type="hidden" name="name" value="{{ spec.name }}">
+    <div class="field"><label for="ti-file">Arquivo</label><input id="ti-file" type="file" name="file" accept=".pdf,.xlsx,.xlsm,.csv,.txt" required {{ 'disabled' if blocked }}></div>
+    <button class="btn-primary" {{ 'disabled' if blocked }}>{{ icon('sparkle', 14) }} Ler com IA</button></form>
+</div>
+<div class="card"><h3>Como funciona</h3><ol class="steps small">
+  <li>A IA lê o arquivo e monta as linhas. Isso pode levar até um minuto.</li>
+  <li>Você vê a prévia e corrige o que precisar. Nada foi salvo ainda.</li>
+  <li>Salve o rascunho, teste no simulador e ative quando estiver certo.</li></ol>
+  <p class="small muted">Número que não está escrito no arquivo é descartado, e a prévia mostra qual foi. O arquivo não fica guardado.</p></div>
+</div>
+{% endblock %}

@@ -1247,7 +1247,8 @@ def _ds_preview(spec, rows: list[dict]) -> list[dict]:
 
 
 async def _dataset_page(request: Request, user: dict, name: str | None, *, grid: list[dict] | None = None,
-                        errors: list[str] | None = None, note: str = "", status_code: int = 200) -> HTMLResponse:
+                        errors: list[str] | None = None, note: str = "", status_code: int = 200,
+                        file_read=None, origin: str = "") -> HTMLResponse:
     from agentplatform.core.knowledge import datasets as D
     tid = _tid(user)
     tr, specs, spec = await _dataset_spec(tid, name)
@@ -1276,7 +1277,7 @@ async def _dataset_page(request: Request, user: dict, name: str | None, *, grid:
         "draft": draft, "draft_rows": draft_rows, "draft_preview": _ds_preview(spec, draft_rows), "marks": marks,
         "removed": removed, "versions": vers, "grid": grid + [{} for _ in range(DATASET_BLANK_ROWS)],
         "flag_on": bool(tr.config.operations.feature_flags.get(spec.feature_flag)) if spec.feature_flag else None,
-        "dcfg": tr.config.operations.datasets, "errors": errors or [], "note": note,
+        "dcfg": tr.config.operations.datasets, "errors": errors or [], "note": note, "file_read": file_read, "origin": origin,
         "msg": q.get("ok", ""), "ignored": [c for c in q.get("ignored", "").split("|") if c],
         "flag_draft": q.get("flagdraft", "")}, status_code)
 
@@ -1313,7 +1314,8 @@ async def _dataset_commit(request: Request, user: dict, name: str, rows: list[di
     if not errors and has_own_active and dry.added == 0 and dry.removed == 0:
         errors.append("nada mudou em relação à versão em uso")
     if errors:
-        return await _dataset_page(request, user, spec.name, grid=grid, errors=errors, note=note, status_code=400)
+        return await _dataset_page(request, user, spec.name, grid=grid, errors=errors, note=note, status_code=400,
+                                   origin=source if source == "file_read" else "")
     async with tenant_tx(tid) as conn:
         await D.discard_drafts(conn, tid, pkg, spec.name)
         p = await D.import_dataset(conn, tenant_id=tid, package=pkg, dataset=spec.name, rows=rows, schema=spec.row_model,
@@ -1329,7 +1331,7 @@ async def _dataset_commit(request: Request, user: dict, name: str, rows: list[di
 
 
 @router.post("/datasets/save")
-async def datasets_save(request: Request, name: str = Form(...), note: str = Form("")):
+async def datasets_save(request: Request, name: str = Form(...), note: str = Form(""), origin: str = Form("")):
     """The editable grid: one input list per column (c_<column>), rows in screen order; blank rows are skipped."""
     from agentplatform.core.knowledge import datasets as D
     user = await require_post(request, "tenant_owner")
@@ -1342,7 +1344,8 @@ async def datasets_save(request: Request, name: str = Form(...), note: str = For
     n = max((len(v) for v in lists.values()), default=0)
     rows = [{c: (lists[c][i] if i < len(lists[c]) else "") for c in lists} for i in range(n)]
     grid = [r for r in rows if any(v.strip() for v in r.values())]
-    return await _dataset_commit(request, user, name, rows, note, first_row=1, grid=grid, source="editor")
+    return await _dataset_commit(request, user, name, rows, note, first_row=1, grid=grid,
+                                 source="file_read" if origin == "file_read" else "editor")
 
 
 @router.post("/datasets/upload")
@@ -1362,6 +1365,80 @@ async def datasets_upload(request: Request, file: UploadFile, name: str = Form(.
             "não consegui ler o arquivo: envie .xlsx ou .csv com os nomes das colunas na 1ª linha"])
     return await _dataset_commit(request, user, name, rows, note or (file.filename or ""), first_row=2, grid=None,
                                  source="upload")
+
+
+def _file_read_block(tr) -> str:
+    """Why this account cannot send a file to the model, if so. The direct key has no zero data retention (see _can_index)."""
+    if tr.config.models.table_extract is None:
+        return "off"
+    return "" if _can_index() else "provider_blocked"
+
+
+async def _dataset_import_page(request: Request, user: dict, name: str | None, *, error: str = "", status_code: int = 200) -> HTMLResponse:
+    tr, specs, spec = await _dataset_spec(_tid(user), name)
+    if spec is None:
+        raise HTTPException(404)
+    block = _file_read_block(tr)
+    return _page(request, "dataset_import.html", {
+        "user": user, "spec": spec, "specs": specs, "dcfg": tr.config.operations.datasets,
+        "blocked": ui.TABLE_FILE_ERROR[block] if block else "", "error": ui.TABLE_FILE_ERROR.get(error, "")}, status_code)
+
+
+@router.get("/datasets/import", response_class=HTMLResponse)
+async def datasets_import_page(request: Request, name: str = ""):
+    user = require(request, "tenant_owner")
+    return await _dataset_import_page(request, user, name or None)
+
+
+@router.post("/datasets/import", response_class=HTMLResponse)
+async def datasets_import(request: Request, file: UploadFile, name: str = Form(...)):
+    """File -> rows read by the model -> the same editor as always, unsaved. Nothing is stored until the person saves a draft."""
+    from agentplatform.core.knowledge import admin as KA
+    from agentplatform.core.knowledge import datasets as D
+    from agentplatform.core.knowledge import table_import as TI
+    from agentplatform.core.models.gateway import BudgetDenied, ModelCallError, tenant_context
+    from agentplatform.runtime import get_runtime
+    user = await require_post(request, "tenant_owner")
+    tid = _tid(user)
+    tr, _, spec = await _dataset_spec(tid, name)
+    if spec is None:
+        raise HTTPException(404)
+
+    async def refuse(reason: str, status_code: int = 400) -> HTMLResponse:
+        return await _dataset_import_page(request, user, name, error=reason, status_code=status_code)
+
+    block = _file_read_block(tr)
+    if block:
+        return await refuse(block, 409)
+    dcfg, kcfg = tr.config.operations.datasets, tr.config.operations.knowledge
+    filename = (file.filename or "").replace("\\", "/").rsplit("/", 1)[-1][:200]
+    if KA.is_forbidden_file(filename, [*tr.package.manifest.never_import_name_hashes, *kcfg.never_import_name_hashes]):
+        return await refuse("never_import")
+    data = await file.read()
+    if len(data) > dcfg.file_read_max_bytes:
+        return await refuse("too_big", 413)
+    cols = D.columns(spec.row_model)
+    try:
+        text = await TI.source_text(data, filename, kcfg, dcfg.file_read_max_chars)
+        proposal = await TI.propose(get_runtime().gateway, tr.config.models.table_extract,
+                                    tenant_context(tr.config.budget, tid, "table_extract", purpose="ingest"),
+                                    label=spec.label, description=spec.description, cols=cols, text=text,
+                                    max_chars=dcfg.file_read_max_chars, max_rows=dcfg.max_rows)
+    except TI.FileRefused as e:
+        return await refuse(e.reason)
+    except BudgetDenied:
+        return await refuse("budget", 402)
+    except (ModelCallError, httpx.HTTPError, ValidationError):
+        return await refuse("failed", 502)
+    async with tenant_tx(tid) as conn:
+        await _audit(conn, tid, UUID(user["id"]), "dataset.file_read", spec.name, {
+            "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data), "rows": len(proposal.rows),
+            "dropped": len(proposal.dropped), "doubtful": len(proposal.doubtful), "text_cut": proposal.text_cut, "rows_cut": proposal.rows_cut})
+    if not proposal.rows:
+        return await refuse("no_rows")
+    grid = [{c.name: _ds_cell(r.get(c.name), c) for c in cols} for r in proposal.rows]
+    return await _dataset_page(request, user, spec.name, grid=grid, note=f"Lido de {filename}"[:300],
+                               file_read=proposal, origin="file_read")
 
 
 async def _dataset_row(conn, tid: UUID, pkg: str, name: str, dataset_id: UUID) -> dict:

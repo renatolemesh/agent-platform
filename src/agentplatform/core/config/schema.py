@@ -67,6 +67,7 @@ class ModelsConfig(Strict):
     summarize: NodeModel
     comment_intent: NodeModel | None = None
     image_describe: NodeModel | None = None      # off by default: images go to local OCR + masking (media.images)
+    table_extract: NodeModel | None = None       # reads a file into the table editor; without it the console offers spreadsheets only
     embedding: ModelRef
     transcription: ModelRef
     # Only for dev with a single-provider key (e.g. OpenAI direct). PlatformConfig rejects it outside dev.
@@ -494,6 +495,8 @@ class DatasetsConfig(Strict):
     max_rows: PosInt = 5000
     max_upload_bytes: PosInt = 2_000_000
     two_person_activation: bool = False        # True: a version must be activated by someone other than its author
+    file_read_max_bytes: PosInt = 15_000_000   # file read by the model (models.table_extract)
+    file_read_max_chars: PosInt = 40_000       # text sent to the model; past this the person is told it was cut
 
 
 class KnowledgeConfig(Strict):

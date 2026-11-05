@@ -45,6 +45,14 @@ models:
     max_output_tokens: 60
     timeout_s: 5
     prompt_version: comment_intent@v1
+  table_extract:
+    primary: openai/gpt-5-nano
+    fallbacks: []
+    temperature: 0.0
+    max_output_tokens: 8000
+    timeout_s: 50
+    retries: 0
+    prompt_version: table_extract@v1
   embedding:
     model: openai/text-embedding-3-small
     dims: 1024

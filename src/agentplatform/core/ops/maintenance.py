@@ -83,7 +83,7 @@ async def zero_retention_models(transport: httpx.AsyncBaseTransport | None = Non
 
 
 def models_without_route(models: ModelsConfig, routes: set[str]) -> set[str]:
-    nodes = (models.analyze_turn, models.respond, models.output_judge, models.input_classifier, models.summarize, models.comment_intent, models.image_describe)
+    nodes = (models.analyze_turn, models.respond, models.output_judge, models.input_classifier, models.summarize, models.comment_intent, models.image_describe, models.table_extract)
     return ({m for n in nodes if n for m in (n.primary, *n.fallbacks)} | {models.embedding.model, models.transcription.model}) - routes
 
 
