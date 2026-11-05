@@ -16,8 +16,8 @@
       <div class="field"><label>Nome do documento (opcional)</label><input name="title" maxlength="200" placeholder="Como você chama este material"></div>
       <button class="btn-primary">{{ icon('upload', 16) }} Enviar</button>
     </div>
-    <label class="small" style="display:flex;gap:8px;align-items:flex-start;margin:10px 0 4px"><input type="checkbox" name="mask_identifiers" value="1" style="width:auto"> <span>O telefone, o e-mail e o CNPJ deste arquivo são da própria empresa: substituir por marcadores em vez de bloquear. <b>Não marque se houver dados de clientes.</b> CPF e cartão continuam bloqueando.</span></label>
-    <span class="help">Nada é usado até você aprovar. Arquivo com CPF, telefone ou e-mail de pessoas fica bloqueado: envie uma cópia sem esses dados.</span>
+    <label class="small" style="display:flex;gap:8px;align-items:flex-start;margin:10px 0 4px"><input type="checkbox" name="mask_identifiers" value="1" style="width:auto"> <span><b>Eu me responsabilizo pelos dados deste arquivo</b> (fictícios, da própria empresa ou com autorização). CPF, cartão, CNPJ, telefone e e-mail serão trocados por marcadores em vez de bloquear o envio. Nomes e endereços não são detectados: confira os trechos.</span></label>
+    <span class="help">Nada é usado até você aprovar. Sem marcar a opção acima, um arquivo com esses dados fica bloqueado.</span>
   </form></div>
 
 <div class="card flush"><div class="table-wrap"><table><thead><tr><th>Documento</th><th>Situação</th><th>Uso</th><th class="num">Trechos</th><th>Versão</th><th>Validade</th></tr></thead><tbody>

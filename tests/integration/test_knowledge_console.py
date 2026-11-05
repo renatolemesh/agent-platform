@@ -332,6 +332,8 @@ async def test_company_contacts_can_be_replaced_when_a_person_says_so(tenant, en
     assert e.value.reason == "blocked_again"
     async with _client() as c:
         await c.post("/console/login", data={"email": email, "password": PW})
+        blocked = (await c.get(f"/console/documents/{plain}")).text
+        assert "Eu me responsabilizo" in blocked and 'name="mask_identifiers"' in blocked
         csrf = await _csrf(c, "/console/documents")
         r = await c.post("/console/documents/upload", data={"csrf": csrf, "mask_identifiers": "1"}, files={"file": ("com-contato.pdf", data, "application/pdf")})
         assert r.status_code == 303
@@ -347,12 +349,15 @@ async def test_company_contacts_can_be_replaced_when_a_person_says_so(tenant, en
     assert audit["after"]["mask_identifiers"] is True, "who said so stays on record"
 
 
-async def test_a_cpf_stays_blocked_even_if_a_person_asks_to_replace(tenant):
-    did = await direct_upload(tenant, data=make_pdf([TEXT + "\nCliente com CPF 529.982.247-25 e contato@empresa.example"]))
+async def test_the_sender_can_answer_for_any_identifier_and_the_values_are_not_stored(tenant):
+    did = await direct_upload(tenant, data=make_pdf([TEXT + "\nCPF 529.982.247-25, CNPJ 11.222.333/0001-81, cartão 4111 1111 1111 1111"]))
     async with tenant_tx(tenant) as conn:
         await conn.execute("update kb_documents set mask_identifiers = true where id=%s", (did,))
     await read(tenant, did)
-    assert (await doc(tenant, did))["status"] == "blocked_pii" and await chunks(tenant, did) == []
+    d = await doc(tenant, did)
+    assert d["status"] == "in_review" and d["pii_scan"]["blocking"] == {} and set(d["pii_scan"]["masked"]) == {"cpf", "cnpj", "card"}
+    text = " ".join(x["text"] for x in await chunks(tenant, did))
+    assert "[CPF]" in text and not any(v in text for v in ("529.982.247-25", "11.222.333/0001-81", "4111 1111"))
 
 
 # ------------------------------------------------------------------ reading

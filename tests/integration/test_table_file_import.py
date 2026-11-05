@@ -98,7 +98,6 @@ async def test_refusals_touch_nothing_and_call_no_model(tenant, monkeypatch):
         assert (await _post(c, b"%PDF-1.4", "proibido.pdf")).status_code == 400
         assert (await _post(c, b"qualquer", "foto.png")).status_code == 400
         assert (await _post(c, b"%PDF-1.4 quebrado", "tabela.pdf")).status_code == 400
-        assert (await _post(c, b"Cliente;CPF\nFulano;529.982.247-25\n")).status_code == 400
         assert gateway.calls == []
 
         await _config(tenant, {}, monkeypatch, table_extract=False)
@@ -117,6 +116,17 @@ async def test_model_failures_and_empty_answers_save_nothing(tenant, monkeypatch
         r = await _post(c)
         assert r.status_code == 400 and "não encontrou linhas" in r.text
     assert await _versions(tenant) == []
+
+
+@pytest.mark.db
+async def test_identifiers_never_reach_the_model(tenant, monkeypatch):
+    gateway = await _config(tenant, {"table_extract": [{"rows": [A]}]}, monkeypatch)
+    email, _ = await _user(tenant)
+    async with _client() as c:
+        await _login(c, email)
+        assert (await _post(c, SOURCE + b"Modelo CPF 529.982.247-25\n")).status_code == 200
+    sent = gateway.calls[0][1][-1]["content"]
+    assert "[CPF]" in sent and "529.982.247-25" not in sent
 
 
 def test_numbers_must_be_written_in_the_file():

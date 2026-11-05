@@ -504,7 +504,7 @@ class KnowledgeConfig(Strict):
     max_upload_bytes: PosInt = 30_000_000
     max_pages: PosInt = 500
     never_import_name_hashes: list[str] = []   # files of this account that must never come in, whatever the scan finds (admin.forbidden_name_hash)
-    maskable_on_request: list[str] = ["email", "phone", "cnpj"]    # can be the company's own; CPF and cards always belong to a person
+    maskable_on_request: list[str] = ["email", "phone", "cnpj", "cpf", "card"]    # replaced by markers when the sender takes responsibility for the file (ADR-021)
     page_min_chars: PosInt = 30                # less text than this on a page: read it with OCR
     max_ocr_pages: PosInt = 60                 # one page at a time, on the small production machine
     ocr_dpi: PosInt = 200

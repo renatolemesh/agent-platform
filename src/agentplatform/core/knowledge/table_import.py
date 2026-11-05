@@ -16,7 +16,7 @@ from pydantic import BaseModel, create_model
 
 from agentplatform.core.agent.prompts import render
 from agentplatform.core.knowledge import datasets as D
-from agentplatform.core.knowledge.ingest import TooManyPages, UnreadableDocument, read_document, scan_pii
+from agentplatform.core.knowledge.ingest import TooManyPages, UnreadableDocument, read_document
 from agentplatform.core.security.pii import mask
 
 _PLAIN = re.compile(r"\d[\d.,]*\d|\d")
@@ -63,8 +63,7 @@ def _sheet_text(data: bytes, limit: int) -> str:
 
 
 async def source_text(data: bytes, filename: str, knowledge_cfg, max_chars: int) -> str:
-    """The file as masked text. A person's identifiers never reach the model: a file with CPF or card is refused, and the
-    company's own e-mail or phone (knowledge.maskable_on_request) is masked."""
+    """The file as masked text: identifiers never reach the model, and the file is not stored."""
     name = filename.lower()
     try:
         if data.startswith(b"%PDF-"):
@@ -86,8 +85,6 @@ async def source_text(data: bytes, filename: str, knowledge_cfg, max_chars: int)
         raise FileRefused("unreadable") from e
     if not text.strip():
         raise FileRefused("no_text")
-    if set(scan_pii([text])["blocking"]) - set(knowledge_cfg.maskable_on_request):
-        raise FileRefused("personal_data")
     return mask(text).text
 
 

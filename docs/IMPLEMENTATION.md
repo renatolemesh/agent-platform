@@ -292,6 +292,10 @@ Uma leitura ampla de conversas reais de atendimento mostrou o que o assistente a
 
 **Sem medir:** a avaliação completa com os casos novos, que precisa de mais orçamento antes de ir para produção.
 
+## Quem envia responde pelos dados do arquivo (05/11/2026)
+
+Um PDF com CPF, cartão, CNPJ, telefone ou e-mail continua bloqueado por padrão, mas quem envia pode assumir a responsabilidade, no envio ou na tela do documento bloqueado. Os valores são trocados por marcadores, e a auditoria registra quem enviou. Nomes e endereços não são detectados: a revisão por trecho continua sendo a proteção. Nenhuma opção envia os valores originais à base. A aprovação segue dependendo do OpenRouter.
+
 ## Importar tabela de um arquivo (04/11/2026)
 
 Em **Tabelas > Importar arquivo**, a pessoa envia PDF, .xlsx, .csv ou .txt, a IA monta as linhas e elas aparecem no editor de sempre, sem salvar. Depois segue o fluxo existente: salvar rascunho, testar no simulador, ativar.
@@ -300,7 +304,7 @@ Em **Tabelas > Importar arquivo**, a pessoa envia PDF, .xlsx, .csv ou .txt, a IA
 
 **Regras:**
 - **Chave de testes recusa o arquivo** antes de ler, como na aprovação de material: o envio à IA só funciona com `LLM_PROVIDER=openrouter`.
-- **Arquivo proibido da conta** é recusado pelo hash do nome. Arquivo com CPF ou cartão é recusado; e-mail, telefone e CNPJ são mascarados antes de ir à IA.
+- **Arquivo proibido da conta** é recusado pelo hash do nome. CPF, cartão, CNPJ, telefone e e-mail são mascarados antes de ir à IA.
 - **Número que não está escrito no arquivo** é descartado, e a prévia diz qual foi. Código ou nome com dígitos que não estão no arquivo também.
 - **Número que está no arquivo, mas fora da linha do item,** fica em branco e é listado. Vale quando pelo menos dois números da linha coincidem com uma linha do arquivo; em layouts com um valor por linha, a checagem não se aplica e só a revisão da pessoa protege.
 - **O arquivo não é guardado.** A auditoria registra hash, tamanho e contagens, sem o nome do arquivo.

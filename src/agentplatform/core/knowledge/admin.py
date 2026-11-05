@@ -150,8 +150,8 @@ async def _fail(conn: AsyncConnection, tenant_id: UUID, document_id: UUID, code:
 
 async def store_reading(conn: AsyncConnection, tenant_id: UUID, document_id: UUID, index_id: UUID, pages: list[str], info: dict,
                         exclude_pages: tuple[int, ...] = (), keep_status: str | None = None, mask_kinds: list[str] | None = None) -> str:
-    """A document with hard identifiers keeps no text at all: the way forward is a clean file, not reviewing personal data here. The one
-    exception is a person saying the identifiers are the company's own, and then only for kinds that can be: `mask_kinds`."""
+    """A document with hard identifiers keeps no text at all, unless the person who sent it answers for its data: then the kinds in
+    `mask_kinds` are replaced by markers, and the original values are not stored."""
     pii = scan_pii(pages)
     if mask_kinds and pii["blocking"] and set(pii["blocking"]) <= set(mask_kinds):
         pages = [mask(p, only=mask_kinds).text for p in pages]
