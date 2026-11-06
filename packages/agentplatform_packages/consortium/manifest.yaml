@@ -7,7 +7,7 @@ glossary:
   lance: oferta de antecipação de parcelas para aumentar a chance de contemplação, conforme o regulamento do grupo
   taxa de administração: remuneração da administradora, em percentual do crédito
   fundo de reserva: valor para cobrir eventuais inadimplências do grupo, em percentual do crédito
-persona_template: "Você é o assistente virtual de {seller_name}, consultor(a){company}. Tom próximo, confiante e consultivo: seu papel é mostrar por que o consórcio vale a pena para o objetivo do cliente e levá-lo ao próximo passo. Consórcio NÃO é financiamento: nunca chame o consórcio de financiamento, empréstimo ou crédito bancário."
+persona_template: "Você é o assistente virtual de {seller_name}, consultor(a){company}. Tom próximo, confiante e consultivo: seu papel é mostrar por que o consórcio vale a pena para o objetivo do cliente e levá-lo ao próximo passo. Há grupos para cada perfil: com ou sem dinheiro para lance, com ou sem pressa. Avalie o perfil pelo que o cliente disser e mostre a vantagem que combina com ele (com pressa e com valor para lance, o lance pode antecipar a contemplação; sem pressa, ele vai pagando as parcelas e concorrendo todo mês). Quem indica o grupo certo para o perfil é o consultor. Consórcio NÃO é financiamento: nunca chame o consórcio de financiamento, empréstimo ou crédito bancário."
 slots:
   - {name: goal, type: enum, values: [real_estate, vehicle, heavy_vehicle, services, other_movable, resale],
      synonyms: {real_estate: [imovel, casa, apartamento, ape, terreno, sala comercial, reforma],
@@ -71,6 +71,9 @@ form_stage: pronto_para_proposta
 ready_question: "Quer que eu chame o consultor para você começar?"
 # The model rewords that question: a question matching this is the same offer.
 ready_offer_pattern: '\bchamo\b|\b(quer|prefere|gostaria) que (ele|o consultor|o vendedor)\b|\b(quer|queria|posso|pode|prefere|gostaria|deseja|vamos|bora|que tal)\b.*\b(chamar|chame|falar com|fale com|conversar com|converse com|contato com|consultor|vendedor|para ele|pra ele)\b'
+# Before offering the person, once: the profile the seller needs to pick the group (never says "consultor", or a yes would count as accepting).
+profile_question: "Pra achar o grupo que combina com você: você tem pressa pra usar a carta, e teria algum valor guardado pra dar de lance?"
+profile_slots: [has_bid_funds, urgency]
 # Right after that question, a message made only of these words is a yes.
 short_yes: [sim, pode, ser, claro, bora, quero, ok, okay, beleza, blz, show, fechado, vamos, vamo, dale, tá, bom, com, certeza, por, favor, pfv, pf, uhum, aham, isso, "👍", "👌"]
 # Someone who will show the offer at home: the table's offer goes out again, word for word, as a summary.

@@ -208,6 +208,10 @@ def yes_to_another_question(manifest: PackageManifest, text: str, recent_bot_tex
     return _only_yes(manifest, text, echo)
 
 
+def knows_any(profile: dict, slots: list[str]) -> bool:
+    return any(isinstance(profile.get(s), dict) and profile[s].get("value") not in (None, "", []) for s in slots)
+
+
 def next_question(manifest: PackageManifest, profile: dict) -> str | None:
     return next(iter(pending_questions(manifest, profile)), None)
 

@@ -110,6 +110,12 @@ def test_anything_more_than_a_yes_is_left_to_the_classifier(text):
     assert not yes_to_another_question(M, text, EXPLAINED)
 
 
+def test_the_profile_question_is_not_the_offer_of_the_seller():
+    assert M.profile_question.count("?") == 1 and not offered_the_person(M, [M.profile_question])
+    assert yes_to_another_question(M, "sim", [M.profile_question])           # a yes to it calls nobody
+    assert {"has_bid_funds", "urgency"} == set(M.profile_slots) <= {s.name for s in M.slots}
+
+
 def test_a_yes_to_the_seller_is_still_the_seller():
     assert not yes_to_another_question(M, "sim", [M.ready_question]) and accepted_the_offer(M, "sim", [M.ready_question])
     assert not yes_to_another_question(M, "sim", [])          # nothing was asked: the classifier decides

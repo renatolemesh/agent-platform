@@ -26,7 +26,9 @@ models:
     provider:
       allow_fallbacks: true
   output_judge:
-    primary: openai/gpt-5-nano
+    # gpt-5-nano blocked every correct explanation in a test of invented drafts (5 of 5); gpt-4.1-mini got 9 of 9.
+    # Same model as respond: dev only (allow_same_family_judge); prod uses another family.
+    primary: openai/gpt-4.1-mini
     fallbacks: []
     temperature: 0.0
     max_output_tokens: 150

@@ -317,6 +317,16 @@ O dono pediu que as abordagens convençam o cliente. Mudou `respond@v13`: o assi
 - **Média de contemplação do grupo.** A tabela de planos ganhou a coluna opcional "Média de contemplação do grupo (meses)", do relatório das assembleias. Quando a linha da oferta tem esse número, o código acrescenta à oferta "Nesse grupo, as contemplações têm saído em média em N meses." e o aviso oficial de histórico; em turnos seguintes, se a resposta usar os números da simulação, os dois avisos entram (`disclaimer_keys`). Sem o número na tabela, o assistente não fala de média: o modelo nunca escreve um prazo de cabeça.
 - **Aplicação citada pelo cliente.** O assistente pode dizer que CDB ou poupança são investimento, outra coisa. Continua proibido comparar rendimento ou dizer qual é melhor (as regras do pacote barram CDB, CDI, poupança ou tesouro perto de rende, ganho, retorno, perde, melhor, pior).
 - **Revisor (`output_judge@v3`).** Citar o histórico do grupo com o aviso não é promessa; contrato, regulamento e tabela do grupo não são documento interno. Nos testes reais, essas duas leituras barravam a primeira resposta sem motivo.
+- **Modelo do revisor no dev.** Num teste com textos inventados, o `gpt-5-nano` barrou as 5 explicações corretas (e passou as 4 violações para o bloqueio certo); o `gpt-5-mini` errou 2 de 9; o `gpt-4.1-mini` acertou as 9. O dev passou a usar o `gpt-4.1-mini`, o mesmo modelo da resposta, o que só vale no dev (`allow_same_family_judge`); em produção o revisor é de outra família.
+- **Lista de frases proibidas da conta.** A versão ativa guarda a lista já somada à do pacote; copiar a versão ativa manteve a regra antiga que barrava qualquer CDB. Ao mudar regras do pacote, a nova versão precisa ser publicada com o pacote (`package_compliance`) e sem a regra retirada.
+
+## Perfil do cliente antes do consultor (06/11/2026)
+
+O consultor contou que há grupos para cada perfil: com ou sem dinheiro para lance, com ou sem pressa; por isso a média por grupo não serve para todo cliente, e o assistente segue com as estimativas da tabela.
+
+- **Pergunta de perfil.** No estágio de proposta, antes de oferecer o consultor, o assistente pergunta uma vez se a pessoa tem pressa e se teria valor para lance (`profile_question`, campos `has_bid_funds` e `urgency`). Depois da oferta, ela entra no lugar de "Faz sentido pra você?". Se a pessoa já disse um dos dois, ou se a pergunta já foi feita, vem a oferta do consultor. A pergunta não fala em consultor, para um "sim" a ela não chamar ninguém.
+- **Avaliar o perfil.** A persona do pacote diz que há grupos para cada perfil e pede que o assistente mostre a vantagem que combina com ele (com pressa e com valor para lance, o lance pode antecipar; sem pressa, as parcelas e o sorteio todo mês). Quem indica o grupo é o consultor, que recebe as duas respostas no resumo.
+- A coluna opcional de média de contemplação continua na tabela, vazia: sem número, a oferta não fala de média.
 
 ## Quem envia responde pelos dados do arquivo (05/11/2026)
 

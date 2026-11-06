@@ -146,13 +146,13 @@ async def test_the_offer_goes_out_as_written_and_the_person_is_offered_after_it(
         sent = await _sent_text(tenant, conv)
         note = _sim_cfg().compliance.required_disclosures["simulation_estimate"]
         assert sent.endswith("Ótimo! Temos carta de R$ 95.000,00 para carro ou moto, em 72 meses, com parcela de R$ 980,00 até a "
-                             f"contemplação e R$ 1.583,33 depois. {note} Faz sentido pra você?")
-        assert "a partir de uns" not in sent and "chame o consultor" not in sent
+                             f"contemplação e R$ 1.583,33 depois. {note} {PKG.manifest.profile_question}")
+        assert "a partir de uns" not in sent and "chame o consultor" not in sent      # the profile first, the person after
 
         await _bot_said(tenant, conv, sent)
         await inbound(tenant, ["sim"], igsid=igsid)
         res = await TurnRunner(deps).run(tenant, conv["id"])
-        assert res.status == "committed" and await _handoffs(tenant, conv) == []     # a yes to "makes sense" is not a yes to the person
+        assert res.status == "committed" and await _handoffs(tenant, conv) == []     # a yes to another question is not a yes to the person
         assert PKG.manifest.ready_question in seen["prompt"].split("Pergunta do fluxo")[-1].split(chr(10))[0]
 
         await _bot_said(tenant, conv, "Que bom! " + PKG.manifest.ready_question)
@@ -237,7 +237,7 @@ async def _stage_and_forms(tenant, conv) -> tuple[str, int]:
     return lead["stage"], forms["n"]
 
 
-async def test_someone_ready_gets_no_form_and_is_asked_about_the_seller(tenant):
+async def test_someone_ready_gets_no_form_and_is_asked_the_profile_before_the_seller(tenant):
     conv = await _lead_about_to_be_ready(tenant, "pra casa, uns 100 mil")
     prompts = []
 
@@ -249,7 +249,7 @@ async def test_someone_ready_gets_no_form_and_is_asked_about_the_seller(tenant):
                          "respond": [reply], "output_judge": [{"violations": [], "explanation": ""}]})
     res = await TurnRunner(TurnDeps(config=_sim_cfg(), package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
     assert res.status == "committed" and "create_lead_form_link" not in res.trace["tools"]
-    assert PKG.manifest.ready_question in prompts[0] and "/f/" not in prompts[0]
+    assert PKG.manifest.profile_question in prompts[0] and "/f/" not in prompts[0]
     assert await _stage_and_forms(tenant, conv) == ("pronto_para_proposta", 0)
     assert "/f/" not in await _sent_text(tenant, conv)
 
@@ -266,8 +266,24 @@ async def test_saying_no_with_the_last_answer_does_not_start_the_next_step(tenan
                                                    slots=[("goal", "real_estate", "pra casa"), ("credit_amount", "100 mil", "100 mil")])],
                          "respond": [reply], "output_judge": [{"violations": [], "explanation": ""}]})
     res = await TurnRunner(TurnDeps(config=_sim_cfg(), package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
-    assert res.status == "committed" and PKG.manifest.ready_question not in prompts[0]
+    assert res.status == "committed" and PKG.manifest.ready_question not in prompts[0] and PKG.manifest.profile_question not in prompts[0]
     assert await _stage_and_forms(tenant, conv) == ("qualificando", 0)
+
+
+async def test_who_already_told_the_profile_is_offered_the_seller(tenant):
+    conv = await _lead_about_to_be_ready(tenant, "pra casa, uns 100 mil, tenho 20 mil pra lance")
+    prompts = []
+
+    def reply(msgs):
+        prompts.append(msgs[0]["content"])
+        return draft("Show! " + PKG.manifest.ready_question)
+    g = ScriptedGateway({"analyze_turn": [analysis(intents=["provide_info"], stage="qualificando",
+                                                   slots=[("goal", "real_estate", "pra casa"), ("credit_amount", "100 mil", "100 mil"),
+                                                          ("has_bid_funds", "true", "tenho 20 mil pra lance")])],
+                         "respond": [reply], "output_judge": [{"violations": [], "explanation": ""}]})
+    await TurnRunner(TurnDeps(config=_sim_cfg(), package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
+    flow_q = prompts[0].split("Pergunta do fluxo")[-1].split(chr(10))[0]
+    assert PKG.manifest.ready_question in flow_q and PKG.manifest.profile_question not in prompts[0]
 
 
 async def test_saying_yes_to_the_seller_is_a_hot_lead(tenant):

@@ -553,8 +553,13 @@ class TurnRunner:
         n = self.d.config.funnel.question_cooldown_turns
         recent_bot = [m["text"] for m in s["recent"] if m["from"] == "assistente"][-n:] if n else []
         if stage_now == self.m.form_stage and self.m.ready_question:     # once: it does not come back after the cooldown
-            offered = policy.offered_the_person(self.m, [m["text"] for m in s["recent"] if m["from"] == "assistente"])
-            return None if offered else self.m.ready_question
+            bot = [m["text"] for m in s["recent"] if m["from"] == "assistente"]
+            if policy.offered_the_person(self.m, bot):
+                return None
+            if self.m.profile_question and not policy.knows_any(profile_after, self.m.profile_slots) \
+                    and not policy.recently_asked(self.m.profile_question, bot):
+                return self.m.profile_question       # once, ahead of the person: what they need to pick the right option
+            return self.m.ready_question
         if self.m.flow_stages and stage_now not in self.m.flow_stages:
             return None
         # a question just asked and not answered is not repeated: the flow moves on to the next required one; optional
