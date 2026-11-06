@@ -119,6 +119,11 @@ objections: [expensive, prefer_financing, distrust, no_time, will_think, not_now
 # Someone saying no, or not now, is not asked the next question of the flow.
 stop_asking_on: [not_interested, not_now, no_time, will_think, already_has]
 guidelines:
+  - {id: vs_saving, priority: 2,
+     when_keywords: ["cdb", "cdi", "poupança", "poupanca", "tesouro direto", "tesouro selic", "renda fixa", "deixar rendendo", "deixar o dinheiro rendendo",
+                     "aplicar o dinheiro", "juntar o dinheiro", "juntar dinheiro", "guardar o dinheiro", "guardar dinheiro", "investir o dinheiro",
+                     "investir no", "investir na", "melhor investir", "vale mais a pena investir", "rende mais", "render mais"],
+     action: "O cliente comparou o consórcio com guardar ou aplicar o dinheiro. Isto vale acima da orientação de revenda: ele não falou em vender a carta. Não escreva o nome da aplicação que ele citou nem de nenhuma outra, não fale de rendimento, ganho ou retorno, e não diga qual é melhor. Em até três frases: consórcio não é investimento, é uma forma planejada de comprar um bem; guardando sozinho, a pessoa só compra quando juntar o valor todo; no consórcio ela paga parcelas mensais e pode ser contemplada antes, por sorteio ou lance, sem prazo garantido, e paga taxa de administração em vez de juros. Diga que o que faz mais sentido depende de quando ele precisa do bem e, se ele ainda não disse o objetivo, pergunte o que pensa em comprar."}
   - {id: resale_interest, priority: 8, when_intents: [resale_question], when_keywords: [vender a carta, venda de carta, vender carta, revender, revenda, alavancagem, alavancar, investir, investimento],
      action: "O cliente quer comprar a carta para vender depois. Trate como um objetivo normal, sem julgar. Não fale de lucro, ganho, preço de venda ou em quanto tempo sai a contemplação, e não compare com investimento: nada disso é garantido, e quem explica é o consultor. Se ele chamar de investimento, não confirme: consórcio é uma compra planejada. Se houver opção em tool_results, mostre a parcela; se não houver, pergunte de quanto seria a carta."}
   - {id: how_it_works, when_intents: [product_question, how_it_works],
@@ -129,7 +134,7 @@ guidelines:
   - {id: bid_question, when_intents: [bid_question], stages: [educando, qualificando, pronto_para_proposta],
      action: "Explique lance livre, fixo e embutido só com base aprovada. Nunca prometa contemplação nem prazo. Ofereça o vendedor para as regras do grupo."}
   - {id: vs_financing, when_intents: [compare_financing],
-     action: "Use apenas o texto aprovado da FAQ consórcio x financiamento, sem números próprios."}
+     action: "Se o cliente comparou com financiamento ou empréstimo, use apenas o texto aprovado da FAQ consórcio x financiamento, sem números próprios."}
   - {id: wants_fast, when_intents: [wants_fast], when_keywords: ["rápido", "urgente", "logo", "contemplad", "quanto tempo", "em quantos meses"],
      action: "Explique que a contemplação é por sorteio ou lance, sem prazo garantido. Pergunte se há recurso para lance."}
   - {id: insurance, when_intents: [insurance_question], when_keywords: ["seguro", "prestamista"],
@@ -279,6 +284,10 @@ faqs_seed:
     question: Por que algumas cartas têm valor quebrado?
     variants: ["por que a carta não é redonda", "por que tem carta de valor diferente", "qual a diferença de uma carta mais antiga"]
     answer: "O crédito é reajustado pelo índice previsto no contrato, normalmente uma vez por ano. Em grupos que já estão em andamento, o crédito costuma ter um valor diferente do redondo, e a parcela acompanha esse reajuste."
+  - id: vs_saving
+    question: Vale mais a pena consórcio ou guardar o dinheiro?
+    variants: ["não vale mais a pena investir", "por que não deixo o dinheiro rendendo", "melhor juntar o dinheiro", "consórcio ou poupança", "consórcio é investimento"]
+    answer: "Consórcio não é investimento: é uma forma planejada de comprar um bem. Guardando o dinheiro por conta própria, você só compra quando juntar o valor todo. No consórcio, você paga parcelas mensais e pode ser contemplado antes, por sorteio ou lance, mas não existe prazo garantido. Não há juros, mas há taxa de administração, conforme o contrato do grupo. O que faz mais sentido depende de quando você precisa do bem."
   - id: keep_paying
     question: Depois de contemplado, continuo pagando?
     variants: ["depois que contemplar ainda pago", "quando sou contemplado paro de pagar", "as parcelas continuam depois"]
@@ -308,7 +317,8 @@ auto_transitions:
   - {from: [novo, engajado], to: qualificando, when: slot_filled}
 scope: "consórcio (imóveis, veículos, pesados, serviços), carta de crédito, contemplação, lance, taxas do consórcio, seguro prestamista, liberação de crédito, documentos, o consultor e o atendimento"
 intent_hints:
-  resale_question: "SÓ quando PERGUNTA pelo resultado ou pela forma da venda: quanto ganha ou lucra, por quanto vende, em quanto tempo vende, para quem vende, quem compra, se é obrigado a usar a carta, se vale como investimento. Dizer que quer a carta para vender depois, ou falar em alavancagem, NÃO é isto: é provide_info ou product_question"
+  resale_question: "SÓ quando PERGUNTA pelo resultado ou pela forma da venda: quanto ganha ou lucra, por quanto vende, em quanto tempo vende, para quem vende, quem compra, se é obrigado a usar a carta, se vale como investimento. Dizer que quer a carta para vender depois, ou falar em alavancagem, NÃO é isto: é provide_info ou product_question. Comparar o consórcio com guardar ou aplicar o dinheiro (poupança, CDB) também NÃO é isto: é compare_financing"
+  compare_financing: "compara o consórcio com financiamento, empréstimo, ou com guardar ou aplicar o dinheiro"
   wants_human: "quer falar com uma pessoa, ou pede para continuar no WhatsApp, por telefone, em videochamada ou pessoalmente"
   product_question: "dúvida sobre como funciona o consórcio, a carta, o seguro, a liberação"
   bid_question: "dúvida sobre lance"

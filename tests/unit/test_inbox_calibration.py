@@ -151,10 +151,25 @@ def test_a_comment_with_the_word_on_the_video_has_a_template():
 def test_questions_people_ask_arrive_as_drafts_with_no_numbers_of_their_own():
     ids = {f.id for f in M.faqs_seed}
     assert {"regulated", "down_payment", "never_contemplated", "giving_up", "readjustment", "cheaper_good"} <= ids
-    assert {"need_the_amount", "pay_ahead", "reduced_installment", "embedded_bid", "how_many_contemplated", "odd_credit_value", "keep_paying"} <= ids
+    assert {"need_the_amount", "pay_ahead", "reduced_installment", "embedded_bid", "how_many_contemplated", "odd_credit_value", "keep_paying", "vs_saving"} <= ids
     assert not any(re.search(r"\d", f.answer) for f in M.faqs_seed if f.id not in {"regulated"})     # numbers come from the account, not here
     for f in M.faqs_seed:
         assert "garant" not in normalize(f.answer).replace("nao existe prazo garantido", "")
+
+
+# ---------- consortium or saving the money
+@pytest.mark.parametrize("text", ["por que eu deveria comprar um consorcio, não vale mais a pena investir no CDB?", "não é melhor deixar o dinheiro rendendo?",
+                                  "prefiro juntar o dinheiro e comprar à vista", "consórcio ou poupança?"])
+def test_comparing_with_saving_is_answered_ahead_of_resale(text):
+    picked = guide(text, intents=["compare_financing"])
+    assert picked[0] == GUIDE["vs_saving"]
+    assert "acima da orientação de revenda" in GUIDE["vs_saving"] and "Não escreva o nome da aplicação" in GUIDE["vs_saving"]
+
+
+def test_the_answer_it_asks_for_passes_the_package_rules():
+    faq = next(f for f in M.faqs_seed if f.id == "vs_saving")
+    assert not forbidden(faq.answer) and "taxa de administra" in faq.answer
+    assert forbidden("No CDB o dinheiro rende mais")              # naming the investment stays forbidden
 
 
 # ---------- a reaction

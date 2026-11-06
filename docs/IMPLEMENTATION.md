@@ -308,6 +308,8 @@ A leitura de conversas que seguiram no WhatsApp (texto e áudios transcritos no 
 
 O que continua com o consultor: perguntas sobre a venda da carta (quem compra, por quanto, quando), que precisam de um texto revisado da empresa.
 
+- **Consórcio ou guardar o dinheiro.** "Não vale mais a pena investir no CDB?" ia para o consultor: o pacote proíbe citar CDB/CDI na resposta e não havia orientação para a comparação, então as duas tentativas eram barradas. A orientação `vs_saving` (acima da de revenda) explica que consórcio é compra planejada, não investimento, sem nomear aplicação nem falar de rendimento; o classificador passa a ler essa pergunta como `compare_financing`, não como revenda. Rascunho de FAQ `vs_saving`.
+
 ## Quem envia responde pelos dados do arquivo (05/11/2026)
 
 Um PDF com CPF, cartão, CNPJ, telefone ou e-mail continua bloqueado por padrão, mas quem envia pode assumir a responsabilidade, no envio ou na tela do documento bloqueado. Os valores são trocados por marcadores, e a auditoria registra quem enviou. Nomes e endereços não são detectados: a revisão por trecho continua sendo a proteção. Nenhuma opção envia os valores originais à base. A aprovação segue dependendo do OpenRouter.
