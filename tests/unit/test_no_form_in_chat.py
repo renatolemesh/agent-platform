@@ -2,7 +2,7 @@
 import pytest
 
 from agentplatform.core.agent.guards import _affirmative_match, input_guard, normalize
-from agentplatform.core.agent.policy import accepted_the_offer, offered_the_person
+from agentplatform.core.agent.policy import accepted_the_offer, hot_intents, offered_the_person, yes_to_another_question
 from agentplatform.core.config.schema import InputGuardConfig
 from agentplatform.core.packages.contract import load_package
 
@@ -94,6 +94,43 @@ def test_a_yes_to_something_else_is_not(before):
 ])
 def test_the_offer_in_the_model_words_is_still_the_offer(offer):
     assert accepted_the_offer(M, "bora", [offer])
+
+
+# Only a hot lead goes to the seller: agreeing with an explanation keeps the person with the assistant, who asks next.
+EXPLAINED = ["Temos carta para o seu objetivo, com a parcela da tabela. Faz sentido pra você?"]
+
+
+@pytest.mark.parametrize("text", ["sim", "Sim!", "faz sentido", "faz sim", "sim, faz sentido", "show", "faz sentido sim 👍"])
+def test_a_yes_to_the_explanation_is_not_deciding(text):
+    assert yes_to_another_question(M, text, EXPLAINED) and not accepted_the_offer(M, text, EXPLAINED)
+
+
+@pytest.mark.parametrize("text", ["não faz sentido", "sim, como eu começo?", "sim, quero começar com essa", "quanto fica?", "sim?"])
+def test_anything_more_than_a_yes_is_left_to_the_classifier(text):
+    assert not yes_to_another_question(M, text, EXPLAINED)
+
+
+def test_a_yes_to_the_seller_is_still_the_seller():
+    assert not yes_to_another_question(M, "sim", [M.ready_question]) and accepted_the_offer(M, "sim", [M.ready_question])
+    assert not yes_to_another_question(M, "sim", [])          # nothing was asked: the classifier decides
+    assert hot_intents(M) == {"ready_to_buy"}
+
+
+@pytest.mark.parametrize("text", ["como podemos dar continuidade?", "me manda os papel a noite", "acho que vou entrar nesse então",
+                                  "gostaria de iniciar com uma carta de 100k"])
+def test_what_came_before_a_sale_is_a_hot_lead(text):
+    r = input_guard(text, InputGuardConfig(), M)
+    assert r.action == "handoff" and r.handoff_reason == "hot_lead"
+
+
+@pytest.mark.parametrize("text", ["não quero entrar agora", "não vou entrar nessa", "nem quero entrar", "sem querer fechar nada, só entender"])
+def test_saying_no_with_the_same_words_is_not(text):
+    assert input_guard(text, InputGuardConfig(), M).action != "handoff"
+
+
+def test_when_the_person_can_start_is_noted_and_never_asked():
+    slot = next(s for s in M.slots if s.name == "start_when")
+    assert slot.question is None and slot.label
 
 
 @pytest.mark.parametrize("question", [

@@ -28,6 +28,8 @@ slots:
      label: Quando precisa, value_labels: {now: Agora, months_3_12: Em 3 a 12 meses, over_12: Mais de 12 meses, no_rush: Sem pressa}}
   - {name: city, type: text, question: "De qual cidade você fala?", label: Cidade}
   - {name: first_name, type: text, label: Primeiro nome}
+  - {name: start_when, type: text, label: Quando pode começar,
+     hint: "quando o cliente disse que consegue começar ou pagar a primeira parcela (dia 5, mês que vem, depois do pagamento); só se ele disser"}
   - {name: is_existing_customer, type: bool}
 stages:
   - {name: novo, label: Novo, goal: "Obter a primeira resposta", max_turns_without_progress: 2}
@@ -66,11 +68,17 @@ initial_stage: novo
 opt_out_stage: opt_out
 form_stage: pronto_para_proposta
 # No form goes out in the conversation: with the minimum profile, the next step is the person.
-ready_question: "Posso chamar o consultor para seguir com você?"
+ready_question: "Quer que eu chame o consultor para você começar?"
 # The model rewords that question: a question matching this is the same offer.
 ready_offer_pattern: '\bchamo\b|\b(quer|prefere|gostaria) que (ele|o consultor|o vendedor)\b|\b(quer|queria|posso|pode|prefere|gostaria|deseja|vamos|bora|que tal)\b.*\b(chamar|chame|falar com|fale com|conversar com|converse com|contato com|consultor|vendedor|para ele|pra ele)\b'
 # Right after that question, a message made only of these words is a yes.
 short_yes: [sim, pode, ser, claro, bora, quero, ok, okay, beleza, blz, show, fechado, vamos, vamo, dale, tá, bom, com, certeza, por, favor, pfv, pf, uhum, aham, isso, "👍", "👌"]
+# Someone who will show the offer at home: the table's offer goes out again, word for word, as a summary.
+offer_again_keywords: ["falar com minha esposa", "falar com a minha esposa", "falar com meu marido", "falar com o meu marido", "falar com minha mulher",
+                       "falar com a esposa", "falar com a patroa", "conversar com minha esposa", "conversar com a minha esposa", "conversar com meu marido",
+                       "conversar com a esposa", "conversar com minha mulher", "ver com minha esposa", "ver com meu marido", "ver com a patroa",
+                       "mostrar pra minha esposa", "mostrar para minha esposa", "mostrar pro meu marido", "mostrar para o meu marido", "mostrar em casa",
+                       "manda um resumo", "me manda um resumo", "me manda o resumo", "manda por escrito"]
 seller_stage: com_vendedor
 won_stage: cliente
 # no term question: the plans table already has the terms; the customer sees the entry installment and is pulled to the next step
@@ -132,8 +140,10 @@ guidelines:
      action: "O cliente recusou. Agradeça em uma frase, sem insistir, sem perguntar o motivo e sem oferecer outra coisa. Diga que ele pode chamar quando quiser. Não diga que vai parar de enviar mensagens: ele não pediu isso."}
   - {id: financial_hardship, priority: 1, when_keywords: ["desempregad", "endividad", "muita dívida", "cheio de dívida", "pior fase", "fase difícil", "momento difícil", "passando por dificuldade", "perdi o emprego"],
      action: "O cliente contou que passa por um momento financeiro difícil. Acolha em uma frase, com respeito. Não ofereça produto, parcela nem crédito menor, e não pergunte sobre as finanças dele. Diga que a porta fica aberta para quando fizer sentido."}
-  - {id: not_now, priority: 4, when_keywords: ["ano que vem", "mês que vem", "agora não", "agora nao", "no momento não", "mais pra frente", "mais para frente", "tá alto", "ta alto", "está alto", "esta alto", "apertado", "sem grana", "sem dinheiro", "não tenho dinheiro", "sem condição", "sem condições", "não tá sobrando", "não está sobrando", "quando receber", "quando sair o pagamento", "vou pensar", "vou ver", "falar com minha esposa", "falar com meu marido", "falar com minha mulher"],
-     action: "O cliente disse que o momento ou o orçamento está apertado, ou que quer pensar. Acolha em uma frase, sem insistir e sem criar pressa. Só fale em crédito menor ou prazo mais longo se ele disser que o problema é o valor da parcela, sem números fora das fontes. Se ele quiser só mais para frente, respeite e pergunte se pode retomar o contato na época que ele indicou."}
+  - {id: not_now, priority: 4, when_keywords: ["ano que vem", "mês que vem", "agora não", "agora nao", "no momento não", "mais pra frente", "mais para frente", "tá alto", "ta alto", "está alto", "esta alto", "apertado", "sem grana", "sem dinheiro", "não tenho dinheiro", "sem condição", "sem condições", "não tá sobrando", "não está sobrando", "quando receber", "quando sair o pagamento", "vou pensar", "vou ver", "só consigo pagar", "so consigo pagar", "só consigo dia", "quando cair o pagamento", "depois do dia"],
+     action: "O cliente disse que o momento ou o orçamento está apertado, ou que quer pensar. Acolha em uma frase, sem insistir e sem criar pressa. Só fale em crédito menor ou prazo mais longo se ele disser que o problema é o valor da parcela, sem números fora das fontes. Se ele disser quando consegue, diga que fica anotado e que é só chamar aqui quando for a hora. Não prometa voltar a escrever nem que alguém vai chamar."}
+  - {id: talk_at_home, priority: 4, when_keywords: ["falar com minha esposa", "falar com a minha esposa", "falar com meu marido", "falar com o meu marido", "falar com minha mulher", "falar com a esposa", "falar com a patroa", "conversar com minha esposa", "conversar com a minha esposa", "conversar com meu marido", "conversar com a esposa", "conversar com minha mulher", "ver com minha esposa", "ver com meu marido", "ver com a patroa", "mostrar pra minha esposa", "mostrar para minha esposa", "mostrar pro meu marido", "mostrar para o meu marido", "mostrar em casa", "manda um resumo", "me manda um resumo", "me manda o resumo", "manda por escrito"],
+     action: "O cliente vai conversar com alguém de casa antes de decidir. Respeite, em uma frase, sem pressa e sem pedir data. Se houver required_text em tool_results, apresente-o como um resumo para ele mostrar, copiando palavra por palavra; se não houver, não cite valores. Diga que ele pode chamar aqui quando quiser, para tirar dúvidas dos dois. Não ofereça o consultor agora."}
   - {id: already_has, when_keywords: ["já tenho consórcio", "já tenho um consórcio", "já tenho carta", "já tenho uma carta", "já fiz consórcio", "já tive consórcio"],
      action: "O cliente já tem ou já teve consórcio. Reconheça em uma frase, sem insistir e sem falar de outras administradoras. Pergunte se ele tem alguma dúvida ou se pensa em outro objetivo."}
   - {id: commission_question, priority: 2, when_keywords: ["comissão", "comissões", "quanto você ganha", "quanto vc ganha", "quanto tu ganha"],
@@ -165,7 +175,9 @@ handoff_triggers:
   - {id: post_sale, locked: true, intents: [post_sale], keywords: ["meu boleto", "segunda via", "2a via", "fui contemplado", "fui contemplada", "minha cota", "minha assembleia"], reason: post_sale}
   - {id: legal, locked: true, intents: [legal], keywords: ["processo judicial", "processar vocês", "processar voces", "vou processar", "entrar na justiça", "entrar na justica", "meu advogado", "procon", "reclame aqui"], reason: legal}
   - {id: ready_to_buy, intents: [ready_to_buy], reason: hot_lead,
-     keywords: ["quero fechar", "vamos fechar", "bora fechar", "quero contratar", "quero aderir", "como faço pra entrar", "como faco pra entrar", "manda o pix", "me manda a ficha", "como eu pago", "pode ser essa", "quero entrar", "como começo", "como começar", "por onde começo", "como faço pra começar", "como faço para começar", "como faço para entrar", "onde eu contrato", "onde contrato", "como contrato", "quero fazer também", "vou querer fazer", "quero montar", "vamos iniciar", "quais documentos", "lista de documentos", "me cadastrar", "fazer o cadastro", "pré-cadastro", "manda o formulário", "preencher o formulário", "tem formulário", "tem algum formulário", "pode chamar", "chama ele", "chama o consultor", "chama o vendedor"]}
+     keywords: ["quero fechar", "vamos fechar", "bora fechar", "quero contratar", "quero aderir", "como faço pra entrar", "como faco pra entrar", "manda o pix", "me manda a ficha", "como eu pago", "pode ser essa", "quero entrar",
+                "dar continuidade", "manda os papel", "manda os papeis", "manda os papéis", "manda a papelada", "manda os documentos", "vou entrar nesse", "vou entrar nessa",
+                "acho que vou entrar", "gostaria de iniciar", "quero iniciar", "como começo", "como começar", "por onde começo", "como faço pra começar", "como faço para começar", "como faço para entrar", "onde eu contrato", "onde contrato", "como contrato", "quero fazer também", "vou querer fazer", "quero montar", "vamos iniciar", "quais documentos", "lista de documentos", "me cadastrar", "fazer o cadastro", "pré-cadastro", "manda o formulário", "preencher o formulário", "tem formulário", "tem algum formulário", "pode chamar", "chama ele", "chama o consultor", "chama o vendedor"]}
 compliance:
   forbidden_phrases:
     # The next step is the person: nothing to fill in the conversation. Naming what the customer asked for is not offering it.
@@ -242,6 +254,35 @@ faqs_seed:
     question: E se o bem custar menos que o crédito?
     variants: ["se o imóvel for mais barato que a carta", "e se sobrar crédito"]
     answer: "O que sobra do crédito pode ter outro destino, como abater parcelas, conforme o contrato e o regulamento do grupo. O consultor confirma como funciona no seu caso."
+  # What people asked before deciding, in conversations that went on with the seller (11/2026). Drafts: the owner decides.
+  - id: need_the_amount
+    question: Preciso ter o valor da carta?
+    variants: ["preciso ter os 100 mil", "tenho que ter esse dinheiro", "o valor da carta eu preciso ter", "preciso ter o dinheiro todo"]
+    answer: "Não. A carta de crédito é o valor que você recebe quando for contemplado. Até lá, você paga só as parcelas mensais, conforme o contrato do grupo."
+  - id: pay_ahead
+    question: Se eu adiantar parcelas, sou contemplado antes?
+    variants: ["posso pagar adiantado", "se eu pagar tudo de uma vez", "posso adiantar as parcelas", "pagar adiantado ajuda a contemplar"]
+    answer: "Adiantar parcelas não antecipa a contemplação: ela continua acontecendo nas assembleias, por sorteio ou lance. Como usar um valor a mais, por exemplo num lance, segue o regulamento do grupo, e o consultor mostra essas regras."
+  - id: reduced_installment
+    question: Por que a parcela aumenta depois da contemplação?
+    variants: ["a parcela sobe depois de contemplar", "por que depois fica mais cara", "o que é parcela reduzida", "o que é meia parcela"]
+    answer: "Nos planos com parcela reduzida, você paga uma parcela menor até a contemplação. Depois dela, a parcela passa ao valor cheio e a diferença do período reduzido é distribuída nas parcelas seguintes, conforme o contrato do grupo."
+  - id: embedded_bid
+    question: O que é lance embutido?
+    variants: ["como funciona o lance embutido", "dá pra dar lance sem dinheiro", "posso dar lance com a própria carta", "posso dar lance no primeiro mês"]
+    answer: "No lance embutido, uma parte do próprio crédito é usada para ofertar o lance, sem tirar dinheiro do bolso. Se você for contemplado assim, o crédito liberado fica menor nessa mesma parte. O limite e as regras estão no regulamento do grupo."
+  - id: how_many_contemplated
+    question: Quantas pessoas são contempladas por mês?
+    variants: ["qual a chance de ser contemplado", "taxa de contemplação", "quantos contemplam por mês", "quantas contemplações tem"]
+    answer: "Todo mês há contemplação por sorteio e por lance. Quantas pessoas são contempladas depende do grupo, de quantos participantes pagam em dia e dos lances ofertados. Por isso não existe prazo garantido."
+  - id: odd_credit_value
+    question: Por que algumas cartas têm valor quebrado?
+    variants: ["por que a carta não é redonda", "por que tem carta de valor diferente", "qual a diferença de uma carta mais antiga"]
+    answer: "O crédito é reajustado pelo índice previsto no contrato, normalmente uma vez por ano. Em grupos que já estão em andamento, o crédito costuma ter um valor diferente do redondo, e a parcela acompanha esse reajuste."
+  - id: keep_paying
+    question: Depois de contemplado, continuo pagando?
+    variants: ["depois que contemplar ainda pago", "quando sou contemplado paro de pagar", "as parcelas continuam depois"]
+    answer: "Sim. A contemplação libera o uso do crédito, e as parcelas seguem até o fim do plano, conforme o contrato do grupo."
 lead_form_fields: [first_name, city, contact, goal, credit_amount, monthly_budget, term_months, has_bid_funds]
 lead_form_labels:
   first_name: "Primeiro nome"
@@ -281,7 +322,7 @@ intent_hints:
   asks_if_bot: "pergunta se está falando com robô ou pessoa, ou se é mesmo o consultor quem responde"
   not_interested: "recusa a oferta (não tenho interesse, não é pra mim, por enquanto não, obrigado). Pedir que parem de escrever é opt_out, não isto"
   business_contact: "não veio comprar: é de outro vendedor, procura emprego, quer vender um serviço ou propõe parceria. Quem pergunta se dá para ganhar indicando alguém também entra aqui"
-  ready_to_buy: "decidiu entrar: quer fechar, aderir, pagar a primeira parcela, escolheu uma opção ou disse sim quando o assistente ofereceu chamar o consultor (perguntar preço ou tirar dúvida NÃO é querer fechar)"
+  ready_to_buy: "decidiu entrar: quer fechar, aderir, pagar a primeira parcela, escolheu uma opção ou disse sim quando o assistente ofereceu chamar o consultor (perguntar preço ou tirar dúvida NÃO é querer fechar; um sim a outra pergunta, como se a oferta faz sentido, também NÃO é)"
 media_context_slots: [goal]
 # The one the tests use. An account's own go in its file: operations.knowledge.never_import_name_hashes.
 never_import_name_hashes:

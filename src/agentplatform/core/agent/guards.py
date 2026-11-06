@@ -100,7 +100,12 @@ def input_guard(text: str, cfg: InputGuardConfig, manifest: PackageManifest, dis
         return res
     off = set(disabled)
     for trig in manifest.handoff_triggers:
-        if (trig.locked or trig.reason not in off) and any(keyword_hit(k, n) for k in trig.keywords):
+        if trig.reason == "hot_lead":       # "nao quero entrar" is the opposite of a hot lead
+            hit = any(not _HUMAN_REQ_NEGATED.search(n[:m.start()]) for k in trig.keywords
+                      for m in re.finditer(rf"(?<!\w){re.escape(normalize(k))}", n))
+        else:
+            hit = any(keyword_hit(k, n) for k in trig.keywords)
+        if (trig.locked or trig.reason not in off) and hit:
             res.action, res.handoff_reason = "handoff", trig.reason
             return res
     return res

@@ -122,6 +122,7 @@ class PackageManifest(M):
     ready_question: str | None = None        # asked in form_stage when no form goes out: the next step is the person
     ready_offer_pattern: str | None = None   # a question matching it is ready_question in the model's own words
     short_yes: list[str] = []                # the only words of a message that accepts ready_question
+    offer_again_keywords: list[str] = []     # the person will show the offer to someone: the simulation runs again as a summary
     seller_stage: str
     won_stage: str
     min_profile_for_proposal: list[list[str]]     # AND of ORs, e.g. [["goal"], ["credit_amount","monthly_budget"], ["term_months"]]

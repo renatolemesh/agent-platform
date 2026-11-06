@@ -131,10 +131,12 @@ async def test_the_offer_goes_out_as_written_and_the_person_is_offered_after_it(
 
     def second(msgs):
         seen["prompt"] = msgs[0]["content"] + msgs[1]["content"]
-        return draft("Posso chamar o consultor para seguir com você?")
+        return draft("Que bom! " + PKG.manifest.ready_question)
+    # On a live run the classifier read that "sim" as ready to buy: the code decides it is not.
     g = ScriptedGateway({"analyze_turn": [analysis(intents=["provide_info"], stage="pronto_para_proposta",
                                                    slots=[("goal", "vehicle", "carro"), ("credit_amount", "100k", "100k")]),
-                                          analysis(intents=["provide_info"], stage="pronto_para_proposta")],
+                                          analysis(intents=["ready_to_buy"], stage="pronto_para_proposta"),
+                                          analysis(intents=["greeting"], stage="pronto_para_proposta")],
                          "respond": [draft("Com parcelas a partir de uns R$ 980 você já tem uma carta de R$ 95 mil. Quer que eu chame o consultor?"), second],
                          "output_judge": [{"violations": [], "explanation": ""}, {"violations": [], "explanation": ""}]})
     try:
@@ -147,12 +149,56 @@ async def test_the_offer_goes_out_as_written_and_the_person_is_offered_after_it(
                              f"contemplação e R$ 1.583,33 depois. {note} Faz sentido pra você?")
         assert "a partir de uns" not in sent and "chame o consultor" not in sent
 
+        await _bot_said(tenant, conv, sent)
         await inbound(tenant, ["sim"], igsid=igsid)
         res = await TurnRunner(deps).run(tenant, conv["id"])
-        assert res.status == "committed"                              # a yes to "makes sense" is not yet a yes to the person
-        assert "Posso chamar o consultor" in seen["prompt"].split("Pergunta do fluxo")[-1].split(chr(10))[0]
+        assert res.status == "committed" and await _handoffs(tenant, conv) == []     # a yes to "makes sense" is not a yes to the person
+        assert PKG.manifest.ready_question in seen["prompt"].split("Pergunta do fluxo")[-1].split(chr(10))[0]
+
+        await _bot_said(tenant, conv, "Que bom! " + PKG.manifest.ready_question)
+        await inbound(tenant, ["sim"], igsid=igsid)
+        await TurnRunner(deps).run(tenant, conv["id"])
+        assert await _handoffs(tenant, conv) == ["hot_lead"]           # now it is
     finally:
         await _plans_active(None)
+
+
+async def test_who_will_talk_at_home_gets_the_offer_again_as_a_summary_and_stays_with_the_assistant(tenant):
+    await _plans_active(b"plan_id;goal;credit;term_months;installment;reduced_installment\nA95;vehicle;95000;72;1583,33;980,00\n")
+    igsid = f"IG-{uuid.uuid4().hex[:8]}"
+    conv = await inbound(tenant, ["vou falar com minha esposa e te falo"], igsid=igsid)
+    from agentplatform.core.db.pool import tenant_tx
+    async with tenant_tx(tenant) as conn:
+        await conn.execute("update leads set stage='pronto_para_proposta', profile=%s where contact_id=%s",
+                           ('{"goal": {"value": "vehicle"}, "credit_amount": {"value": 100000}}', conv["contact_id"]))
+    await _bot_said(tenant, conv, "Que bom! Ficou alguma dúvida?")
+    a = analysis(intents=["objection"], stage="pronto_para_proposta")
+    a["understanding"]["objections"] = ["will_think"]
+    g = ScriptedGateway({"analyze_turn": [a], "respond": [draft("Claro, conversa com calma.")],
+                         "output_judge": [{"violations": [], "explanation": ""}]})
+    try:
+        res = await TurnRunner(TurnDeps(config=_sim_cfg(), package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
+        assert res.status == "committed" and await _handoffs(tenant, conv) == []
+        sent = await _sent_text(tenant, conv)
+        assert "Temos carta de R$ 95.000,00 para carro ou moto" in sent and "?" not in sent.split("depois.")[-1]   # no question pushed
+    finally:
+        await _plans_active(None)
+
+
+async def _bot_said(tenant, conv, text):
+    """What the dispatcher would have recorded once the reply went out."""
+    from agentplatform.core.db.pool import tenant_tx
+    async with tenant_tx(tenant) as conn:
+        await conn.execute("insert into messages (tenant_id, conversation_id, direction, kind, text_masked, provider_ts) "
+                           "select tenant_id, id, 'out_bot', 'text', %s, now() from conversations where id=%s", (text, conv["id"]))
+
+
+async def _handoffs(tenant, conv) -> list[str]:
+    from agentplatform.core.db.pool import tenant_tx
+    async with tenant_tx(tenant) as conn:
+        rows = await (await conn.execute("select reason from handoffs where conversation_id=%s and not is_notice order by created_at",
+                                         (conv["id"],))).fetchall()
+    return [r["reason"] for r in rows]
 
 
 OFFER_I100 = "Ótimo! Temos carta de R$ 100.000,00 para imóvel, com parcela de R$ 397,00 até a contemplação e R$ 800,00 depois."

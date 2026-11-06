@@ -74,9 +74,17 @@ def test_who_did_not_come_to_buy_is_told_to_the_seller():
 
 
 # ---------- how it answers
-@pytest.mark.parametrize("text", ["sem dinheiro agora", "não tá sobrando nada", "vou pensar e te falo", "preciso falar com minha esposa", "só mês que vem"])
+@pytest.mark.parametrize("text", ["sem dinheiro agora", "não tá sobrando nada", "vou pensar e te falo", "só mês que vem", "só consigo pagar dia 5"])
 def test_no_money_or_thinking_gets_no_pressure(text):
-    assert GUIDE["not_now"] in guide(text)
+    assert GUIDE["not_now"] in guide(text) and "Não prometa voltar a escrever" in GUIDE["not_now"]
+
+
+@pytest.mark.parametrize("text", ["preciso falar com minha esposa", "vou ver com a patroa e te falo", "me manda um resumo pra eu mostrar em casa"])
+def test_who_talks_at_home_gets_a_summary_and_no_seller(text):
+    picked = guide(text)
+    assert GUIDE["talk_at_home"] in picked      # "vou ver" may also bring not_now: neither pushes
+    assert "Não ofereça o consultor" in GUIDE["talk_at_home"]
+    assert any(normalize(k) in normalize(text) for k in M.offer_again_keywords)      # the offer runs again for the summary
 
 
 @pytest.mark.parametrize("text", ["estou desempregado", "é a pior fase da minha vida", "perdi o emprego semana passada"])
@@ -143,6 +151,8 @@ def test_a_comment_with_the_word_on_the_video_has_a_template():
 def test_questions_people_ask_arrive_as_drafts_with_no_numbers_of_their_own():
     ids = {f.id for f in M.faqs_seed}
     assert {"regulated", "down_payment", "never_contemplated", "giving_up", "readjustment", "cheaper_good"} <= ids
+    assert {"need_the_amount", "pay_ahead", "reduced_installment", "embedded_bid", "how_many_contemplated", "odd_credit_value", "keep_paying"} <= ids
+    assert not any(re.search(r"\d", f.answer) for f in M.faqs_seed if f.id not in {"regulated"})     # numbers come from the account, not here
     for f in M.faqs_seed:
         assert "garant" not in normalize(f.answer).replace("nao existe prazo garantido", "")
 

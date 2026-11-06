@@ -412,6 +412,8 @@ class TurnRunner:
             return {"route": "opt_out", "opt_out": True, "trace": {**s["trace"], "intents": u.intents, "opt_out_intent": u.opt_out_intent}}
         if wants_out == "confirm":
             u.intents.append("opt_out")
+        if policy.yes_to_another_question(self.m, turn_text, [m["text"] for m in s["recent"] if m["from"] == "assistente"]):
+            u.intents = [i for i in u.intents if i not in policy.hot_intents(self.m)]     # agreeing is not deciding: the person is asked next
         recent_customer = "\n".join([*(m["text"] for m in s["recent"] if m["from"] == "cliente"), *origin_comments(s.get("origin"))])
         slots = policy.apply_slots(self.m, s["profile"], u, turn_text, cfg.funnel,
                                    s["input_ids"][-1] if s["input_ids"] else None, recent_customer)
@@ -429,7 +431,7 @@ class TurnRunner:
             reason = "hot_lead"
         if not reason and set(s.get("media_notes") or []) & _NEEDS_A_PERSON_NOTES:
             reason = "media_review"      # images/documents the tenant chose not to process, or an audio the assistant could not hear
-        tool_results = await self._run_tools(s, stage_now, profile_after, u, set(slots.accepted))
+        tool_results = await self._run_tools(s, stage_now, profile_after, u, set(slots.accepted), turn_text)
         if not reason and "simulation_request" in u.intents and any(
                 t["tool"].startswith("simulate") and not (t.get("result") or {}).get("options") for t in tool_results):
             reason = "simulation_request"     # asked for a simulation the table could not answer: the seller does it
@@ -467,9 +469,10 @@ class TurnRunner:
             return {**upd, "route": "retrieve"}
         return {**upd, "route": "respond"}
 
-    async def _run_tools(self, s: TurnState, stage: str, profile: dict, u, filled: set[str]) -> list[dict]:
+    async def _run_tools(self, s: TurnState, stage: str, profile: dict, u, filled: set[str], turn_text: str = "") -> list[dict]:
         """Code-driven tool use (principle 1): tools run when the flow allows, never chosen freely by the LLM. A simulation
-        runs when asked with the minimum profile, or unasked (proactive_when) as soon as one of its inputs is filled."""
+        runs when asked with the minimum profile, or unasked (proactive_when) as soon as one of its inputs is filled, or again
+        when the person will show it to someone (offer_again_keywords), so its text can go out as a summary."""
         flags = self.d.config.operations.feature_flags
         results = []
         for spec in self.d.package.tools():
@@ -487,7 +490,8 @@ class TurnRunner:
             asked = ("simulation_request" in u.intents or "price_question" in u.intents) and \
                 (self.m.profile_complete(profile) or proactive_ready)
             offered = proactive_ready and bool(filled & set(spec.input_model.model_fields))
-            if spec.name.startswith("simulate") and (asked or offered):
+            again = proactive_ready and any(keyword_hit(k, normalize(turn_text)) for k in self.m.offer_again_keywords)
+            if spec.name.startswith("simulate") and (asked or offered or again):
                 args = {k: v.get("value") for k, v in profile.items() if isinstance(v, dict)}
                 try:
                     inp = spec.input_model.model_validate(args)

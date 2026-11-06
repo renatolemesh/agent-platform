@@ -182,13 +182,30 @@ def offered_the_person(manifest: PackageManifest, bot_texts: list[str]) -> bool:
                for text in bot_texts for sent in re.split(r"(?<=[.!?])\s+", text))
 
 
+def _only_yes(manifest: PackageManifest, text: str, echo: set[str] = frozenset()) -> bool:
+    words = [w for w in (w.strip(".,;:!…") for w in normalize(text).split()) if w]
+    yes = {normalize(w) for w in manifest.short_yes} | echo
+    return bool(words) and all(w in yes for w in words)
+
+
 def accepted_the_offer(manifest: PackageManifest, text: str, recent_bot_texts: list[str]) -> bool:
     """A short yes right after the assistant offered the person. Alone these words mean nothing to the classifier."""
-    if not offered_the_person(manifest, recent_bot_texts[-1:]):
+    return offered_the_person(manifest, recent_bot_texts[-1:]) and _only_yes(manifest, text)
+
+
+def hot_intents(manifest: PackageManifest) -> set[str]:
+    return {i for t in manifest.handoff_triggers if t.reason == "hot_lead" for i in t.intents}
+
+
+def yes_to_another_question(manifest: PackageManifest, text: str, recent_bot_texts: list[str]) -> bool:
+    """A short yes when the last message did not offer the person answers that message ("does it make sense?"): it is not
+    deciding to buy, whatever the classifier read. Repeating the question's own words ("faz sentido") is still a yes."""
+    last = recent_bot_texts[-1:]
+    if not last or offered_the_person(manifest, last):
         return False
-    words = [w for w in (w.strip(".,;:!…") for w in normalize(text).split()) if w]
-    yes = {normalize(w) for w in manifest.short_yes}
-    return bool(words) and all(w in yes for w in words)
+    asked = " ".join(sent for sent in re.split(r"(?<=[.!?])\s+", last[0]) if "?" in sent)
+    echo = {w.strip(".,;:!?…") for w in normalize(asked).split()} - {""}
+    return _only_yes(manifest, text, echo)
 
 
 def next_question(manifest: PackageManifest, profile: dict) -> str | None:

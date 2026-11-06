@@ -294,7 +294,19 @@ Uma leitura ampla de conversas reais de atendimento mostrou o que o assistente a
 
 ## Oferta de plano escrita pelo código (05/11/2026)
 
-A frase com crédito, prazo e parcelas vem da tabela e sai como está (`manifest.templates.plan_offer*`, `required_text` da ferramenta). Antes o modelo escrevia a frase e omitia a parcela depois da contemplação, mesmo com a regra no prompt. Se o modelo não copiar o texto, o código troca a resposta por ele e pela pergunta do turno; nesse caso, o que o modelo respondeu sobre outra dúvida se perde. O valor exato substitui o arredondado para cima (`entry_approx` saiu). A oferta termina em "Faz sentido pra você?", e o consultor é oferecido na mensagem seguinte, salvo se o fluxo ainda precisar de uma resposta. Mudou `respond@v12`.
+A frase com crédito, prazo e parcelas vem da tabela e sai como está (`manifest.templates.plan_offer*`, `required_text` da ferramenta). Antes o modelo escrevia a frase e omitia a parcela depois da contemplação, mesmo com a regra no prompt. Se o modelo não copiar o texto, o código troca a resposta por ele e pela pergunta do turno; nesse caso, o que o modelo respondeu sobre outra dúvida se perde. O valor exato substitui o arredondado para cima (`entry_approx` saiu). A oferta termina em "Faz sentido pra você?", e o consultor é oferecido na mensagem seguinte, salvo se o fluxo ainda precisar de uma resposta. Mudou `respond@v12`. No primeiro teste real, o classificador leu o "sim" como pronto para comprar e chamou o consultor direto; a regra seguinte corrige isso no código.
+
+## Só o lead quente vai ao consultor (06/11/2026)
+
+A leitura de conversas que seguiram no WhatsApp (texto e áudios transcritos no computador, sem nada enviado para fora) mostrou que o vendedor gasta o tempo com quem só quer entender, e que as vendas vieram de quem perguntou como entrar, escolheu um valor ou pediu os documentos.
+
+- **Um "sim" a outra pergunta não é decidir.** Se a última mensagem do assistente não ofereceu o consultor, uma resposta feita só de palavras de concordância (`short_yes`) ou das palavras da própria pergunta ("faz sentido") perde as intenções de lead quente, leia o classificador o que ler (`policy.yes_to_another_question`). A pergunta seguinte passa a ser "Quer que eu chame o consultor para você começar?", e só um sim a ela chama o consultor.
+- **Sinais de fechamento novos:** "dar continuidade", "manda os papéis", "acho que vou entrar", "gostaria de iniciar" e variações. Uma negação logo antes ("não quero entrar") não chama o consultor (vale para todo gatilho de `hot_lead`).
+- **Quem vai conversar em casa** recebe a oferta da tabela de novo, palavra por palavra, como resumo (`offer_again_keywords` faz a simulação rodar outra vez), sem pergunta empurrada e sem consultor (orientação `talk_at_home`).
+- **Quando a pessoa diz quando pode começar** ("só consigo dia 5"), isso fica no campo `start_when` do perfil, que aparece no resumo do consultor. O assistente não promete voltar a escrever: no Instagram, a conta só responde até 24 horas depois da última mensagem da pessoa.
+- **Sete rascunhos de perguntas frequentes** com o que as pessoas perguntaram antes de decidir: precisa ter o valor da carta, adiantar parcelas, parcela reduzida, lance embutido, quantos são contemplados, valor quebrado de carta, continuar pagando depois de contemplar. Sem números: o dono aprova e completa no console.
+
+O que continua com o consultor: perguntas sobre a venda da carta (quem compra, por quanto, quando), que precisam de um texto revisado da empresa.
 
 ## Quem envia responde pelos dados do arquivo (05/11/2026)
 
