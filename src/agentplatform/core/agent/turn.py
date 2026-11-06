@@ -455,12 +455,17 @@ class TurnRunner:
             if not resend and self.m.allowed(stage_now, self.m.form_sent_stage):
                 stage_dec = policy.StageDecision(True, s["stage"], self.m.form_sent_stage, "form_link_sent")
                 stage_now = self.m.form_sent_stage
+        next_q = None if policy.stops_asking(self.m, u) else self._closing_question(s, tool_results, self._next_question(s, profile_after, stage_now))
+        # a tool's closing question the flow did not pick stays out of the prompt, or the model ends with it instead
+        tool_results = [{**t, "result": {k: v for k, v in t["result"].items() if k != "closing_question"}}
+                        if isinstance(t.get("result"), dict) and t["result"].get("closing_question") not in (None, next_q) else t
+                        for t in tool_results]
         upd = {"slot_updates": slots.accepted, "profile": profile_after, "guidelines": guidelines,
                "stage_decision": {"applied": stage_dec.applied, "from": stage_dec.frm, "to": stage_dec.to,
                                   "reason": stage_dec.reason, "regression": stage_dec.regression,
                                   "confidence": a.stage_proposal.confidence, "evidence": a.stage_proposal.evidence},
                "stage": stage_now,
-               "next_question": None if policy.stops_asking(self.m, u) else self._closing_question(s, tool_results, self._next_question(s, profile_after, stage_now)),
+               "next_question": next_q,
                "tool_results": tool_results,
                "trace": {**s["trace"], "intents": u.intents, "slots_rejected": slots.rejected}}
         if reason:
@@ -594,9 +599,21 @@ class TurnRunner:
             return {"route": "handoff", "handoff_reason": "technical_failure"}
         return {**cost, "route": "output_guard", "draft_text": r.parsed.text.strip(), "attempts": s["attempts"] + 1}
 
+    def _fixed_question(self, s: TurnState, text: str) -> str:
+        """The question that offers the person, and the one before it, go out as written: reworded, a short yes to them is not
+        recognised, and the person is never called. Any other question the model wrote is dropped for it."""
+        q = s.get("next_question")
+        if not q or q not in (self.m.ready_question, self.m.profile_question):
+            return text
+        kept = policy.offered_the_person(self.m, [text]) if q == self.m.ready_question else policy.recently_asked(q, [text])
+        if kept:
+            return text
+        sents = [x for x in re.split(r"(?<=[.!?])\s+", text.strip()) if x and not x.endswith("?")]
+        return " ".join([*sents, q])
+
     async def n_output_guard(self, s: TurnState) -> dict:
         cfg = self.d.config
-        text = self._required_reply(s, s["draft_text"] or "")
+        text = self._fixed_question(s, self._required_reply(s, s["draft_text"] or ""))
         r = RetrievalResult.model_validate(s["retrieval"]) if s.get("retrieval") else RetrievalResult()
         sources = [*s["masked_input"], *(m["text"] for m in s["recent"] if m["from"] == "cliente"), *origin_comments(s.get("origin")),
                    *(c.text for c in r.chunks), *([r.faq_answer] if r.faq_answer else []),

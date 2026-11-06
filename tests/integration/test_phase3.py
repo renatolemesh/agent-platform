@@ -163,6 +163,48 @@ async def test_the_offer_goes_out_as_written_and_the_person_is_offered_after_it(
         await _plans_active(None)
 
 
+async def test_the_questions_that_lead_to_the_person_go_out_as_written(tenant):
+    """Live run: the model ended the offer with the table's "does it make sense?" instead of the profile question, then reworded the
+    offer of the seller so that the yes to it called nobody. Both questions are the code's."""
+    await _plans_active(b"plan_id;goal;credit;term_months;installment;reduced_installment\nA95;vehicle;95000;72;1583,33;980,00\n")
+    igsid = f"IG-{uuid.uuid4().hex[:8]}"
+    conv = await inbound(tenant, ["carro de uns 100k"], igsid=igsid)
+    from agentplatform.core.db.pool import tenant_tx
+    async with tenant_tx(tenant) as conn:
+        await conn.execute("update leads set stage='qualificando' where contact_id=%s", (conv["contact_id"],))
+    prompts = []
+
+    def offer(msgs):
+        prompts.append(msgs[1]["content"])
+        return draft("Ótimo! Temos carta de R$ 95.000,00 para carro ou moto, em 72 meses, com parcela de R$ 980,00 até a contemplação "
+                     "e R$ 1.583,33 depois. Faz sentido pra você?")
+    g = ScriptedGateway({"analyze_turn": [analysis(intents=["provide_info"], stage="pronto_para_proposta",
+                                                   slots=[("goal", "vehicle", "carro"), ("credit_amount", "100k", "100k")]),
+                                          analysis(intents=["provide_info"], stage="pronto_para_proposta",
+                                                   slots=[("has_bid_funds", "true", "tenho 20 mil pra lance")]),
+                                          analysis(intents=["greeting"], stage="pronto_para_proposta")],
+                         "respond": [offer, draft("Boa! Com valor para lance dá pra tentar antecipar. Quer que eu te ajude a escolher o melhor grupo pra você?")],
+                         "output_judge": [{"violations": [], "explanation": ""}, {"violations": [], "explanation": ""}]})
+    try:
+        deps = TurnDeps(config=_sim_cfg(), package=PKG, gateway=g, knowledge=None, now=NOON)
+        await TurnRunner(deps).run(tenant, conv["id"])
+        sent = await _sent_text(tenant, conv)
+        assert "closing_question" not in prompts[0] and "Faz sentido" not in sent and sent.endswith(PKG.manifest.profile_question)
+
+        await _bot_said(tenant, conv, sent)
+        await inbound(tenant, ["tenho 20 mil pra lance"], igsid=igsid)
+        await TurnRunner(deps).run(tenant, conv["id"])
+        second = (await _sent_text(tenant, conv))[len(sent):].strip()
+        assert second.endswith(PKG.manifest.ready_question) and "melhor grupo pra você?" not in second
+
+        await _bot_said(tenant, conv, second)
+        await inbound(tenant, ["sim"], igsid=igsid)
+        await TurnRunner(deps).run(tenant, conv["id"])
+        assert await _handoffs(tenant, conv) == ["hot_lead"]
+    finally:
+        await _plans_active(None)
+
+
 async def test_who_will_talk_at_home_gets_the_offer_again_as_a_summary_and_stays_with_the_assistant(tenant):
     await _plans_active(b"plan_id;goal;credit;term_months;installment;reduced_installment\nA95;vehicle;95000;72;1583,33;980,00\n")
     igsid = f"IG-{uuid.uuid4().hex[:8]}"
