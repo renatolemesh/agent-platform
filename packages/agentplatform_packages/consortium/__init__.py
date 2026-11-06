@@ -39,6 +39,9 @@ class PlanRow(BaseModel):
     reduced_installment: Decimal | None = Field(None, title="Parcela reduzida até a contemplação (R$)", gt=0,
                                                 description="Opcional: parcela especial/meia parcela paga até ser contemplado")
     adjustment_index: str | None = Field(None, title="Índice de reajuste", max_length=30, description="ex.: INCC, IPCA")
+    avg_contemplation_months: int | None = Field(None, title="Média de contemplação do grupo (meses)", gt=0, le=420,
+                                                 description="Opcional: em quantos meses, em média, as cotas desse grupo têm sido contempladas, "
+                                                             "pelo relatório das assembleias. O assistente cita sempre com o aviso de que é histórico")
 
     @model_validator(mode="after")
     def _priced(self) -> "PlanRow":
@@ -70,6 +73,7 @@ class PlanOption(BaseModel):
     insurance_monthly: Decimal
     adjustment_index: str | None = None
     entry_installment: Decimal                   # what the customer pays from the start (reduced if the plan has one)
+    avg_contemplation_months: int | None = None  # the group's history, never a promise: it always goes with history_not_guarantee
 
 
 class SimulateOut(BaseModel):
@@ -77,6 +81,7 @@ class SimulateOut(BaseModel):
     dataset_id: str
     dataset_version: int
     disclaimer_key: str = "simulation_estimate"
+    disclaimer_keys: list[str] = []              # more official texts its numbers need (the group's history)
     required_text: str | None = None             # the offer, written here: the model may not reword it
     closing_question: str | None = None
 
@@ -95,13 +100,16 @@ def offer_text(o: PlanOption, *, name_goal: bool) -> str:
     """Credit, term and every installment the customer will pay, exactly as in the table. A reduced installment never goes without
     the full one: the model left it out on its own, even with the rule in the prompt."""
     t = MANIFEST.templates
+    history = t["plan_offer_history"].format(months=o.avg_contemplation_months,
+                                             note=MANIFEST.compliance.required_disclosures["history_not_guarantee"]) \
+        if o.avg_contemplation_months else ""
     installments = t["plan_offer_reduced"].format(reduced=_brl(o.reduced_installment), full=_brl(o.installment)) if o.reduced_installment \
         else _brl(o.installment)
     return t["plan_offer"].format(
         credit=_brl(o.credit), installments=installments,
         goal=t["plan_offer_goal"].format(goal=o.goal.lower()) if name_goal else "",
         term=t["plan_offer_term"].format(months=o.term_months) if o.term_months else "",
-        insurance=t["plan_offer_insurance"].format(value=_brl(o.insurance_monthly)) if o.insurance_monthly else "")
+        insurance=t["plan_offer_insurance"].format(value=_brl(o.insurance_monthly)) if o.insurance_monthly else "") + history
 
 
 def simulate(rows: list[PlanRow], req: SimulateIn, dataset_id: str, version: int, limit: int = 3) -> SimulateOut:
@@ -126,12 +134,13 @@ def simulate(rows: list[PlanRow], req: SimulateIn, dataset_id: str, version: int
             plan_id=r.plan_id, name=r.name, goal=GOAL_LABELS.get(r.goal, r.goal), group=r.group, credit=r.credit,
             term_months=r.term_months, installment=inst, reduced_installment=r.reduced_installment,
             admin_fee_pct=r.admin_fee_pct, reserve_fund_pct=r.reserve_fund_pct, insurance_monthly=ins,
-            adjustment_index=r.adjustment_index, entry_installment=entry)))
+            adjustment_index=r.adjustment_index, entry_installment=entry, avg_contemplation_months=r.avg_contemplation_months)))
     scored.sort(key=lambda x: x[0])               # closest credit (or budget), then the cheapest entry
     options = [o for _, o in scored[:limit]]
     # a letter to sell later is not for the plan's own goal
     offer = offer_text(options[0], name_goal=req.goal != "resale") if options else None
     return SimulateOut(options=options, dataset_id=dataset_id, dataset_version=version, required_text=offer,
+                       disclaimer_keys=["history_not_guarantee"] if any(o.avg_contemplation_months for o in options) else [],
                        closing_question=MANIFEST.templates["plan_offer_question"] if options else None)
 
 

@@ -163,13 +163,23 @@ def test_questions_people_ask_arrive_as_drafts_with_no_numbers_of_their_own():
 def test_comparing_with_saving_is_answered_ahead_of_resale(text):
     picked = guide(text, intents=["compare_financing"])
     assert picked[0] == GUIDE["vs_saving"]
-    assert "acima da orientação de revenda" in GUIDE["vs_saving"] and "Não escreva o nome da aplicação" in GUIDE["vs_saving"]
+    assert "acima da orientação de revenda" in GUIDE["vs_saving"] and "Não diga quanto a aplicação rende" in GUIDE["vs_saving"]
 
 
 def test_the_answer_it_asks_for_passes_the_package_rules():
     faq = next(f for f in M.faqs_seed if f.id == "vs_saving")
     assert not forbidden(faq.answer) and "taxa de administra" in faq.answer
-    assert forbidden("No CDB o dinheiro rende mais")              # naming the investment stays forbidden
+    assert not forbidden("O CDB é outra coisa, é investimento. Guardando sozinho, você só compra depois de juntar tudo.")
+    for text in ["No CDB o dinheiro rende mais", "a poupança perde para a inflação", "o rendimento do CDB é menor", "o consórcio é melhor que a poupança"]:
+        assert forbidden(text), text                              # comparing what it yields stays forbidden
+
+
+def test_the_offer_with_the_group_history_passes_the_package_rules():
+    from decimal import Decimal
+
+    from agentplatform_packages.consortium import PlanRow, SimulateIn, simulate
+    row = PlanRow(plan_id="G", goal="vehicle", credit=Decimal(95000), installment=Decimal(980), avg_contemplation_months=18)
+    assert not forbidden(simulate([row], SimulateIn(goal="vehicle"), "d", 1).required_text)
 
 
 # ---------- a reaction

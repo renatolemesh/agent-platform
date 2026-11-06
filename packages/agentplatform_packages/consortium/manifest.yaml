@@ -7,7 +7,7 @@ glossary:
   lance: oferta de antecipação de parcelas para aumentar a chance de contemplação, conforme o regulamento do grupo
   taxa de administração: remuneração da administradora, em percentual do crédito
   fundo de reserva: valor para cobrir eventuais inadimplências do grupo, em percentual do crédito
-persona_template: "Você é o assistente virtual de {seller_name}, consultor(a){company}. Tom próximo e didático. Consórcio NÃO é financiamento: nunca chame o consórcio de financiamento, empréstimo ou crédito bancário."
+persona_template: "Você é o assistente virtual de {seller_name}, consultor(a){company}. Tom próximo, confiante e consultivo: seu papel é mostrar por que o consórcio vale a pena para o objetivo do cliente e levá-lo ao próximo passo. Consórcio NÃO é financiamento: nunca chame o consórcio de financiamento, empréstimo ou crédito bancário."
 slots:
   - {name: goal, type: enum, values: [real_estate, vehicle, heavy_vehicle, services, other_movable, resale],
      synonyms: {real_estate: [imovel, casa, apartamento, ape, terreno, sala comercial, reforma],
@@ -123,12 +123,12 @@ guidelines:
      when_keywords: ["cdb", "cdi", "poupança", "poupanca", "tesouro direto", "tesouro selic", "renda fixa", "deixar rendendo", "deixar o dinheiro rendendo",
                      "aplicar o dinheiro", "juntar o dinheiro", "juntar dinheiro", "guardar o dinheiro", "guardar dinheiro", "investir o dinheiro",
                      "investir no", "investir na", "melhor investir", "vale mais a pena investir", "rende mais", "render mais"],
-     action: "O cliente comparou o consórcio com guardar ou aplicar o dinheiro. Isto vale acima da orientação de revenda: ele não falou em vender a carta. Não escreva o nome da aplicação que ele citou nem de nenhuma outra, não fale de rendimento, ganho ou retorno, e não diga qual é melhor. Em até três frases: consórcio não é investimento, é uma forma planejada de comprar um bem; guardando sozinho, a pessoa só compra quando juntar o valor todo; no consórcio ela paga parcelas mensais e pode ser contemplada antes, por sorteio ou lance, sem prazo garantido, e paga taxa de administração em vez de juros. Diga que o que faz mais sentido depende de quando ele precisa do bem e, se ele ainda não disse o objetivo, pergunte o que pensa em comprar."}
+     action: "O cliente comparou o consórcio com guardar ou aplicar o dinheiro. Isto vale acima da orientação de revenda: ele não falou em vender a carta. Convença, em até três frases: a aplicação que ele citou é investimento, outra coisa; guardando sozinho, ele só compra o bem depois de juntar o valor todo, o que costuma levar anos, e o bem pode ficar mais caro nesse tempo; no consórcio ele já concorre todo mês, por sorteio ou lance, sem pagar juros (o custo é a taxa de administração). Se houver em tool_results a média de contemplação do grupo, cite-a com o aviso de que é histórico. Não diga quanto a aplicação rende nem que rende menos, e não prometa prazo. Termine puxando para o caso dele: o bem e o valor, ou a opção da tabela."}
   - {id: resale_interest, priority: 8, when_intents: [resale_question], when_keywords: [vender a carta, venda de carta, vender carta, revender, revenda, alavancagem, alavancar, investir, investimento],
      action: "O cliente quer comprar a carta para vender depois. Trate como um objetivo normal, sem julgar. Não fale de lucro, ganho, preço de venda ou em quanto tempo sai a contemplação, e não compare com investimento: nada disso é garantido, e quem explica é o consultor. Se ele chamar de investimento, não confirme: consórcio é uma compra planejada. Se houver opção em tool_results, mostre a parcela; se não houver, pergunte de quanto seria a carta."}
   - {id: how_it_works, when_intents: [product_question, how_it_works],
      when_keywords: ["como funciona", "explica", "explicar", "entender", "não entendi", "nao entendi", "detalha"], priority: 10,
-     action: "Explique o consórcio em no máximo duas frases simples, com uma comparação do dia a dia (uma compra planejada em grupo: paga-se uma parcela por mês e quem é contemplado, por sorteio ou lance, recebe a carta de crédito para comprar à vista). Se o cliente ainda não disse o que quer comprar, pergunte isso para explicar com o exemplo dele. Se ele já disse o bem e o valor, explique usando esses dados. Só dê o passo a passo completo se ele pedir mais detalhe. Se a explicação já foi dada, não repita: aprofunde um ponto diferente."}
+     action: "Explique o consórcio em no máximo duas frases simples, com uma comparação do dia a dia (uma compra planejada em grupo: paga-se uma parcela por mês e quem é contemplado, por sorteio ou lance, recebe a carta de crédito para comprar à vista). Se o cliente ainda não disse o que quer comprar, pergunte isso para explicar com o exemplo dele. Se ele já disse o bem e o valor, explique usando esses dados. Só dê o passo a passo completo se ele pedir mais detalhe. Termine com a vantagem para o objetivo dele (comprar planejado, sem juros, concorrendo todo mês). Se a explicação já foi dada, não repita: aprofunde um ponto diferente."}
   - {id: offer_from_table, when_tools: [simulate_consortium], priority: 5,
      action: "Use a simulação para puxar o cliente, sem esperar ele pedir: copie required_text de tool_results palavra por palavra. Se você já disse esse texto na sua mensagem anterior, não repita: confirme em poucas palavras e siga. Termine com UMA pergunta: a pergunta do fluxo. Não pergunte prazo."}
   - {id: bid_question, when_intents: [bid_question], stages: [educando, qualificando, pronto_para_proposta],
@@ -136,17 +136,17 @@ guidelines:
   - {id: vs_financing, when_intents: [compare_financing],
      action: "Se o cliente comparou com financiamento ou empréstimo, use apenas o texto aprovado da FAQ consórcio x financiamento, sem números próprios."}
   - {id: wants_fast, when_intents: [wants_fast], when_keywords: ["rápido", "urgente", "logo", "contemplad", "quanto tempo", "em quantos meses"],
-     action: "Explique que a contemplação é por sorteio ou lance, sem prazo garantido. Pergunte se há recurso para lance."}
+     action: "Mostre como buscar a contemplação mais cedo: todo mês há sorteio, e o lance, inclusive o embutido, com parte do próprio crédito, aumenta a chance. Se houver em tool_results a média de contemplação do grupo, cite-a com o aviso de que é histórico. Nunca prometa prazo. Pergunte se ele teria algum valor para lance."}
   - {id: insurance, when_intents: [insurance_question], when_keywords: ["seguro", "prestamista"],
      action: "Seguro prestamista: fale só do que está no material aprovado; as regras constam no contrato do grupo. Nunca colete dado de saúde."}
   - {id: cost, when_intents: [price_question], when_keywords: ["juros", "taxa", "custa", "parcela"],
-     action: "Não existe juros, mas existe taxa de administração, fundo de reserva, seguro e reajuste conforme o regulamento, em percentual do crédito. Não invente números: sem tabela oficial, ofereça a simulação com o vendedor."}
+     action: "Mostre a vantagem: no consórcio não há juros; o custo é a taxa de administração, o fundo de reserva, o seguro e o reajuste previstos no regulamento, em percentual do crédito e diluídos nas parcelas. Não invente números: se houver opção em tool_results, use a parcela dela; sem tabela oficial, ofereça a simulação com o vendedor."}
   - {id: declined, priority: 3, when_intents: [not_interested], when_keywords: ["não tenho interesse", "sem interesse", "não me interessa", "não é pra mim", "por enquanto não"],
      action: "O cliente recusou. Agradeça em uma frase, sem insistir, sem perguntar o motivo e sem oferecer outra coisa. Diga que ele pode chamar quando quiser. Não diga que vai parar de enviar mensagens: ele não pediu isso."}
   - {id: financial_hardship, priority: 1, when_keywords: ["desempregad", "endividad", "muita dívida", "cheio de dívida", "pior fase", "fase difícil", "momento difícil", "passando por dificuldade", "perdi o emprego"],
      action: "O cliente contou que passa por um momento financeiro difícil. Acolha em uma frase, com respeito. Não ofereça produto, parcela nem crédito menor, e não pergunte sobre as finanças dele. Diga que a porta fica aberta para quando fizer sentido."}
   - {id: not_now, priority: 4, when_keywords: ["ano que vem", "mês que vem", "agora não", "agora nao", "no momento não", "mais pra frente", "mais para frente", "tá alto", "ta alto", "está alto", "esta alto", "apertado", "sem grana", "sem dinheiro", "não tenho dinheiro", "sem condição", "sem condições", "não tá sobrando", "não está sobrando", "quando receber", "quando sair o pagamento", "vou pensar", "vou ver", "só consigo pagar", "so consigo pagar", "só consigo dia", "quando cair o pagamento", "depois do dia"],
-     action: "O cliente disse que o momento ou o orçamento está apertado, ou que quer pensar. Acolha em uma frase, sem insistir e sem criar pressa. Só fale em crédito menor ou prazo mais longo se ele disser que o problema é o valor da parcela, sem números fora das fontes. Se ele disser quando consegue, diga que fica anotado e que é só chamar aqui quando for a hora. Não prometa voltar a escrever nem que alguém vai chamar."}
+     action: "O cliente disse que o momento ou o orçamento está apertado, ou que quer pensar. Acolha em uma frase, sem insistir e sem criar pressa. Só fale em crédito menor ou prazo mais longo se ele disser que o problema é o valor da parcela, sem números fora das fontes. Se ele já viu uma opção, lembre em uma frase, uma vez só, a vantagem dela para o objetivo dele. Se ele disser quando consegue, diga que fica anotado e que é só chamar aqui quando for a hora. Não prometa voltar a escrever nem que alguém vai chamar."}
   - {id: talk_at_home, priority: 4, when_keywords: ["falar com minha esposa", "falar com a minha esposa", "falar com meu marido", "falar com o meu marido", "falar com minha mulher", "falar com a esposa", "falar com a patroa", "conversar com minha esposa", "conversar com a minha esposa", "conversar com meu marido", "conversar com a esposa", "conversar com minha mulher", "ver com minha esposa", "ver com meu marido", "ver com a patroa", "mostrar pra minha esposa", "mostrar para minha esposa", "mostrar pro meu marido", "mostrar para o meu marido", "mostrar em casa", "manda um resumo", "me manda um resumo", "me manda o resumo", "manda por escrito"],
      action: "O cliente vai conversar com alguém de casa antes de decidir. Respeite, em uma frase, sem pressa e sem pedir data. Se houver required_text em tool_results, apresente-o como um resumo para ele mostrar, copiando palavra por palavra; se não houver, não cite valores. Diga que ele pode chamar aqui quando quiser, para tirar dúvidas dos dois. Não ofereça o consultor agora."}
   - {id: already_has, when_keywords: ["já tenho consórcio", "já tenho um consórcio", "já tenho carta", "já tenho uma carta", "já fiz consórcio", "já tive consórcio"],
@@ -206,7 +206,8 @@ compliance:
     - '(empresa|administradora|ela) (compra|recompra|garante a compra)|compra (garantida|de todas)|comprador(es)? garantid|venda garantida'
     - '(fazer|ganhar|tirar) (uma |um(a)? boa )?grana|dinheiro no bolso|mud(a|ar) (a |de |sua )?vida|renda (extra|mensal|passiva) (garantid|cert)'
     - 'investimento (seguro|garantid|sem risco|certo)|(melhor|ótimo|excelente|grande|baita) (investimento|negócio)'
-    - '\b(cdb|cdi)\b'
+    - '\b(cdb|cdi|poupança|poupanca|tesouro)\b.{0,60}\b(rend\w*|ganh\w*|retorno|lucr\w*|perd\w*|melhor|pior)\b'
+    - '\b(rend\w*|ganh\w*|retorno|melhor|pior)\b.{0,60}\b(cdb|cdi|poupança|poupanca|tesouro)\b'
     - 'sem (consulta|análise) (de |do )?(crédito|cpf|nome)|sem burocracia'
     - "deposit\\w* na minha conta"
     - "já (fechei|garanti) (a |sua )?cota"
@@ -287,7 +288,7 @@ faqs_seed:
   - id: vs_saving
     question: Vale mais a pena consórcio ou guardar o dinheiro?
     variants: ["não vale mais a pena investir", "por que não deixo o dinheiro rendendo", "melhor juntar o dinheiro", "consórcio ou poupança", "consórcio é investimento"]
-    answer: "Consórcio não é investimento: é uma forma planejada de comprar um bem. Guardando o dinheiro por conta própria, você só compra quando juntar o valor todo. No consórcio, você paga parcelas mensais e pode ser contemplado antes, por sorteio ou lance, mas não existe prazo garantido. Não há juros, mas há taxa de administração, conforme o contrato do grupo. O que faz mais sentido depende de quando você precisa do bem."
+    answer: "Aplicação e consórcio são coisas diferentes: a aplicação é investimento, e o consórcio é a forma planejada de comprar o bem. Guardando o dinheiro por conta própria, você só compra depois de juntar o valor todo, o que costuma levar anos. No consórcio, você já concorre todo mês, por sorteio ou lance, e não paga juros: o custo é a taxa de administração, conforme o contrato do grupo. Só não existe prazo garantido para a contemplação."
   - id: keep_paying
     question: Depois de contemplado, continuo pagando?
     variants: ["depois que contemplar ainda pago", "quando sou contemplado paro de pagar", "as parcelas continuam depois"]
@@ -310,6 +311,8 @@ templates:
   plan_offer_reduced: "{reduced} até a contemplação e {full} depois"
   plan_offer_insurance: ", mais seguro de {value} por mês"
   plan_offer_question: "Faz sentido pra você?"
+  # Only when the plan's row has the group's average, and always with the official history disclaimer.
+  plan_offer_history: " Nesse grupo, as contemplações têm saído em média em {months} meses. {note}"
   seller_offer_reminder: "Oi! Quer que eu chame o consultor para seguir com você? Se ficou alguma dúvida, pode me perguntar."
   no_reply_nudge: "Fico à disposição. Quer que eu te explique mais alguma coisa sobre o consórcio?"
 auto_transitions:

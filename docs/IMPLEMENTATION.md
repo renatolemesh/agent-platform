@@ -310,6 +310,14 @@ O que continua com o consultor: perguntas sobre a venda da carta (quem compra, p
 
 - **Consórcio ou guardar o dinheiro.** "Não vale mais a pena investir no CDB?" ia para o consultor: o pacote proíbe citar CDB/CDI na resposta e não havia orientação para a comparação, então as duas tentativas eram barradas. A orientação `vs_saving` (acima da de revenda) explica que consórcio é compra planejada, não investimento, sem nomear aplicação nem falar de rendimento; o classificador passa a ler essa pergunta como `compare_financing`, não como revenda. Rascunho de FAQ `vs_saving`.
 
+## O assistente vende, não só tira dúvida (06/11/2026)
+
+O dono pediu que as abordagens convençam o cliente. Mudou `respond@v13`: o assistente é um consultor confiante e, depois de responder, mostra em uma frase a vantagem para o objetivo do cliente e puxa para o próximo passo, sem pressa falsa nem promessa. As orientações de como funciona, custos, quem quer rápido, "vou pensar" e consórcio x aplicação passaram ao mesmo tom.
+
+- **Média de contemplação do grupo.** A tabela de planos ganhou a coluna opcional "Média de contemplação do grupo (meses)", do relatório das assembleias. Quando a linha da oferta tem esse número, o código acrescenta à oferta "Nesse grupo, as contemplações têm saído em média em N meses." e o aviso oficial de histórico; em turnos seguintes, se a resposta usar os números da simulação, os dois avisos entram (`disclaimer_keys`). Sem o número na tabela, o assistente não fala de média: o modelo nunca escreve um prazo de cabeça.
+- **Aplicação citada pelo cliente.** O assistente pode dizer que CDB ou poupança são investimento, outra coisa. Continua proibido comparar rendimento ou dizer qual é melhor (as regras do pacote barram CDB, CDI, poupança ou tesouro perto de rende, ganho, retorno, perde, melhor, pior).
+- **Revisor (`output_judge@v3`).** Citar o histórico do grupo com o aviso não é promessa; contrato, regulamento e tabela do grupo não são documento interno. Nos testes reais, essas duas leituras barravam a primeira resposta sem motivo.
+
 ## Quem envia responde pelos dados do arquivo (05/11/2026)
 
 Um PDF com CPF, cartão, CNPJ, telefone ou e-mail continua bloqueado por padrão, mas quem envia pode assumir a responsabilidade, no envio ou na tela do documento bloqueado. Os valores são trocados por marcadores, e a auditoria registra quem enviou. Nomes e endereços não são detectados: a revisão por trecho continua sendo a proteção. Nenhuma opção envia os valores originais à base. A aprovação segue dependendo do OpenRouter.

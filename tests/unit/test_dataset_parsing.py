@@ -73,5 +73,16 @@ def test_simulation_without_goal_or_term_offers_the_cheapest_entry():
     offer = simulate([term], SimulateIn(goal="vehicle"), "d", 1).required_text
     assert offer == "Ótimo! Temos carta de R$ 50.000,00 para carro ou moto, em 60 meses, com parcela de R$ 900,00, mais seguro de R$ 50,00 por mês."
     assert "para" not in simulate([term], SimulateIn(goal="resale"), "d", 1).required_text    # a letter to sell later has no goal of its own
+
+
+def test_the_group_average_goes_in_the_offer_only_from_the_table_and_always_as_history():
+    from agentplatform_packages.consortium import MANIFEST, SimulateIn, simulate
+    note = MANIFEST.compliance.required_disclosures["history_not_guarantee"]
+    with_avg = PlanRow(plan_id="G", goal="vehicle", credit=Decimal(95000), term_months=72, installment=Decimal(980), avg_contemplation_months=18)
+    out = simulate([with_avg], SimulateIn(goal="vehicle"), "d", 1)
+    assert out.required_text.endswith(f"com parcela de R$ 980,00. Nesse grupo, as contemplações têm saído em média em 18 meses. {note}")
+    assert out.disclaimer_keys == ["history_not_guarantee"]
+    plain = simulate([with_avg.model_copy(update={"avg_contemplation_months": None})], SimulateIn(goal="vehicle"), "d", 1)
+    assert "contemplações" not in plain.required_text and plain.disclaimer_keys == []
     empty = simulate([], SimulateIn(), "d", 1)
     assert empty.required_text is None and empty.closing_question is None

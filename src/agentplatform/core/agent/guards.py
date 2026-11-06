@@ -278,11 +278,12 @@ def disclosures_needed(text: str, tool_results: list[dict], customer_texts: list
     out: list[str] = []
     for t in tool_results:
         r = t.get("result")
-        key = r.get("disclaimer_key") if isinstance(r, dict) else None
-        note = disclosures.get(key or "")
-        if note and note not in out and normalize(note) not in normalize(text) and \
-                used & (extract_numbers(json.dumps(r), lenient=True) - said):
-            out.append(note)
+        keys = [r.get("disclaimer_key"), *(r.get("disclaimer_keys") or [])] if isinstance(r, dict) else []
+        for key in keys:
+            note = disclosures.get(key or "")
+            if note and note not in out and normalize(note) not in normalize(text) and \
+                    used & (extract_numbers(json.dumps(r), lenient=True) - said):
+                out.append(note)
     return out
 
 

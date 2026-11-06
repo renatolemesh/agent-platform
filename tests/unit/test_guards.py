@@ -137,6 +137,14 @@ def test_official_disclosure_added_when_the_reply_uses_tool_numbers():
     assert with_disclosures("Fica a partir de uns R$ 400.", [note]) == f"Fica a partir de uns R$ 400. {note}"
 
 
+def test_the_group_history_brings_its_own_disclaimer_with_the_estimate():
+    from agentplatform.core.agent.guards import disclosures_needed
+    tool = [{"tool": "simulate_consortium", "result": {"options": [{"credit": "95000", "avg_contemplation_months": 18}],
+                                                       "disclaimer_key": "simulation_estimate", "disclaimer_keys": ["history_not_guarantee"]}}]
+    needed = disclosures_needed("Nesse grupo, a média tem sido de 18 meses.", tool, [], COMP.required_disclosures)
+    assert needed == [COMP.required_disclosures["simulation_estimate"], COMP.required_disclosures["history_not_guarantee"]]
+
+
 def test_a_number_with_a_source_is_only_that_number():
     """Found reading the evaluation data: "1546.67" in a tool result also counted as 1546 and 67, so an invented "R$ 67" looked sourced."""
     from decimal import Decimal as D

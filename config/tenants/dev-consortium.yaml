@@ -22,7 +22,7 @@ models:
     temperature: 0.4
     max_output_tokens: 500
     timeout_s: 12
-    prompt_version: respond@v12
+    prompt_version: respond@v13
     provider:
       allow_fallbacks: true
   output_judge:
@@ -31,7 +31,7 @@ models:
     temperature: 0.0
     max_output_tokens: 150
     timeout_s: 5
-    prompt_version: output_judge@v2
+    prompt_version: output_judge@v3
   summarize:
     primary: openai/gpt-5-nano
     temperature: 0.0
