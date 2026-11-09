@@ -329,6 +329,13 @@ O consultor contou que há grupos para cada perfil: com ou sem dinheiro para lan
 - A coluna opcional de média de contemplação continua na tabela, vazia: sem número, a oferta não fala de média.
 - **Perguntas do código saem como estão.** No primeiro teste real, o modelo terminou a oferta com o "Faz sentido?" que estava no resultado da simulação, e reescreveu a oferta do consultor ("Quer que eu te ajude a escolher o melhor grupo?"); o "sim" seguinte não chamou ninguém e a resposta prometeu chamar o consultor. Agora a pergunta de fechamento da ferramenta só aparece no prompt quando é a pergunta do turno, e a pergunta de perfil e a oferta do consultor substituem qualquer outra pergunta do modelo quando ele não as fez. O campo "parcela que cabe" também passou a dizer que dinheiro guardado para lance não é parcela.
 
+## A oferta vira estimativa (08/11/2026)
+
+O dono pediu que o assistente só passe estimativas, como o vendedor faz: "pra uma carta de 100 mil, tem grupos a partir de 900 reais", seguido de uma pergunta sobre a pressa.
+
+- **Oferta:** "Pra uma carta de R$ X para <objetivo>, tem grupos com parcela a partir de R$ Y." O valor é a menor parcela de entrada entre os planos com o crédito mais próximo do pedido. Se for uma parcela reduzida, a frase diz "até a contemplação". Prazo e parcela depois da contemplação ficam com o consultor, que escolhe o grupo pelo perfil. O seguro, quando a tabela tem, continua na frase, e o aviso de valores estimados continua sendo acrescentado pelo código.
+- **Pergunta de perfil:** "Você quer usar a carta o quanto antes, ou não tem tanta pressa?". "Opções mais rápidas" ficou de fora: sugere prazo de contemplação. O valor para lance continua no perfil quando o cliente fala dele.
+
 ## Quem envia responde pelos dados do arquivo (05/11/2026)
 
 Um PDF com CPF, cartão, CNPJ, telefone ou e-mail continua bloqueado por padrão, mas quem envia pode assumir a responsabilidade, no envio ou na tela do documento bloqueado. Os valores são trocados por marcadores, e a auditoria registra quem enviou. Nomes e endereços não são detectados: a revisão por trecho continua sendo a proteção. Nenhuma opção envia os valores originais à base. A aprovação segue dependendo do OpenRouter.

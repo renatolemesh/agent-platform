@@ -97,8 +97,8 @@ def installment(row: PlanRow) -> tuple[Decimal, Decimal]:
 
 
 def offer_text(o: PlanOption, *, name_goal: bool) -> str:
-    """Credit, term and every installment the customer will pay, exactly as in the table. A reduced installment never goes without
-    the full one: the model left it out on its own, even with the rule in the prompt."""
+    """An estimate, as the seller would say it: the credit and the lowest installment its groups start from, exactly as in the table.
+    A reduced installment always says it is the one until contemplation; the rest of the plan is the seller's to explain."""
     t = MANIFEST.templates
     history = t["plan_offer_history"].format(months=o.avg_contemplation_months,
                                              note=MANIFEST.compliance.required_disclosures["history_not_guarantee"]) \
@@ -138,7 +138,9 @@ def simulate(rows: list[PlanRow], req: SimulateIn, dataset_id: str, version: int
     scored.sort(key=lambda x: x[0])               # closest credit (or budget), then the cheapest entry
     options = [o for _, o in scored[:limit]]
     # a letter to sell later is not for the plan's own goal
-    offer = offer_text(options[0], name_goal=req.goal != "resale") if options else None
+    # "from": the lowest entry among the options with the credit closest to what was asked
+    lowest = min((o for o in options if o.credit == options[0].credit), key=lambda o: o.entry_installment) if options else None
+    offer = offer_text(lowest, name_goal=req.goal != "resale") if lowest else None
     return SimulateOut(options=options, dataset_id=dataset_id, dataset_version=version, required_text=offer,
                        disclaimer_keys=["history_not_guarantee"] if any(o.avg_contemplation_months for o in options) else [],
                        closing_question=MANIFEST.templates["plan_offer_question"] if options else None)

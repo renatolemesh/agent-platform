@@ -73,8 +73,8 @@ ready_question: "Quer que eu chame o consultor para você começar?"
 # The model rewords that question: a question matching this is the same offer.
 ready_offer_pattern: '\bchamo\b|\b(quer|prefere|gostaria) que (ele|o consultor|o vendedor)\b|\b(quer|queria|posso|pode|prefere|gostaria|deseja|vamos|bora|que tal)\b.*\b(chamar|chame|falar com|fale com|conversar com|converse com|contato com|consultor|vendedor|para ele|pra ele)\b'
 # Before offering the person, once: the profile the seller needs to pick the group (never says "consultor", or a yes would count as accepting).
-profile_question: "Pra achar o grupo que combina com você: você tem pressa pra usar a carta, e teria algum valor guardado pra dar de lance?"
-profile_slots: [has_bid_funds, urgency]
+profile_question: "Você quer usar a carta o quanto antes, ou não tem tanta pressa?"
+profile_slots: [urgency, has_bid_funds]
 # Right after that question, a message made only of these words is a yes.
 short_yes: [sim, pode, ser, claro, bora, quero, ok, okay, beleza, blz, show, fechado, vamos, vamo, dale, tá, bom, com, certeza, por, favor, pfv, pf, uhum, aham, isso, "👍", "👌"]
 # Someone who will show the offer at home: the table's offer goes out again, word for word, as a summary.
@@ -309,10 +309,12 @@ lead_form_labels:
   has_bid_funds: "Tem recurso para lance?"
 allowed_urls: []      # each account's own sites: conversation.allowed_urls
 templates:
-  plan_offer: "Ótimo! Temos carta de {credit}{goal}{term}, com parcela de {installments}{insurance}."
+  # An estimate, the seller's way: the credit and the installment its groups start from. Term and the installment after contemplation
+  # are the seller's to explain, with the group that fits the profile.
+  plan_offer: "Pra uma carta de {credit}{goal}, tem grupos com parcela a partir de {installments}{insurance}."
   plan_offer_goal: " para {goal}"
   plan_offer_term: ", em {months} meses"
-  plan_offer_reduced: "{reduced} até a contemplação e {full} depois"
+  plan_offer_reduced: "{reduced} até a contemplação"
   plan_offer_insurance: ", mais seguro de {value} por mês"
   plan_offer_question: "Faz sentido pra você?"
   # Only when the plan's row has the group's average, and always with the official history disclaimer.

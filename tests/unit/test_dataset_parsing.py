@@ -67,12 +67,22 @@ def test_simulation_without_goal_or_term_offers_the_cheapest_entry():
     first = out.options[0]
     assert [o.plan_id for o in out.options] == ["I100", "A100", "I300"]
     assert first.goal == "Imóvel" and first.entry_installment == Decimal("397.00")
-    assert out.required_text == "Ótimo! Temos carta de R$ 100.000,00 para imóvel, com parcela de R$ 397,00 até a contemplação e R$ 800,00 depois."
+    assert out.required_text == "Pra uma carta de R$ 100.000,00 para imóvel, tem grupos com parcela a partir de R$ 397,00 até a contemplação."
     assert out.closing_question == "Faz sentido pra você?"
     term = PlanRow(plan_id="T", goal="vehicle", credit=Decimal(50000), term_months=60, installment=Decimal(900), insurance_monthly_pct=Decimal("0.1"))
     offer = simulate([term], SimulateIn(goal="vehicle"), "d", 1).required_text
-    assert offer == "Ótimo! Temos carta de R$ 50.000,00 para carro ou moto, em 60 meses, com parcela de R$ 900,00, mais seguro de R$ 50,00 por mês."
+    assert offer == "Pra uma carta de R$ 50.000,00 para carro ou moto, tem grupos com parcela a partir de R$ 900,00, mais seguro de R$ 50,00 por mês."
     assert "para" not in simulate([term], SimulateIn(goal="resale"), "d", 1).required_text    # a letter to sell later has no goal of its own
+
+
+def test_the_estimate_starts_from_the_lowest_installment_for_that_credit():
+    from agentplatform_packages.consortium import SimulateIn, simulate
+    rows = [PlanRow(plan_id="A", goal="vehicle", credit=Decimal(100000), installment=Decimal("1750.00")),
+            PlanRow(plan_id="B", goal="vehicle", credit=Decimal(100000), installment=Decimal("1500.00"), reduced_installment=Decimal("900.00")),
+            PlanRow(plan_id="C", goal="vehicle", credit=Decimal(60000), installment=Decimal("700.00"))]
+    out = simulate(rows, SimulateIn(goal="vehicle", credit_amount=Decimal(100000)), "d", 1)
+    assert out.required_text == "Pra uma carta de R$ 100.000,00 para carro ou moto, tem grupos com parcela a partir de R$ 900,00 até a contemplação."
+    assert "700" not in out.required_text                      # a smaller credit is not what was asked
 
 
 def test_the_group_average_goes_in_the_offer_only_from_the_table_and_always_as_history():
@@ -80,7 +90,7 @@ def test_the_group_average_goes_in_the_offer_only_from_the_table_and_always_as_h
     note = MANIFEST.compliance.required_disclosures["history_not_guarantee"]
     with_avg = PlanRow(plan_id="G", goal="vehicle", credit=Decimal(95000), term_months=72, installment=Decimal(980), avg_contemplation_months=18)
     out = simulate([with_avg], SimulateIn(goal="vehicle"), "d", 1)
-    assert out.required_text.endswith(f"com parcela de R$ 980,00. Nesse grupo, as contemplações têm saído em média em 18 meses. {note}")
+    assert out.required_text.endswith(f"a partir de R$ 980,00. Nesse grupo, as contemplações têm saído em média em 18 meses. {note}")
     assert out.disclaimer_keys == ["history_not_guarantee"]
     plain = simulate([with_avg.model_copy(update={"avg_contemplation_months": None})], SimulateIn(goal="vehicle"), "d", 1)
     assert "contemplações" not in plain.required_text and plain.disclaimer_keys == []
