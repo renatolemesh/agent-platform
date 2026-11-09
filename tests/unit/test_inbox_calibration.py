@@ -182,6 +182,26 @@ def test_the_offer_with_the_group_history_passes_the_package_rules():
     assert not forbidden(simulate([row], SimulateIn(goal="vehicle"), "d", 1).required_text)
 
 
+# ---------- someone in a hurry
+def test_the_words_offered_for_a_hurry_pass_the_package_rules():
+    action = GUIDE["wants_fast"]
+    example = action.split("'")[1] + " " + action.split("'")[3]
+    assert "maior a sua chance" in example and "Não existe prazo garantido" in example and not forbidden(example)
+    assert "antecipar a contemplação" not in M.persona_template
+    for text in ["você vai ser contemplado logo", "dá pra ser contemplado rápido com esse lance"]:
+        assert forbidden(text), text
+
+
+def test_the_bid_is_explained_as_the_highest_bids_win_never_as_paying_ahead():
+    assert GUIDE["bid_question"] in guide("e esse lance, como é?")
+    for key in ("bid_question", "wants_fast", "how_it_works"):
+        assert "maiores lances" in GUIDE[key], key
+    assert "adiantar" not in M.glossary["lance"] and "maiores lances" in M.glossary["lance"]
+    assert all("adiantar parte das parcelas" not in e.reply for e in M.reply_examples)
+    example = next(e.reply for e in M.reply_examples if "lance" in e.customer)
+    assert "maiores lances" in example and "não existe prazo garantido" in example and not forbidden(example)
+
+
 # ---------- a reaction
 def _story(text, attachments=()):
     return CanonicalEvent(event_type="StoryReply", channel="instagram", account_external_id="a", contact_external_id="c", idempotency_key="k", provider_ts=datetime.now(timezone.utc),
