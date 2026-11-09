@@ -33,6 +33,7 @@ x-app: &app
     - meta_verify_token
     - whatsapp_token
     - whatsapp_app_secret
+    - whatsapp_alert_token
     - smtp_url
     - console_session_secret
     - connect_webhook_secret
@@ -319,7 +320,7 @@ volumes:
   grafana_data: {}
 
 # One file per secret in docker/secrets/ (mode 0444 inside a 0700 directory owned by the deploy user).
-# Optional integrations (whatsapp_*, smtp_url, connect_webhook_secret) may be empty files.
+# Optional integrations (whatsapp_*, whatsapp_alert_token, smtp_url, connect_webhook_secret) may be empty files.
 # grafana_admin_password is only needed with --profile obs, and must not be empty.
 secrets:
   app_rw_password: { file: ./secrets/app_rw_password }
@@ -332,6 +333,7 @@ secrets:
   meta_verify_token: { file: ./secrets/meta_verify_token }
   whatsapp_token: { file: ./secrets/whatsapp_token }
   whatsapp_app_secret: { file: ./secrets/whatsapp_app_secret }
+  whatsapp_alert_token: { file: ./secrets/whatsapp_alert_token }
   smtp_url: { file: ./secrets/smtp_url }
   console_session_secret: { file: ./secrets/console_session_secret }
   connect_webhook_secret: { file: ./secrets/connect_webhook_secret }

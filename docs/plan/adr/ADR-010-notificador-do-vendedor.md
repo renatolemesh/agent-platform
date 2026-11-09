@@ -1,6 +1,7 @@
 # ADR-010 — Notificador do vendedor
 
 - **Status:** aceito (decisão do usuário em 09/10/2026: WhatsApp)
+- **Atualização:** desde 09/11/2026, a ADR-026 permite gateway de WhatsApp (uazapi, Evolution API, Evolution Go) só para avisos ao vendedor e ao operador. O item 4 abaixo deixou de valer.
 
 ## Contexto
 No handoff, o vendedor precisa de um aviso imediato com o mínimo de dados e com as ações "assumi" e "devolver ao bot". O inbox continua sendo o app do Instagram.

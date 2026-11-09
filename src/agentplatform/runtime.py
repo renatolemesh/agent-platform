@@ -15,7 +15,13 @@ from agentplatform.core.channels.ports import ChannelAdapter
 from agentplatform.core.config.registry import ConfigError, load_yaml, registry, resolve_with_package
 from agentplatform.core.config.schema import PlatformConfig
 from agentplatform.core.db.pool import tenant_tx
-from agentplatform.core.handoff.notifiers import EmailNotifier, FallbackInbox, LogNotifier, WhatsAppCloudNotifier
+from agentplatform.core.handoff.notifiers import (
+    EmailNotifier,
+    FallbackInbox,
+    LogNotifier,
+    WhatsAppCloudNotifier,
+    WhatsAppGatewayNotifier,
+)
 from agentplatform.core.knowledge.service import KnowledgeService
 from agentplatform.core.models.gateway import ModelGateway, get_gateway
 from agentplatform.core.outbox.dispatcher import Dispatcher, DispatchPolicy
@@ -99,18 +105,27 @@ class Runtime:
         secret = (s.console_session_secret.get_secret_value() if s.console_session_secret else "dev").encode()
         email = (EmailNotifier(s.smtp_url.get_secret_value(), s.alert_email_from, secret, s.public_base_url)
                  if s.smtp_url and s.alert_email_from else None)
-        wa = (WhatsAppCloudNotifier(s.whatsapp_token.get_secret_value(), s.whatsapp_phone_number_id, secret,
-                                    graph_version=s.meta_graph_version)
-              if s.whatsapp_token and s.whatsapp_phone_number_id else None)
-        return OpsNotifier(email, s.ops_alert_email, wa, s.ops_alert_whatsapp)
+        return OpsNotifier(email, s.ops_alert_email, self._whatsapp_alerts(secret), s.ops_alert_whatsapp)
+
+    def _whatsapp_alerts(self, secret: bytes):
+        """The official Cloud API, or a text gateway (uazapi, Evolution API, Evolution Go); None when not configured."""
+        s = self.settings
+        if s.whatsapp_alert_provider == "cloud":
+            return (WhatsAppCloudNotifier(s.whatsapp_token.get_secret_value(), s.whatsapp_phone_number_id, secret,
+                                          graph_version=s.meta_graph_version)
+                    if s.whatsapp_token and s.whatsapp_phone_number_id else None)
+        if s.whatsapp_alert_url and s.whatsapp_alert_token:
+            return WhatsAppGatewayNotifier(s.whatsapp_alert_provider, s.whatsapp_alert_url, s.whatsapp_alert_token.get_secret_value(),
+                                           secret, s.public_base_url, instance=s.whatsapp_alert_instance)
+        return None
 
     def _build_inbox(self):
         s = self.settings
         secret = (s.console_session_secret.get_secret_value() if s.console_session_secret else "dev").encode()
         chain = []
-        if s.whatsapp_token and s.whatsapp_phone_number_id:
-            chain.append(WhatsAppCloudNotifier(s.whatsapp_token.get_secret_value(), s.whatsapp_phone_number_id, secret,
-                                               graph_version=s.meta_graph_version))
+        wa = self._whatsapp_alerts(secret)
+        if wa:
+            chain.append(wa)
         if s.smtp_url and s.alert_email_from:
             chain.append(EmailNotifier(s.smtp_url.get_secret_value(), s.alert_email_from, secret, s.public_base_url))
         if s.app_env != "prod":        # a log line is not a seller being told: in production it must not count as delivered

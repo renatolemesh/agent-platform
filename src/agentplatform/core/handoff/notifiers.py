@@ -1,5 +1,6 @@
-"""Seller notifiers (ADR-010): WhatsApp Cloud API utility template with signed quick-reply buttons, e-mail fallback,
-and a log notifier for dev. Minimal personal data: first name, stage, reason, masked summary, console link (login required).
+"""Seller notifiers (ADR-010): WhatsApp Cloud API utility template with signed quick-reply buttons, or a WhatsApp text gateway
+(ADR-026: uazapi, Evolution API, Evolution Go), e-mail fallback, and a log notifier for dev. Minimal personal data: first name,
+stage, reason, masked summary, console link (login required).
 """
 from __future__ import annotations
 
@@ -10,7 +11,7 @@ import json
 import logging
 import smtplib
 from email.message import EmailMessage
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from uuid import UUID
 
 import httpx
@@ -81,6 +82,62 @@ class WhatsAppCloudNotifier:
         except httpx.HTTPError as e:
             log.warning("whatsapp ops alert error %s", type(e).__name__)
             return False
+
+
+def alert_text(alert: Alert, secret: bytes, base_url: str) -> str:
+    """The alert as plain text, for channels without templates or buttons: the actions are signed links, as in the e-mail."""
+    lines = [f"Atendimento: {alert.first_name or 'cliente'}", f"Motivo: {alert.reason}"]
+    if alert.stage:
+        lines.append(f"Estágio: {alert.stage}")
+    if alert.summary:
+        lines.append(f"Resumo: {alert.summary}")
+    lines += ["", f"Abrir no console (login necessário): {alert.console_url}"]
+    if alert.handoff_id:
+        base = base_url.rstrip("/")
+        lines += [f"Assumi: {base}/actions/{sign_action(secret, 'took', alert.handoff_id)}",
+                  f"Devolver ao assistente: {base}/actions/{sign_action(secret, 'return', alert.handoff_id)}"]
+    return "\n".join(lines)
+
+
+class WhatsAppGatewayNotifier:
+    """Plain text from a WhatsApp number connected to a gateway (ADR-026). Each gateway takes {number, text}; they differ in the
+    path and in the header that carries the token. It only ever writes to the seller's and the operator's own numbers."""
+    _ROUTES = {"uazapi": ("/send/text", "token"), "evolution": ("/message/sendText/{instance}", "apikey"),
+               "evolution_go": ("/send/text", "apikey")}
+
+    def __init__(self, provider: str, base_url: str, token: str, action_secret: bytes, public_base_url: str, *,
+                 instance: str | None = None, transport: httpx.AsyncBaseTransport | None = None):
+        path, header = self._ROUTES[provider]
+        if "{instance}" in path:
+            if not instance:
+                raise ValueError(f"{provider}: the instance name is required")
+            path = path.format(instance=quote(instance, safe=""))
+        self.name = f"whatsapp_{provider}"
+        self.provider, self.path, self.secret, self.base = provider, path, action_secret, public_base_url
+        self._c = httpx.AsyncClient(base_url=base_url.rstrip("/"), transport=transport, timeout=10, headers={header: token})
+
+    async def _send(self, to: str, text: str) -> bool:
+        number = "".join(ch for ch in to if ch.isdigit())
+        if not number:
+            return False
+        try:
+            r = await self._c.post(self.path, json={"number": number, "text": text})
+            if r.status_code >= 400:
+                log.warning("whatsapp gateway %s HTTP %s", self.provider, r.status_code)
+                return False
+            return True
+        except httpx.HTTPError as e:
+            log.warning("whatsapp gateway %s error %s", self.provider, type(e).__name__)
+            return False
+
+    async def send_alert(self, seller: SellerContact, alert: Alert) -> bool:
+        if not seller.whatsapp:
+            return False
+        return await self._send(seller.whatsapp, alert_text(alert, self.secret, self.base))
+
+    async def send_ops(self, to: str, title: str, detail: str, template: str | None = None) -> bool:
+        """Platform-operator alert: the same title and detail the Cloud API template carries."""
+        return await self._send(to, f"{title}\n\n{detail[:900]}")
 
 
 def parse_whatsapp_button(body: bytes) -> list[str]:

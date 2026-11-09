@@ -329,6 +329,32 @@ O consultor contou que há grupos para cada perfil: com ou sem dinheiro para lan
 - A coluna opcional de média de contemplação continua na tabela, vazia: sem número, a oferta não fala de média.
 - **Perguntas do código saem como estão.** No primeiro teste real, o modelo terminou a oferta com o "Faz sentido?" que estava no resultado da simulação, e reescreveu a oferta do consultor ("Quer que eu te ajude a escolher o melhor grupo?"); o "sim" seguinte não chamou ninguém e a resposta prometeu chamar o consultor. Agora a pergunta de fechamento da ferramenta só aparece no prompt quando é a pergunta do turno, e a pergunta de perfil e a oferta do consultor substituem qualquer outra pergunta do modelo quando ele não as fez. O campo "parcela que cabe" também passou a dizer que dinheiro guardado para lance não é parcela.
 
+## WhatsApp do cliente e avisos por gateway (09/11/2026)
+
+O dono pediu uma opção para o assistente pedir o WhatsApp do cliente ao chamar o consultor, para ele já ter o número. Pediu também que os avisos ao consultor possam sair por uazapi, Evolution API ou Evolution Go.
+
+- **Pedir o WhatsApp (`handoff.ask_customer_whatsapp`, desligado por padrão; Assistente, Mais ajustes, Passagem para o vendedor):**
+  - **O pedido:** vai no fim da mensagem de passagem, sem esperar resposta, então o consultor é chamado do mesmo jeito.
+  - **Quando pede:** só para lead quente e pedido de atendimento (`ask_whatsapp_reasons`), e só se o contato ainda não tem número.
+  - **Muda a decisão de 02/11** ("o assistente nunca pede o número"). Isso vale apenas com a opção ligada.
+- **O número nunca passa pela IA:**
+  - Na mensagem, ele já é guardado mascarado como `[TELEFONE]`.
+  - O código lê o número do texto original, que fica criptografado, e o grava criptografado no contato (`contacts.phone_enc`).
+  - Se o número já pertence a outro contato, ele é guardado sem o hash de busca, para não juntar duas pessoas.
+  - Correção, exportação e eliminação na tela LGPD já cobrem esse campo.
+- **Resposta:** quando a mensagem tem só o número (e até `whatsapp_reply_max_extra_words` palavras), sai a confirmação "Anotado! O {seller} vai te chamar no WhatsApp.", sem chamar a IA.
+  - **Despacho:** a confirmação sai pelo mesmo tipo da mensagem de passagem, que o despachante permite enquanto a conversa espera o consultor.
+  - **Consultor já assumiu:** o número é guardado e não sai nada.
+  - **Pedido para parar:** o número não é guardado.
+  - **Fora do horário, com o assistente ainda atendendo:** uma mensagem mais longa segue como um turno normal, e o número é guardado do mesmo jeito.
+- **Onde o consultor vê:** na conversa, no console, com o botão "Chamar no WhatsApp". Revisores não veem o número. O aviso diz só "deixou WhatsApp (veja no console)".
+- **Avisos por gateway (ADR-026):** `WHATSAPP_ALERT_PROVIDER` = `cloud` (padrão), `uazapi`, `evolution` ou `evolution_go`.
+  - **Configuração:** `WHATSAPP_ALERT_URL`, mais `WHATSAPP_ALERT_INSTANCE` só na Evolution API. O token vai no segredo `whatsapp_alert_token`.
+  - **Formato:** texto com resumo e link do console. "Assumi" e "Devolver" vão como links assinados, como no e-mail.
+  - **Avisos ao operador** (`OPS_ALERT_WHATSAPP`) usam o mesmo gateway.
+  - **Falha:** se o gateway recusar, o aviso segue para o e-mail.
+- **Ainda falta:** revisão jurídica do pedido de número e teste com o gateway real.
+
 ## Uma resposta e um direct por pessoa (09/11/2026)
 
 O dono pediu que qualquer comentário receba resposta e direct, mas só uma vez por pessoa, mesmo que ela comente várias vezes. "Qualquer comentário" já existia como acionamento; faltava o limite por pessoa sem prazo.
@@ -336,7 +362,7 @@ O dono pediu que qualquer comentário receba resposta e direct, mas só uma vez 
 - **`comments.once_per_person` (ligado por padrão):** a pessoa recebe a resposta automática e o direct uma vez só. Os comentários seguintes, em qualquer post, não recebem nada e ficam na tela Comentários como "Já recebeu resposta antes". Uma pergunta continua aparecendo para o vendedor.
 - **O que conta como já respondido:** uma resposta automática a comentário dela, ou qualquer mensagem do assistente ou do vendedor na conversa.
 - **Comentários ao mesmo tempo:** os comentários de uma pessoa são tratados em ordem, então só um recebe resposta.
-- **Desligado** (tela Assistente, seção Comentários), valem os prazos de antes: 7 dias por pessoa e 7 dias por post. Nesse caso, o texto para quem já está em conversa volta a ser usado.
+- **Desligado** (Assistente, Mais ajustes, seção Comentários), valem os prazos de antes: 7 dias por pessoa e 7 dias por post. Nesse caso, o texto para quem já está em conversa volta a ser usado.
 - **Os modelos de post do pacote não trazem mais esse texto.**
 
 ## A oferta vira estimativa (08/11/2026)

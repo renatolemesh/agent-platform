@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     whatsapp_token: SecretStr | None = None
     whatsapp_phone_number_id: str | None = None
     whatsapp_app_secret: SecretStr | None = None
+    # Seller and operator alerts on WhatsApp (ADR-026): the official Cloud API above (templates with buttons), or a gateway that
+    # sends plain text from a WhatsApp number connected to it. The token comes from a secret file, like every other secret.
+    whatsapp_alert_provider: Literal["cloud", "uazapi", "evolution", "evolution_go"] = "cloud"
+    whatsapp_alert_url: str | None = None              # gateway base URL
+    whatsapp_alert_token: SecretStr | None = None      # uazapi: instance token; Evolution API: apikey; Evolution Go: instance token
+    whatsapp_alert_instance: str | None = None         # Evolution API only: the instance name in the path
 
     smtp_url: SecretStr | None = None
     alert_email_from: str | None = None
@@ -86,6 +92,12 @@ class Settings(BaseSettings):
     @classmethod
     def _split_ids(cls, v):
         return [x.strip() for x in v.split(",") if x.strip()] if isinstance(v, str) else v
+
+    @model_validator(mode="after")
+    def _alert_gateway(self) -> "Settings":
+        if self.whatsapp_alert_provider == "evolution" and self.whatsapp_alert_url and not self.whatsapp_alert_instance:
+            raise ValueError("WHATSAPP_ALERT_INSTANCE is required with WHATSAPP_ALERT_PROVIDER=evolution")
+        return self
 
     @model_validator(mode="after")
     def _production_requirements(self) -> "Settings":
