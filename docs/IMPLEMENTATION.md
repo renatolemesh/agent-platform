@@ -350,6 +350,7 @@ O dono pediu que o assistente só passe estimativas, como o vendedor faz: "pra u
   - Essa explicação está nas orientações de lance, de pressa e de "como funciona", na FAQ de contemplações, no glossário e no exemplo de resposta.
   - O exemplo antigo dizia que lance é "adiantar parcelas" e foi trocado: adiantar parcelas não contempla, e o próprio assistente tem uma FAQ dizendo isso.
   - A regra vem do contrato: no lance livre, ganha a cota que oferta o maior número de parcelas.
+- **Frase proibida na segunda tentativa (09/11):** quando a revisão bloqueia uma frase proibida, a nova tentativa agora recebe as palavras que foram pegas (por exemplo, "contemplado logo"), nunca o padrão. Antes ela só sabia que havia uma frase proibida e escrevia a mesma coisa. No teste, o cliente disse "tenho uns 20 mil" sem nenhuma orientação ativa, e as duas tentativas prometeram contemplação logo; a conversa foi para o consultor. A persona também passou a dizer que não se promete contemplação logo, rápido, mais cedo ou em prazo nenhum, nem com lance.
 
 ## Quem envia responde pelos dados do arquivo (05/11/2026)
 

@@ -313,6 +313,15 @@ def _word_overlap(a: str, b: str, min_words: int) -> float:
 _NEGATION = re.compile(r"(nao|nunca|sem|nenhum\w*|jamais|nem)(\W+\w+){0,3}\W*$")
 
 
+def forbidden_fragment(pattern: str, text: str) -> str | None:
+    """The words of a reply that a forbidden phrase caught, so the next attempt knows what to take out (the pattern says nothing)."""
+    n = normalize(text)
+    for m in re.finditer(normalize(pattern), n, re.IGNORECASE):
+        if not _NEGATION.search(n[max(0, m.start() - 40):m.start()]):
+            return m.group(0)[:80]
+    return None
+
+
 def _affirmative_match(pattern: str, text: str) -> bool:
     """A forbidden phrase counts only when stated affirmatively (a negated statement such as "sem X garantido" is allowed)."""
     for m in re.finditer(pattern, text, re.IGNORECASE):

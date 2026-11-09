@@ -26,6 +26,7 @@ from agentplatform.core.agent.guards import (
     disclosures_needed,
     ensure_identified,
     failed,
+    forbidden_fragment,
     input_guard,
     keyword_hit,
     normalize,
@@ -650,13 +651,22 @@ class TurnRunner:
             return {**upd, "route": "commit", "final_text": self._final(s, text)}
         blocks = [v for v in bad if v.verdict == "block"]
         if s["attempts"] < cfg.agent.max_reply_attempts and self._llm_budget_left(s):
-            reasons = ", ".join(f"{v.rule_id}{(': ' + v.detail) if v.detail and v.rule_id != 'forbidden_phrase' else ''}" for v in bad)
+            reasons = ", ".join(self._fix_reason(v, text) for v in bad)
             return {**upd, "route": "respond", "fix_reasons": reasons}
         if blocks:
             return {**upd, "route": "handoff", "handoff_reason": "guard_blocked", "final_text": None}
         if any(v.rule_id == "one_question" for v in bad) and "?" in text:
             text = text[: text.index("?") + 1]                       # deterministic: keep only the first question
         return {**upd, "route": "commit", "final_text": self._final(s, text)}      # rewrite-only issues after retry: send
+
+    @staticmethod
+    def _fix_reason(v: GuardVerdict, text: str) -> str:
+        """What the next attempt is told: the rule, and for a forbidden phrase the words it used (without them the model wrote the
+        same words again), never the pattern."""
+        if v.rule_id == "forbidden_phrase":
+            words = forbidden_fragment(v.detail, text) if v.detail else None
+            return f'forbidden_phrase: "{words}"' if words else "forbidden_phrase"
+        return f"{v.rule_id}{(': ' + v.detail) if v.detail else ''}"
 
     async def n_degraded(self, s: TurnState) -> dict:
         """Budget exhausted / model down: FAQ via FTS (no LLM, no embedding), else handoff with a short message."""

@@ -188,6 +188,7 @@ def test_the_words_offered_for_a_hurry_pass_the_package_rules():
     example = action.split("'")[1] + " " + action.split("'")[3]
     assert "maior a sua chance" in example and "Não existe prazo garantido" in example and not forbidden(example)
     assert "antecipar a contemplação" not in M.persona_template
+    assert "Nunca diga que ele vai ser contemplado logo, rápido, mais cedo" in M.persona_template
     for text in ["você vai ser contemplado logo", "dá pra ser contemplado rápido com esse lance"]:
         assert forbidden(text), text
 

@@ -155,3 +155,17 @@ def test_a_number_with_a_source_is_only_that_number():
     assert D("67") not in extract_numbers('{"installment": 1546.67}', lenient=True)
     assert D("1E+5") in extract_numbers('{"credit": 100000.0}', lenient=True), "R$ 100.000 said for 100000.0"
     assert D("1546") in extract_numbers("crédito de 1.546 reais", lenient=True), "a source in Portuguese keeps its thousands"
+
+
+def test_a_retry_is_told_the_words_a_forbidden_phrase_caught_never_the_pattern():
+    from agentplatform.core.agent.guards import forbidden_fragment
+    from agentplatform.core.agent.state import GuardVerdict
+    from agentplatform.core.agent.turn import TurnRunner
+    pattern = r"contempl\w+ (rápido|em pouco tempo|logo)"
+    text = "Com 20 mil de lance, você pode ser contemplado logo. Quer que eu chame o consultor?"
+    assert forbidden_fragment(pattern, text) == "contemplado logo"
+    assert forbidden_fragment(pattern, "não dá pra ser contemplado rápido sem lance") is None      # negated: not a promise
+    v = GuardVerdict(guard="output_guard", rule_id="forbidden_phrase", verdict="block", detail=pattern)
+    assert TurnRunner._fix_reason(v, text) == 'forbidden_phrase: "contemplado logo"'
+    assert TurnRunner._fix_reason(GuardVerdict(guard="output_guard", rule_id="forbidden_phrase", verdict="block"), text) == "forbidden_phrase"
+    assert TurnRunner._fix_reason(GuardVerdict(guard="output_guard", rule_id="length", verdict="rewrite", detail="900"), text) == "length: 900"
