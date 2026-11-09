@@ -206,6 +206,8 @@ async def process_comment(conn: AsyncConnection, cfg: PlatformConfig, manifest: 
         return await stop("existing_customer", True)         # a customer gets no sales opener; the seller sees the comment
     if conv["ownership"] in _HUMAN_STATES:
         return await stop("with_human", True)                # never talks over the seller; the seller sees the comment
+    if cfg.comments.once_per_person and await _answered_before(conn, tenant_id, conv["id"], ev.contact_external_id, ev.comment_id):
+        return await stop("already_answered", question)      # one reply and one direct per person, however many comments
     if conv["ownership"] == "CLOSED":
         conv = await transition_ownership(conn, tenant_id, conv["id"], "BOT", cause="reopened_by_comment")
 
@@ -248,6 +250,17 @@ async def process_comment(conn: AsyncConnection, cfg: PlatformConfig, manifest: 
         return await stop("already_in_contact" if contacted else "dedup_window", question)
     await record("acted", eff.source, conversation_id=conv["id"], pv=pv, prv=prv, po=public_id, pro=private_id)
     return CommentDecision("acted", eff.source, public_id, private_id, conv["id"], media_created=created)
+
+
+async def _answered_before(conn: AsyncConnection, tenant_id: UUID, conversation_id: UUID, author: str | None, comment_id: str | None) -> bool:
+    """This person already got an automatic reply or direct from a comment, or any message from the bot or the seller.
+    Comments of one person are handled in order (conversation lock), so a reply still in the outbox is already recorded."""
+    return bool(await (await conn.execute(
+        """select 1 from comment_actions where tenant_id=%s and author_external_id=%s and decision='acted' and comment_id <> %s
+           union all select 1 from messages where conversation_id=%s and direction in ('out_bot','out_human')
+           union all select 1 from outbox where conversation_id=%s and kind in ('private_reply','public_comment_reply')
+                                            and status in ('pending','sending') limit 1""",
+        (tenant_id, author or "", comment_id or "", conversation_id, conversation_id))).fetchone())
 
 
 async def _in_contact(conn: AsyncConnection, conversation_id: UUID, now: datetime, window_days: int) -> bool:

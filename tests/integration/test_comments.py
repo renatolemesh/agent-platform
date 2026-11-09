@@ -25,6 +25,9 @@ pytestmark = pytest.mark.db
 PKG = load_package("consortium")
 CFG = resolve_with_package(load_yaml(Path(__file__).resolve().parents[2] / "config/tenants/dev-consortium.yaml"), PKG.manifest.compliance)
 OFFER = PKG.manifest.comment_templates[0]
+REPEAT = ["Já te chamei no direct!", "Te respondo por lá, no direct!"]
+# The time windows, as before one reply per person became the default
+WINDOW = CFG.model_copy(update={"comments": CFG.comments.model_copy(update={"once_per_person": False})})
 NOW = lambda: datetime.now(timezone.utc)     # noqa: E731
 
 
@@ -49,7 +52,7 @@ async def activate(tenant, *, active=True, mode="both", trigger="keyword", since
                                              public_variants, private_variants, repeat_variants, hide_spam, active_since)
                values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (ca["id"], tenant, active, mode, trigger, over.get("keywords", OFFER.keywords), over.get("public", OFFER.public_variants),
-             json.dumps(over.get("private", OFFER.private_variants)), over.get("repeat", OFFER.repeat_variants),
+             json.dumps(over.get("private", OFFER.private_variants)), over.get("repeat", REPEAT),
              over.get("hide_spam", False), since or NOW() - timedelta(days=30)))
 
 
@@ -71,10 +74,10 @@ async def post(tenant, media="media1", mode="both", **over):
     return m["id"]
 
 
-async def run(tenant, e, **kw):
+async def run(tenant, e, cfg=CFG, **kw):
     ca = await account(tenant)
     async with tenant_tx(tenant) as conn:
-        return await process_comment(conn, CFG, PKG.manifest, tenant_id=tenant, channel_account_id=ca["id"],
+        return await process_comment(conn, cfg, PKG.manifest, tenant_id=tenant, channel_account_id=ca["id"],
                                      account_external_id=ca["external_account_id"], ev=e, now=NOW(), **kw)
 
 
@@ -186,20 +189,64 @@ async def test_one_private_reply_per_person_and_media_even_in_parallel(tenant):
     assert sum(1 for d in ds if d.private_outbox_id) == 1
 
 
-async def test_comments_on_several_posts_get_one_opener_and_the_reply_does_not_promise_another(tenant):
+async def test_one_reply_and_one_direct_per_person_however_many_comments(tenant):
+    await activate(tenant, trigger="any")
+    first = await run(tenant, ev("que legal", author="ONCE", media="post-a"))
+    assert first.decision == "acted" and first.public_outbox_id and first.private_outbox_id
+    for media, text in (("post-a", "quero saber mais"), ("post-b", "quanto fica?"), ("post-c", "top")):
+        e = ev(text, author="ONCE", media=media)
+        d = await run(tenant, e)
+        assert d.decision == "already_answered" and not d.public_outbox_id and not d.private_outbox_id, media
+        assert (await action(tenant, e))["attention"] is ("?" in text)           # still listed; a question stands out
+    async with tenant_tx(tenant) as conn:
+        n = await (await conn.execute("select count(*) n from outbox where conversation_id=%s", (first.conversation_id,))).fetchone()
+    assert n["n"] == 2
+
+
+async def test_one_public_reply_per_person_on_posts_without_a_direct(tenant):
+    await activate(tenant, active=False)
+    await post(tenant, "pub-a", mode="public")
+    await post(tenant, "pub-b", mode="public")
+    assert (await run(tenant, ev("quero", author="PUB", media="pub-a"))).public_outbox_id
+    assert (await run(tenant, ev("quero", author="PUB", media="pub-b"))).decision == "already_answered"
+
+
+async def test_someone_already_talked_to_gets_no_reply_to_a_comment(tenant):
+    await activate(tenant, active=False)
+    await post(tenant, "listed", mode="register")
+    await post(tenant, "offer")
+    first = await run(tenant, ev("quero", author="TALK", media="listed"))
+    async with tenant_tx(tenant) as conn:
+        await conn.execute("insert into messages (tenant_id, conversation_id, direction, external_mid, kind, provider_ts) "
+                           "values (%s,%s,'out_human','m-talk','text',now())", (tenant, first.conversation_id))
+    assert (await run(tenant, ev("quero", author="TALK", media="offer"))).decision == "already_answered"
+
+
+async def test_parallel_comments_of_one_person_get_one_reply_and_one_direct(tenant):
     await activate(tenant)
-    first = await run(tenant, ev("quero", author="SAME", media="post-a"))
-    second = await run(tenant, ev("quero", author="SAME", media="post-b"))
+    author = f"IGO-{uuid.uuid4().hex[:6]}"
+    ds = await asyncio.gather(*[run(tenant, ev("quero info", author=author, media=f"m{i}")) for i in range(4)])
+    assert sum(1 for d in ds if d.private_outbox_id) == 1 and sum(1 for d in ds if d.public_outbox_id) == 1
+
+
+async def test_with_the_windows_comments_on_several_posts_get_one_opener_and_the_reply_does_not_promise_another(tenant):
+    await activate(tenant)
+    first = await run(tenant, ev("quero", author="SAME", media="post-a"), WINDOW)
+    second = await run(tenant, ev("quero", author="SAME", media="post-b"), WINDOW)
     assert first.private_outbox_id and not second.private_outbox_id and second.decision == "acted"
     async with tenant_tx(tenant) as conn:
         o = await (await conn.execute("select payload from outbox where id=%s", (second.public_outbox_id,))).fetchone()
-    assert o["payload"]["text"] in OFFER.repeat_variants
+    assert o["payload"]["text"] in REPEAT
 
 
-async def test_no_repeat_text_means_no_public_reply(tenant):
+async def test_with_the_windows_no_repeat_text_means_no_public_reply(tenant):
     await activate(tenant, repeat=[])
-    await run(tenant, ev("quero", author="SAME2", media="post-a"))
-    assert (await run(tenant, ev("quero", author="SAME2", media="post-b"))).decision == "already_in_contact"
+    await run(tenant, ev("quero", author="SAME2", media="post-a"), WINDOW)
+    assert (await run(tenant, ev("quero", author="SAME2", media="post-b"), WINDOW)).decision == "already_in_contact"
+
+
+def test_post_templates_have_no_text_for_a_second_reply():
+    assert CFG.comments.once_per_person and all(not t.repeat_variants for t in PKG.manifest.comment_templates)
 
 
 async def test_customer_with_the_seller_gets_no_automatic_reply_and_the_seller_sees_it(tenant):
@@ -232,11 +279,11 @@ async def test_who_asked_not_to_be_contacted_is_left_alone(tenant):
 
 async def test_closed_conversation_reopens_for_a_new_comment(tenant):
     await activate(tenant)
-    first = await run(tenant, ev("quero", author="CLO", media="post-a"))
+    first = await run(tenant, ev("quero", author="CLO", media="post-a"), WINDOW)
     async with tenant_tx(tenant) as conn:
         await transition_ownership(conn, tenant, first.conversation_id, "CLOSED", cause="test")
         c = await (await conn.execute("select send_epoch from conversations where id=%s", (first.conversation_id,))).fetchone()
-    d = await run(tenant, ev("quero", author="CLO", media="post-b"))
+    d = await run(tenant, ev("quero", author="CLO", media="post-b"), WINDOW)
     assert d.decision == "acted"
     async with tenant_tx(tenant) as conn:
         now_c = await (await conn.execute("select ownership, send_epoch from conversations where id=%s", (first.conversation_id,))).fetchone()

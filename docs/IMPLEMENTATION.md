@@ -329,12 +329,27 @@ O consultor contou que há grupos para cada perfil: com ou sem dinheiro para lan
 - A coluna opcional de média de contemplação continua na tabela, vazia: sem número, a oferta não fala de média.
 - **Perguntas do código saem como estão.** No primeiro teste real, o modelo terminou a oferta com o "Faz sentido?" que estava no resultado da simulação, e reescreveu a oferta do consultor ("Quer que eu te ajude a escolher o melhor grupo?"); o "sim" seguinte não chamou ninguém e a resposta prometeu chamar o consultor. Agora a pergunta de fechamento da ferramenta só aparece no prompt quando é a pergunta do turno, e a pergunta de perfil e a oferta do consultor substituem qualquer outra pergunta do modelo quando ele não as fez. O campo "parcela que cabe" também passou a dizer que dinheiro guardado para lance não é parcela.
 
+## Uma resposta e um direct por pessoa (09/11/2026)
+
+O dono pediu que qualquer comentário receba resposta e direct, mas só uma vez por pessoa, mesmo que ela comente várias vezes. "Qualquer comentário" já existia como acionamento; faltava o limite por pessoa sem prazo.
+
+- **`comments.once_per_person` (ligado por padrão):** a pessoa recebe a resposta automática e o direct uma vez só. Os comentários seguintes, em qualquer post, não recebem nada e ficam na tela Comentários como "Já recebeu resposta antes". Uma pergunta continua aparecendo para o vendedor.
+- **O que conta como já respondido:** uma resposta automática a comentário dela, ou qualquer mensagem do assistente ou do vendedor na conversa.
+- **Comentários ao mesmo tempo:** os comentários de uma pessoa são tratados em ordem, então só um recebe resposta.
+- **Desligado** (tela Assistente, seção Comentários), valem os prazos de antes: 7 dias por pessoa e 7 dias por post. Nesse caso, o texto para quem já está em conversa volta a ser usado.
+- **Os modelos de post do pacote não trazem mais esse texto.**
+
 ## A oferta vira estimativa (08/11/2026)
 
 O dono pediu que o assistente só passe estimativas, como o vendedor faz: "pra uma carta de 100 mil, tem grupos a partir de 900 reais", seguido de uma pergunta sobre a pressa.
 
 - **Oferta:** "Pra uma carta de R$ X para <objetivo>, tem grupos com parcela a partir de R$ Y." O valor é a menor parcela de entrada entre os planos com o crédito mais próximo do pedido. Se for uma parcela reduzida, a frase diz "até a contemplação". Prazo e parcela depois da contemplação ficam com o consultor, que escolhe o grupo pelo perfil. O seguro, quando a tabela tem, continua na frase, e o aviso de valores estimados continua sendo acrescentado pelo código.
 - **Pergunta de perfil:** "Você quer usar a carta o quanto antes, ou não tem tanta pressa?". "Opções mais rápidas" ficou de fora: sugere prazo de contemplação. O valor para lance continua no perfil quando o cliente fala dele.
+- **Quem tem pressa (09/11):** a resposta vem de uma frase pronta na orientação. Ela diz que com valor para lance dá para ofertar lance todo mês, inclusive embutido, e que não existe prazo garantido. Palavras como "logo", "rápido", "acelerar", "antecipar" e "mais cedo" não aparecem perto de contemplação: a regra proibida e o juiz bloqueavam essas respostas. Se o cliente ainda não disse que tem valor para lance, o assistente pergunta.
+- **Como o lance funciona (09/11):** todo mês, na assembleia, uma quantidade de cotas é contemplada por sorteio e outra por lance, e as vagas de lance vão para os maiores lances. Por isso, quanto maior o lance, maior a chance. Como não se sabe antes quanto os outros vão ofertar, não existe prazo garantido.
+  - Essa explicação está nas orientações de lance, de pressa e de "como funciona", na FAQ de contemplações, no glossário e no exemplo de resposta.
+  - O exemplo antigo dizia que lance é "adiantar parcelas" e foi trocado: adiantar parcelas não contempla, e o próprio assistente tem uma FAQ dizendo isso.
+  - A regra vem do contrato: no lance livre, ganha a cota que oferta o maior número de parcelas.
 
 ## Quem envia responde pelos dados do arquivo (05/11/2026)
 

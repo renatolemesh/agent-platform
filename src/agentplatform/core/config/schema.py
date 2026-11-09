@@ -374,6 +374,9 @@ class CommentsConfig(Strict):
     enabled: bool = True
     private_reply_dedup_window_days: Annotated[int, Field(ge=1, le=7)] = 7
     person_contact_window_days: Annotated[int, Field(ge=0, le=30)] = 7   # someone in contact gets no new opener from another post
+    # One automatic reply and one automatic direct per person, ever: once someone got either (or any message from the bot or the
+    # seller), later comments on any post are only listed for the seller. Off, the two windows above decide.
+    once_per_person: bool = True
     sensitive_topics_to_human: bool = True
     # Only what is clearly not a person interested: "tem promoção?" or "kkkkkk quero saber" are customers.
     spam_patterns: list[str] = [r"https?://", r"\b(sigam|siga meu|ganhe dinheiro|ganhe renda extra|pix gratis|clique no link)\b",

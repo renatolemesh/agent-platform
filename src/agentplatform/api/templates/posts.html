@@ -77,7 +77,7 @@
       <span class="help">Diga que é o assistente virtual, faça uma pergunta só e não use valores: eles saem da tabela quando o cliente responder. <code>{seller}</code> vira o nome do vendedor.</span></div></div>
   </div>
   <div class="field"><label>Resposta no comentário de quem já está em conversa (uma por linha)</label><textarea name="repeat_variants" rows="2">{{ form.repeat_variants | join('\n') }}</textarea>
-    <span class="help">Nesses casos não sai outro direct. Sem texto aqui, o comentário não recebe resposta pública.</span></div>
+    <span class="help">Nesses casos não sai outro direct. Sem texto aqui, o comentário não recebe resposta pública. Com "uma resposta e um direct por pessoa" ligado (Assistente, seção Comentários), este texto não é usado.</span></div>
   <label class="small" style="display:flex;gap:8px;align-items:center;margin-bottom:12px"><input type="checkbox" name="hide_spam" value="1" {{ 'checked' if form.hide_spam }} style="width:auto"> Ocultar comentários identificados como spam</label>
   <button class="btn-primary" name="save" value="1">{{ icon('check', 16) }} Salvar padrão</button>
 </form></div>
