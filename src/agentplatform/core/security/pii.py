@@ -80,6 +80,11 @@ class MaskResult:
         return any(k in self.found for k in ("cpf", "cnpj", "card", "rg", "health", "bank"))
 
 
+def find_phones(text: str | None) -> list[str]:
+    """Phone numbers as written, for the one place that keeps a number the customer gave on purpose (handoff.customer_phone)."""
+    return [m.group(0) for m in _PHONE.finditer(text or "")]
+
+
 def mask(text: str, only: tuple[str, ...] | list[str] | None = None) -> MaskResult:
     """`only`: just these kinds. Default is everything."""
     found: dict[str, int] = {}

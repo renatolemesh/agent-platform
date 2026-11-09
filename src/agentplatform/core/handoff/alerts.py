@@ -198,7 +198,8 @@ async def pick_seller(conn, tenant_id, cfg: PlatformConfig, sellers: list[Seller
 
 def _summary_line(summary: dict) -> str:
     prof = ", ".join(f"{k}={v}" for k, v in (summary.get("profile") or {}).items() if v is not None)
-    return (prof + (" | " if prof else "") + (summary.get("last_message") or ""))[:300]
+    left = "deixou WhatsApp (veja no console) | " if summary.get("whatsapp_left") else ""     # the number itself stays in the console
+    return (left + prof + (" | " if prof else "") + (summary.get("last_message") or ""))[:300]
 
 
 async def apply_seller_action(conn: AsyncConnection, tenant_id: UUID, action: str, handoff_id: UUID, actor: UUID | None) -> str:

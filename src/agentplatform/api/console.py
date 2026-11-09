@@ -65,7 +65,7 @@ from agentplatform.core.orchestration.dm_scope import (
     set_flag,
     snapshot_contacts,
 )
-from agentplatform.core.security.keys import crypto
+from agentplatform.core.security.keys import crypto, decrypt_field
 from agentplatform.settings import get_settings
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -365,7 +365,7 @@ async def conversation(request: Request, cid: UUID):
     tid = _tid(user)
     async with tenant_tx(tid) as conn:
         conv = await (await conn.execute(
-            """select c.*, l.stage, l.profile, l.opted_out_at, ct.first_name, ci.username, ci.channel, ci.external_user_id
+            """select c.*, l.stage, l.profile, l.opted_out_at, ct.first_name, ct.phone_enc, ci.username, ci.channel, ci.external_user_id
                from conversations c join leads l on l.contact_id=c.contact_id join contacts ct on ct.id = c.contact_id
                left join contact_identities ci on ci.contact_id = c.contact_id where c.id=%s limit 1""",
             (cid,))).fetchone()
@@ -384,8 +384,10 @@ async def conversation(request: Request, cid: UUID):
             "select from_state, to_state, cause, at from ownership_events where conversation_id=%s order by at desc limit 20", (cid,))).fetchall()
         reviews = await review_service.for_conversation(conn, cid)
         explained = await explain_turns(conn, turns)
+        # the number the customer left for the seller to call (handoff.ask_customer_whatsapp); reviewers do not see it
+        phone = await decrypt_field(conn, tid, conv["phone_enc"], "contacts.phone") if conv["phone_enc"] and user["role"] != "reviewer" else None
     labels = await _labels(tid)
-    return _page(request, "conversation.html", {"user": user, "c": conv, "msgs": msgs, "turns": turns, "events": events,
+    return _page(request, "conversation.html", {"user": user, "c": conv, "msgs": msgs, "turns": turns, "events": events, "phone": phone,
                                                 "origin": origin, "contact_flag": contact_flag, "labels": labels,
                                                 "reviews": reviews, "review_cfg": await _review_config(tid), "explained": explained,
                                                 "can_act": user["role"] != "reviewer", "stages": labels["stage_list"], "opt_out_stage": labels["opt_out_stage"], "won_stage": labels["won_stage"]})

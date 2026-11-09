@@ -39,6 +39,7 @@ from agentplatform.core.agent.state import AnalyzeOutput, Draft, GuardVerdict, J
 from agentplatform.core.comments.origin import load_origin, origin_comments
 from agentplatform.core.config.schema import PlatformConfig
 from agentplatform.core.db.pool import advisory_xact_lock, tenant_tx
+from agentplatform.core.handoff import customer_phone
 from agentplatform.core.handoff.service import build_summary, create_handoff, create_notice
 from agentplatform.core.knowledge.service import KnowledgeService
 from agentplatform.core.media.processor import render_for_turn
@@ -111,6 +112,9 @@ class TurnState(TypedDict, total=False):
     opted_out: bool                 # asked not to be contacted, earlier
     opted_out_returned: bool        # ... and wrote again: the seller hears about it, the assistant stays quiet
     failed_with: str | None         # exception class that ended the turn (technical_failure)
+    has_phone: bool                 # the contact already has a number (none is asked for)
+    whatsapp_asked: bool            # an open handoff asked for the customer's WhatsApp
+    save_phone: bool                # the input has a number to keep for the seller (handoff.ask_customer_whatsapp)
     _result: dict
 
 
@@ -220,6 +224,8 @@ class TurnRunner:
                    from conversations c join contacts ct on ct.id = c.contact_id
                    join contact_identities ci on ci.contact_id = c.contact_id
                    join leads l on l.contact_id = c.contact_id where c.id = %s""", (conversation_id,))).fetchone()
+            has_phone = bool(await (await conn.execute("select 1 from contacts where id=%s and phone_enc is not null",
+                                                       (conv["contact_id"],))).fetchone())
             pending = await (await conn.execute(
                 """select id, text_masked, kind, media from messages
                    where conversation_id = %s and direction = 'in' and turn_id is null and kind <> all(%s)
@@ -248,6 +254,9 @@ class TurnRunner:
             open_handoff = await (await conn.execute(
                 "select 1 from handoffs where conversation_id=%s and taken_at is null and not is_notice and created_at > now() - interval '24 hours' limit 1",
                 (conversation_id,))).fetchone()
+            whatsapp_asked = await (await conn.execute(
+                "select 1 from handoffs where conversation_id=%s and taken_at is null and not is_notice and created_at > now() - interval '24 hours' "
+                "and coalesce((summary->>'whatsapp_asked')::boolean, false) limit 1", (conversation_id,))).fetchone()
         now = self.d.now()
         texts = []
         for p in pending:
@@ -266,6 +275,7 @@ class TurnRunner:
             contact_first_name=conv["first_name"], recipient=conv["recipient"],
             window_open=bool(conv["window_expires_at"] and conv["window_expires_at"] > now),
             first_message=not had_bot, summary=conv["summary"], open_handoff=bool(open_handoff), opted_out=bool(conv["opted_out_at"]),
+            has_phone=has_phone, whatsapp_asked=bool(whatsapp_asked),
             recent=[{"from": _SPEAKER.get(r["direction"], "assistente"), "text": r["text_masked"]} for r in reversed(recent)],
             origin=origin,
             input_ids=[str(p["id"]) for p in pending], input_texts=texts,
@@ -290,7 +300,7 @@ class TurnRunner:
         g.add_node("commit", self.n_commit)
         g.add_edge(START, "privacy_gate")
         g.add_conditional_edges("privacy_gate", lambda s: s["route"],
-                                {"opt_out": "commit", "silent": "silent_update", "continue": "input_guard"})
+                                {"opt_out": "commit", "silent": "silent_update", "continue": "input_guard", "whatsapp_saved": "commit"})
         g.add_edge("silent_update", "commit")
         g.add_conditional_edges("input_guard", lambda s: s["route"], {"handoff": "commit", "continue": "analyze_turn"})
         g.add_conditional_edges("analyze_turn", lambda s: s["route"], {"plan": "plan", "degraded": "degraded_reply"})
@@ -367,9 +377,16 @@ class TurnRunner:
             return {"route": "opt_out", "opt_out": True, "masked_input": pg.masked_texts}
         if s.get("opted_out"):       # asked us to stop and wrote again: whether the assistant may answer is not its own call
             return {"route": "silent", "opted_out_returned": True, "masked_input": pg.masked_texts}
+        hc = self.d.config.handoff
+        upd: dict = {"masked_input": pg.masked_texts}
+        if hc.ask_customer_whatsapp and any(customer_phone.PHONE_TOKEN in t for t in pg.masked_texts):
+            upd["save_phone"] = True        # kept by the commit, from the original message; the model only sees [TELEFONE]
+            if s.get("whatsapp_asked") and (s["ownership"] != "BOT"
+                                            or customer_phone.extra_words(pg.masked_texts) <= hc.whatsapp_reply_max_extra_words):
+                return {**upd, "route": "whatsapp_saved"}
         if s["ownership"] != "BOT":
-            return {"route": "silent", "masked_input": pg.masked_texts}
-        return {"route": "continue", "masked_input": pg.masked_texts}
+            return {**upd, "route": "silent"}
+        return {**upd, "route": "continue"}
 
     async def n_silent(self, s: TurnState) -> dict:
         # no LLM spend while a human owns the conversation; messages are consumed by the commit
@@ -697,14 +714,24 @@ class TurnRunner:
                 raise Superseded()
             await conn.execute("update messages set turn_id = %s where id = any(%s::uuid[])", (turn_id, s["input_ids"]))
             src_at = datetime.fromisoformat(s["last_inbound_at"]) if s.get("last_inbound_at") else None
+            phone_saved = bool(s.get("save_phone")) and not s.get("opt_out") and \
+                await customer_phone.save_from_messages(conn, tid, conv["contact_id"], s["input_ids"])
 
             if s.get("opt_out"):
                 outbox_ids += await self._commit_opt_out(conn, s, conv, now)
                 status = "committed"
-            elif s.get("route") == "silent":
+            elif s.get("route") in ("silent", "whatsapp_saved"):
                 status = "committed"
                 if s.get("opted_out_returned"):
                     await self._notify_seller(conn, s, "opted_out_returned", now)
+                if s.get("route") == "whatsapp_saved" and phone_saved and conv["ownership"] in ("BOT", "AWAITING_HUMAN"):
+                    # the confirmation belongs to the handoff: it goes out while the conversation waits for the seller, never over them
+                    oid = await enqueue(conn, tenant_id=tid, conversation_id=cid, effect_key=f"{turn_id}:whatsapp", kind="handoff_expectation",
+                                        text=cfg.handoff.whatsapp_saved_message.format(seller=cfg.conversation.persona.seller_display_name),
+                                        recipient=s["recipient"], send_epoch=conv["send_epoch"], priority=0,
+                                        max_staleness_s=cfg.concurrency.max_staleness_reply_s, turn_id=turn_id, source_inbound_at=src_at)
+                    if oid:
+                        outbox_ids.append(oid)
             else:
                 # lead profile and stage
                 sd = s.get("stage_decision") or {}
@@ -798,15 +825,22 @@ class TurnRunner:
             return {"handoff_id": open_same["id"], "mode": "already_open", "outbox_ids": []}
         summary = build_summary(s.get("contact_first_name"), s["stage"], reason, s["profile"],
                                 (s.get("masked_input") or [""])[-1])
+        speaks = cfg.handoff.send_expectation_message and s.get("window_open", True)
+        ask = bool(speaks and cfg.handoff.ask_customer_whatsapp and reason in cfg.handoff.ask_whatsapp_reasons
+                   and reason not in _SAFE_FAILURE_REASONS and not s.get("has_phone"))
+        if ask:
+            summary["whatsapp_asked"] = True
         h = await create_handoff(conn, cfg, tenant_id=tid, conversation_id=cid,
                                  lead_id=UUID(s["lead_id"]), reason=reason, summary=summary, now=now)
         ids = []
-        if cfg.handoff.send_expectation_message and s.get("window_open", True):
+        if speaks:
             seller = cfg.conversation.persona.seller_display_name
             text = (cfg.handoff.expectation_message_in_hours if h["mode"] == "awaiting"
                     else cfg.handoff.expectation_message_off_hours).format(seller=seller)
             if reason in _SAFE_FAILURE_REASONS:
                 text = cfg.conversation.safe_failure_message.format(seller=seller)
+            elif ask:
+                text = f"{text.rstrip()} {cfg.handoff.ask_whatsapp_text.format(seller=seller)}"
             epoch = (await (await conn.execute("select send_epoch from conversations where id=%s", (cid,))).fetchone())["send_epoch"]
             oid = await enqueue(conn, tenant_id=tid, conversation_id=cid, effect_key=f"{s['turn_id']}:handoff",
                                 kind="handoff_expectation", text=text, recipient=s["recipient"], send_epoch=epoch,

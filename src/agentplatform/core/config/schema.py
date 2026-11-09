@@ -320,6 +320,15 @@ class HandoffConfig(Strict):
     expectation_message_in_hours: str
     expectation_message_off_hours: str
     send_expectation_message: bool = True
+    # Optional: the handoff message also asks for the customer's WhatsApp, so the seller can call there. Code takes the number
+    # from the original message (the model only ever sees [TELEFONE]); it is kept encrypted on the contact and shown in the console.
+    ask_customer_whatsapp: bool = False
+    ask_whatsapp_reasons: list[str] = ["hot_lead", "explicit_request"]
+    ask_whatsapp_text: str = "Se preferir que o {seller} te chame no WhatsApp, pode deixar seu número aqui."
+    whatsapp_saved_message: str = "Anotado! O {seller} vai te chamar no WhatsApp."
+    # The number and up to this many other words: only the confirmation goes out. More than that, while the assistant is
+    # serving, the turn goes on as usual (the number is still kept).
+    whatsapp_reply_max_extra_words: Annotated[int, Field(ge=0, le=30)] = 6
     # A handoff caused by our own failure (not by the customer or a seller) goes back to the assistant after this, and the
     # customer's unanswered messages are answered. A conversation a seller took never comes back on its own.
     auto_return_reasons: list[str] = ["technical_failure", "budget_exhausted"]

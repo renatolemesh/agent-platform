@@ -69,6 +69,10 @@
         {% else %}<button name="status" value="blocked" class="btn-ghost" style="width:100%">Nunca atender esta pessoa</button>{% endif %}
       </form>{% endif %}
     </div>
+    {% if phone %}<div class="card"><h2>WhatsApp do cliente</h2>
+      <p>{{ phone }}</p>
+      <a class="btn-primary" href="https://wa.me/{{ phone | replace('+', '') }}" target="_blank" rel="noopener noreferrer">Chamar no WhatsApp</a>
+    </div>{% endif %}
     <div class="card"><h2>De onde veio</h2>
       <p class="small"><span class="badge plain">{{ c.entrypoint | entry_label }}</span>{% if c.username %} <span class="muted">@{{ c.username }}</span>{% endif %}</p>
       {% for o in origin %}<div class="small" style="margin-top:8px">

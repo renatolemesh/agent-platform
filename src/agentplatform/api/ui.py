@@ -338,6 +338,10 @@ MORE_SETTINGS = [
         Setting("handoff.escalate_to_owner_after_min", "Avisar o dono se ninguém responder em (minutos)", "int", "Em branco: não avisa.", optional=True),
         Setting("handoff.closed_reopens_on_inbound", "Conversa encerrada reabre quando o cliente escreve", "bool"),
         Setting("handoff.already_notified_guideline", "O que o assistente faz enquanto o vendedor não chega", "text"),
+        Setting("handoff.ask_customer_whatsapp", "Pedir o WhatsApp do cliente ao chamar o vendedor", "bool",
+                "O pedido vai junto da mensagem de passagem, sem esperar resposta. O número aparece só na conversa, no console, com um botão para chamar."),
+        Setting("handoff.ask_whatsapp_text", "Pedido do WhatsApp (vai depois da mensagem de passagem)", "line", placeholders=("seller",)),
+        Setting("handoff.whatsapp_saved_message", "Resposta quando o cliente deixa o número", "line", placeholders=("seller",)),
     ]},
     {"id": "conducao", "title": "Como ele conduz a conversa", "about": "Orientações internas que o assistente recebe em cada situação. O cliente nunca vê estes textos.", "settings": [
         Setting("conversation.tone_instructions", "O que cada tom significa", "map_text", options=TONE),
