@@ -277,8 +277,9 @@ async def test_number_in_the_caption_is_not_a_source_but_the_customers_comment_i
     async with tenant_tx(tenant) as conn:
         guards = [r["rule_id"] for r in await (await conn.execute(
             "select rule_id from guard_results where turn_id=%s and verdict='block'", (res.turn_id,))).fetchall()]
-        sent = await (await conn.execute("select payload from outbox where turn_id=%s", (res.turn_id,))).fetchone()
-    assert "numbers_provenance" in guards and "90 mil" in sent["payload"]["text"] and "777" not in sent["payload"]["text"]
+        sent = " ".join(r["payload"]["text"] for r in await (await conn.execute(
+            "select payload from outbox where turn_id=%s order by effect_key", (res.turn_id,))).fetchall())
+    assert "numbers_provenance" in guards and "90 mil" in sent and "777" not in sent
 
 
 async def test_spam_is_never_the_origin_of_a_conversation(tenant):

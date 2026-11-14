@@ -14,7 +14,7 @@ from agentplatform.core.channels.ports import (
     RateLimitedError,
     TokenInvalidError,
 )
-from agentplatform.core.outbox.bubbles import split_bubbles
+from agentplatform.core.outbox.bubbles import question_apart, split_bubbles
 
 PAYLOAD = {
     "object": "instagram",
@@ -95,3 +95,17 @@ def test_bubbles_respect_bytes_and_accents():
     assert split_bubbles("Olá! Tudo bem?") == ["Olá! Tudo bem?"]
     huge = "á" * 1200
     assert all(len(b.encode()) <= 1000 for b in split_bubbles(huge, 1000))
+
+
+def test_blank_line_starts_a_new_bubble():
+    assert split_bubbles("Tem grupos pra imóvel. Sem juros.\n\nVocê tem pressa?") == ["Tem grupos pra imóvel. Sem juros.", "Você tem pressa?"]
+    assert split_bubbles("a.\n\nb.\n\nc.\n\nd.\n\ne?") == ["a.", "b.", "c.", "d. e?"]      # never more than 4
+
+
+def test_closing_question_goes_apart():
+    reply = "Tem grupos pra imóvel. Valores estimados com base na tabela vigente. Você quer usar a carta o quanto antes?"
+    assert split_bubbles(question_apart(reply)) == ["Tem grupos pra imóvel. Valores estimados com base na tabela vigente.",
+                                                    "Você quer usar a carta o quanto antes?"]
+    assert question_apart("Tudo bem?") == "Tudo bem?"                          # nothing before the question
+    assert question_apart("Show, faz sentido.") == "Show, faz sentido."        # no question
+    assert question_apart("Oi!\n\nTudo bem?") == "Oi!\n\nTudo bem?"          # already split

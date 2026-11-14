@@ -1,12 +1,15 @@
 """The customer's WhatsApp, asked with the handoff message (handoff.ask_customer_whatsapp): the number only reaches the console."""
 import json
 import uuid
+from datetime import timedelta
 
 import pytest
 
 from agentplatform.core.agent.turn import TurnDeps, TurnRunner
 from agentplatform.core.db.pool import tenant_tx
 from agentplatform.core.handoff.alert_format import summary_line as _summary_line
+from agentplatform.core.handoff.alerts import run_alerts
+from agentplatform.core.handoff.notifiers import FallbackInbox, LogNotifier
 from agentplatform.core.models.fake import ScriptedGateway, analysis
 from agentplatform.core.orchestration.conversations import transition_ownership
 from agentplatform.core.security.keys import decrypt_field, encrypt_field
@@ -125,3 +128,43 @@ async def test_a_number_that_belongs_to_another_contact_is_kept_without_merging_
     conv, _ = await _answer(tenant, cfg, igsid, NUMBER)
     phone, phone_hash, *_ = await _state(tenant, conv)
     assert phone == E164 and phone_hash is None
+
+
+async def _alerts_at(tenant, cfg, when, conv):
+    notifier = LogNotifier()
+    async with tenant_tx(tenant) as conn:
+        await conn.execute(
+            "insert into tenant_users (tenant_id, email_hash, email_enc, display_name, role, notify_whatsapp_enc) values (%s, %s, %s, 'Vendedor', 'seller', %s)",
+            (tenant, uuid.uuid4().bytes, b"e", await encrypt_field(conn, tenant, "+5511999990000", "tenant_users.whatsapp")))
+        await run_alerts(conn, cfg, tenant, FallbackInbox([notifier]), when, "https://c")
+    alerts = [a for _, a in notifier.sent if str(conv["id"]) in a.console_url]     # other tests' handoffs share the tenant
+    return list({a.handoff_id: a for a in alerts}.values())                      # a log line is tried with every seller
+
+
+async def test_the_alert_waits_for_the_whatsapp_and_goes_out_with_it(tenant):
+    cfg = _cfg()
+    wait = timedelta(minutes=cfg.handoff.whatsapp_wait_minutes)
+    assert wait > timedelta(0)
+    conv, igsid = await _ready_says_yes(tenant, cfg)
+    assert await _alerts_at(tenant, cfg, NOON() + timedelta(minutes=1), conv) == []           # still waiting for the answer
+    await _answer(tenant, cfg, igsid, NUMBER)                                          # the number releases it at once
+    sent = await _alerts_at(tenant, cfg, NOON() + timedelta(minutes=1), conv)
+    assert len(sent) == 1 and any("Deixou o WhatsApp" in d for d in sent[0].details)
+
+
+async def test_no_answer_the_alert_still_goes_out_when_the_wait_ends(tenant):
+    cfg = _cfg()
+    wait = timedelta(minutes=cfg.handoff.whatsapp_wait_minutes)
+    conv, _ = await _ready_says_yes(tenant, cfg)
+    assert await _alerts_at(tenant, cfg, NOON() + wait - timedelta(seconds=30), conv) == []
+    sent = await _alerts_at(tenant, cfg, NOON() + wait, conv)
+    assert len(sent) == 1 and not any("WhatsApp" in d for d in sent[0].details)
+
+
+async def test_any_other_answer_releases_the_alert(tenant):
+    cfg = _cfg()
+    _, igsid = await _ready_says_yes(tenant, cfg)
+    conv = await inbound(tenant, ["pode ser por aqui mesmo"], igsid=igsid)
+    await TurnRunner(TurnDeps(config=cfg, package=PKG, gateway=ScriptedGateway({}), knowledge=None, now=NOON)).run(tenant, conv["id"])
+    assert len(await _alerts_at(tenant, cfg, NOON() + timedelta(minutes=1), conv)) == 1
+

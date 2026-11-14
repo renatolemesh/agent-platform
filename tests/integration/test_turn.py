@@ -53,12 +53,12 @@ async def test_qualifying_turn_commits_and_sends(tenant):
                                           slots=[("goal", "vehicle", "quero um carro"), ("credit_amount", "80 mil", "carta de 80 mil")])],
                 "respond": [draft("Olá! Sou o assistente virtual do consultor. Você tem um prazo em mente?")]})
     res = await r.run(tenant, conv["id"])
-    assert res.status == "committed" and len(res.outbox_ids) == 1
+    assert res.status == "committed" and len(res.outbox_ids) == 2      # the closing question goes apart
     lead = await lead_of(tenant, conv)
     assert lead["stage"] == "qualificando" and lead["profile"]["credit_amount"]["value"] == "80000"
     a = FakeChannelAdapter()
     out = await Dispatcher({"instagram": a}).dispatch_conversation(tenant, conv["id"])
-    assert len(out.sent) == 1 and "prazo" in a.texts()[0]
+    assert len(out.sent) == 2 and a.texts()[-1] == "Você tem um prazo em mente?"
 
 
 async def test_invented_number_blocked_then_retry(tenant):
@@ -110,7 +110,7 @@ async def test_reply_cannot_promise_to_stop_when_nothing_was_recorded(tenant):
     assert lead["opted_out_at"] is None
     a = FakeChannelAdapter()
     await Dispatcher({"instagram": a}).dispatch_conversation(tenant, conv["id"])
-    assert len(a.texts()) == 1 and a.texts()[0].endswith("Você quer que eu pare de te chamar por aqui?")
+    assert a.texts()[-1] == "Você quer que eu pare de te chamar por aqui?"
 
 
 async def test_opt_out_while_human_records_suppression_without_sending(tenant):

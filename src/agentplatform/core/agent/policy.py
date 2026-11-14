@@ -243,7 +243,8 @@ def stage_limit(manifest: PackageManifest, stage: str, funnel: FunnelConfig | No
 
 
 def select_guidelines(manifest: PackageManifest, stage: str, u: TurnUnderstanding, turn_text: str, turns_in_stage: int,
-                      cfg: GuidelinesConfig, tools: Iterable[str] = (), funnel: FunnelConfig | None = None) -> list[str]:
+                      cfg: GuidelinesConfig, tools: Iterable[str] = (), funnel: FunnelConfig | None = None,
+                      typo_min_len: int = 0) -> list[str]:
     """tools: tools that returned a usable result in this turn (guidelines with when_tools)."""
     n = normalize(turn_text)
     changes = {o.id: o for o in cfg.overrides}
@@ -257,7 +258,7 @@ def select_guidelines(manifest: PackageManifest, stage: str, u: TurnUnderstandin
     for _, g in sorted(candidates, key=lambda c: c[0]):
         if g.stages and stage not in g.stages:
             continue
-        if set(g.when_intents) & set(u.intents) or any(keyword_hit(k, n) for k in g.when_keywords) \
+        if set(g.when_intents) & set(u.intents) or any(keyword_hit(k, n, typo_min_len) for k in g.when_keywords) \
                 or set(getattr(g, "when_tools", [])) & set(tools):
             o = changes.get(g.id)
             picked.append(o.action if o and o.action else g.action)

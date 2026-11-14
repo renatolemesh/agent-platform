@@ -33,9 +33,50 @@ def _bare(text: str) -> str:
     return re.sub(r"[^\w\s]", "", normalize(text)).strip()
 
 
-def keyword_hit(keyword: str, normalized_text: str) -> bool:
-    """From the start of a word: "rg" is not in "urgencia", nor "logo" in "catalogo"; prefixes still work ("taxa" hits "taxas")."""
-    return re.search(rf"(?<!\w){re.escape(normalize(keyword))}", normalized_text) is not None
+_WORD = re.compile(r"\w+")
+
+
+def _one_edit(a: str, b: str) -> bool:
+    """At most one letter changed, added, removed or two neighbours swapped."""
+    if a == b:
+        return True
+    if abs(len(a) - len(b)) > 1:
+        return False
+    i = next((i for i, (x, y) in enumerate(zip(a, b)) if x != y), min(len(a), len(b)))
+    return (a[i + 1:] == b[i + 1:] or a[i:] == b[i + 1:] or a[i + 1:] == b[i:]
+            or (len(a) == len(b) and i + 1 < len(a) and a[i] == b[i + 1] and a[i + 1] == b[i] and a[i + 2:] == b[i + 2:]))
+
+
+def _word_close(k: str, w: str, prefix: bool, min_len: int) -> bool:
+    if w == k or (prefix and w.startswith(k)):
+        return True
+    if not min_len or len(k) < min_len or not w or w[0] != k[0]:     # a typo in the first letter is rare, and "renda" is not "venda"
+        return False
+    if _one_edit(k, w):
+        return True
+    # a keyword that is a word start ("cancel"): the typo must be inside it, not at its edges ("carro" is not "carrossel")
+    return prefix and any(_one_edit(k, c) and c[0] == k[0] and c[-1] == k[-1]
+                          for c in (w[:len(k) + d] for d in (-1, 0, 1) if 0 < len(k) + d <= len(w)))
+
+
+def keyword_starts(keyword: str, normalized_text: str, typo_min_len: int = 0) -> list[int]:
+    """Where the keyword starts in the text, from the start of a word: "rg" is not in "urgencia", nor "logo" in "catalogo";
+    prefixes still work ("taxa" hits "taxas"). With typo_min_len, a word of the keyword at least that long also matches
+    with one typo ("vendendor", "cancelr"); shorter words must be exact."""
+    k = normalize(keyword)
+    exact = [m.start() for m in re.finditer(rf"(?<!\w){re.escape(k)}", normalized_text)]
+    if exact or not typo_min_len:
+        return exact
+    kt = _WORD.findall(k)
+    if not kt or " ".join(kt) != k:              # punctuation in the keyword: exact only
+        return []
+    words = list(_WORD.finditer(normalized_text))
+    return [words[i].start() for i in range(len(words) - len(kt) + 1)
+            if all(_word_close(t, words[i + j].group(), j == len(kt) - 1, typo_min_len) for j, t in enumerate(kt))]
+
+
+def keyword_hit(keyword: str, normalized_text: str, typo_min_len: int = 0) -> bool:
+    return bool(keyword_starts(keyword, normalized_text, typo_min_len))
 
 
 # ---------------------------------------------------------------- privacy gate
@@ -101,10 +142,10 @@ def input_guard(text: str, cfg: InputGuardConfig, manifest: PackageManifest, dis
     off = set(disabled)
     for trig in manifest.handoff_triggers:
         if trig.reason == "hot_lead":       # "nao quero entrar" is the opposite of a hot lead
-            hit = any(not _HUMAN_REQ_NEGATED.search(n[:m.start()]) for k in trig.keywords
-                      for m in re.finditer(rf"(?<!\w){re.escape(normalize(k))}", n))
+            hit = any(not _HUMAN_REQ_NEGATED.search(n[:at]) for k in trig.keywords
+                      for at in keyword_starts(k, n, cfg.keyword_typo_min_len))
         else:
-            hit = any(keyword_hit(k, n) for k in trig.keywords)
+            hit = any(keyword_hit(k, n, cfg.keyword_typo_min_len) for k in trig.keywords)
         if (trig.locked or trig.reason not in off) and hit:
             res.action, res.handoff_reason = "handoff", trig.reason
             return res

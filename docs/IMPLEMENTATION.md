@@ -358,6 +358,29 @@ O dono pediu uma opção para o assistente pedir o WhatsApp do cliente ao chamar
   - Foi usado porque a instância da uazapi do servidor estava desconectada.
 - **Ainda falta:** revisão jurídica do pedido de número e teste com o gateway real.
 
+## Pergunta em mensagem própria e respostas curtas (14/11/2026)
+
+- **Pergunta separada:** com `conversation.question_own_bubble` (ligado por padrão), a pergunta que fecha a resposta vai numa mensagem própria, depois do texto e do aviso oficial.
+  - Uma linha em branco sempre começa uma nova mensagem. O limite continua de 4 mensagens por resposta.
+- **Respostas curtas (`analyze_turn@v6`):** uma resposta curta é lida com as opções da pergunta que o assistente acabou de fazer, mesmo com erro de digitação.
+  - Antes, "o quanto tantes", em resposta a "o quanto antes, ou não tem tanta pressa?", não virou "quer o quanto antes", e o assistente respondeu como se fosse "sem pressa".
+  - Casos u15 e u16 em `understand-v1`, que agora aceita `recent`.
+- **"quanto antes"** entra nas palavras da orientação de quem tem pressa.
+- **Erros de digitação em geral:**
+  - **Palavras-chave do pacote** (chamar o vendedor, orientações, oferecer de novo, reenviar link): aceitam um erro de digitação, uma letra trocada, sobrando, faltando ou duas invertidas.
+    - Só vale para palavras de 7 letras ou mais (`input_guard.keyword_typo_min_len`; 0 desliga) e com a primeira letra certa.
+    - Em palavra-chave que é começo de palavra, o erro não pode estar na última letra.
+    - Com 5 e 6 letras, as conversas reais mostraram trocas de sentido: "renda" virava "venda", e "muita dúvida" virava "muita dívida", que ativa a orientação de momento financeiro difícil.
+  - **`analyze_turn@v6`:** lê pelo sentido, com erro, sem acento ou abreviado. Se o erro deixa dois sentidos, não extrai o slot.
+  - **`respond@v14`:** também lê pelo sentido. Uma resposta curta responde à última pergunta e nunca vira a opção contrária. Na dúvida, pergunta. Nunca corrige o cliente.
+  - **Casos novos:** u17 e u18 em `understand-v1`; dois casos em `respond-v1`.
+- **O aviso ao vendedor espera o WhatsApp:** quando a passagem pede o número, o aviso espera até `handoff.whatsapp_wait_minutes` (5 por padrão), para já dizer se o cliente deixou o número.
+  - Qualquer mensagem do cliente libera o aviso na próxima rodada de avisos, com número ou sem. Sem resposta, ele sai quando o tempo acaba.
+  - Fora do horário, o aviso continua na hora de abertura.
+  - Ajuste no console, em "Passagem para o vendedor". Testes em `test_customer_whatsapp.py`.
+- **Aviso pelo simulador:** por padrão, conversa do simulador do console não avisa o vendedor. Com `handoff.simulator_alerts` (console, "Passagem para o vendedor"), o primeiro aviso sai como de uma conversa real, para testar o canal; os lembretes nunca saem.
+- **O aviso de valores estimados fica:** o texto da conta precisa conter o texto oficial do pacote (`registry`), então não dá para tirá-lo nem reescrevê-lo só pela configuração.
+
 ## Uma resposta e um direct por pessoa (09/11/2026)
 
 O dono pediu que qualquer comentário receba resposta e direct, mas só uma vez por pessoa, mesmo que ela comente várias vezes. "Qualquer comentário" já existia como acionamento; faltava o limite por pessoa sem prazo.

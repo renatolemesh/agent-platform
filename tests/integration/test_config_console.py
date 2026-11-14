@@ -448,7 +448,7 @@ async def test_a_slow_turn_tells_the_customer_once_through_the_outbox(tenant):
     assert res.status == "committed"
     assert a.texts() == [CFG.conversation.waiting_message], "out before the reply, on its own"
     await d.dispatch_conversation(tenant, conv["id"])
-    assert a.texts()[-1].startswith("Oi!") and len(a.texts()) == 2
+    assert a.texts()[1].startswith("Oi!") and a.texts()[-1] == "Você pensa em imóvel ou veículo?" and len(a.texts()) == 3   # question apart
     async with tenant_tx(tenant) as conn:
         rows = await (await conn.execute("select effect_key from outbox where conversation_id=%s and effect_key like %s", (conv["id"], "%:wait"))).fetchall()
     assert len(rows) == 1
@@ -461,7 +461,7 @@ async def test_a_fast_turn_says_nothing_extra(tenant):
     g = ScriptedGateway({"analyze_turn": [analysis(stage="novo")], "respond": [draft("Oi! Você pensa em imóvel ou veículo?")]})
     await TurnRunner(TurnDeps(config=timed(slow_after=5), package=PKG, gateway=g, knowledge=None, now=NOON, dispatch_now=d.dispatch_conversation)).run(tenant, conv["id"])
     await d.dispatch_conversation(tenant, conv["id"])
-    assert len(a.texts()) == 1
+    assert len(a.texts()) == 2      # the reply and its question apart, no waiting message
 
 
 async def test_a_conversation_a_person_took_gets_no_waiting_message(tenant):
@@ -1168,7 +1168,7 @@ async def test_a_first_reply_that_forgets_to_identify_itself_is_completed_by_cod
     g = ScriptedGateway({"analyze_turn": [analysis(stage="novo")], "respond": [draft("Você pensa em imóvel ou veículo?")]})
     await TurnRunner(TurnDeps(config=CFG, package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
     await Dispatcher({"instagram": a}).dispatch_conversation(tenant, conv["id"])
-    assert "assistente virtual" in a.texts()[0] and a.texts()[0].endswith("Você pensa em imóvel ou veículo?")
+    assert "assistente virtual" in a.texts()[0] and " ".join(a.texts()).endswith("Você pensa em imóvel ou veículo?")
 
 
 async def test_a_first_reply_that_already_says_it_stays_as_it_is(tenant):
@@ -1178,7 +1178,7 @@ async def test_a_first_reply_that_already_says_it_stays_as_it_is(tenant):
     g = ScriptedGateway({"analyze_turn": [analysis(stage="novo")], "respond": [draft(reply)]})
     await TurnRunner(TurnDeps(config=CFG, package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
     await Dispatcher({"instagram": a}).dispatch_conversation(tenant, conv["id"])
-    assert a.texts() == [reply]
+    assert " ".join(a.texts()) == reply
 
 
 def test_the_disclosure_goes_right_after_a_greeting():
@@ -1203,7 +1203,7 @@ async def test_the_second_reply_does_not_repeat_it(tenant):
     await inbound(tenant, ["tudo"], ig)
     await runner.run(tenant, conv["id"])
     await d.dispatch_conversation(tenant, conv["id"])
-    assert a.texts()[-1] == "Certo. Você pensa em imóvel ou veículo?"
+    assert " ".join(a.texts()[-2:]) == "Certo. Você pensa em imóvel ou veículo?"
 
 
 # ------------------------------------------------------------------ monitoring reads only what someone should hear about

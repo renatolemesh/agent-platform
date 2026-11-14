@@ -71,7 +71,7 @@ async def run_alerts(conn: AsyncConnection, cfg: PlatformConfig, tenant_id: UUID
            where h.tenant_id=%s and h.notified_at is null and h.notify_at <= %s for update of h skip locked""",
         (tenant_id, now))).fetchall()
     for h in due:
-        if h["channel"] == SIMULATOR_CHANNEL:          # console simulator: never notify a real seller
+        if h["channel"] == SIMULATOR_CHANNEL and not cfg.handoff.simulator_alerts:    # console simulator: no seller is told, unless asked
             await conn.execute("update handoffs set notified_at=now(), notified_via='simulator' where id=%s", (h["id"],))
             continue
         alert = _alert("handoff", h, reason_label(h["reason"]), console_base, manifest)

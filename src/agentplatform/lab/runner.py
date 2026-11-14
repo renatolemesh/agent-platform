@@ -81,7 +81,7 @@ async def _analyze(cfg: PlatformConfig, pkg: SegmentPackage, gateway, case: dict
                   slot_catalog=m.slot_catalog(), intent_catalog=m.intent_catalog(),      # same text the turn renders
                   objection_catalog=", ".join(m.objections), scope=m.scope,
                   stage_catalog=", ".join(x.name for x in m.stages), stage=case["stage"], profile="{}", summary="-",
-                  recent="(início)", turn_input="\n".join(f"- {t}" for t in case["msgs"]), origin=[])
+                  recent=case.get("recent", "(início)"), turn_input="\n".join(f"- {t}" for t in case["msgs"]), origin=[])
     return await gateway.chat(cfg.models.analyze_turn, msgs, CallContext(None, "lab:analyze_turn", purpose="lab"), AnalyzeOutput)
 
 

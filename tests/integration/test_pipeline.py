@@ -64,7 +64,7 @@ async def test_message_to_reply_end_to_end(rt_tenant, monkeypatch):
     ran = await pump([("ingress", {"tenant_id": str(t), "event_id": e}, {}) for t, e in created], honor_delays=True)
     assert "run_turn" in ran and "dispatch" in ran
     assert ran.count("run_turn") == 1                       # the burst became ONE turn
-    assert adapter.texts() == ["Oi! Sou o assistente virtual do consultor. Você pensa em imóvel ou veículo?"]
+    assert " ".join(adapter.texts()) == "Oi! Sou o assistente virtual do consultor. Você pensa em imóvel ou veículo?"
     async with tenant_tx(tid) as conn:
         lead = await (await conn.execute("select l.stage from leads l join contact_identities ci on ci.contact_id=l.contact_id where ci.external_user_id=%s", (igsid,))).fetchone()
     assert lead["stage"] == "engajado"
@@ -113,7 +113,7 @@ async def test_audio_burst_is_transcribed_into_one_turn(rt_tenant, monkeypatch):
     assert ran.count("run_turn") >= 1 and "transcribe_pending" in ran
     analyze_prompt = json.dumps([m for node, m in gw.calls if node == "analyze_turn"], ensure_ascii=False)
     assert "oitenta mil" in analyze_prompt
-    assert len(adapter.texts()) == 1 and adapter.texts()[0].endswith("Legal! Para quando você pensa no carro?")
+    assert len(adapter.texts()) == 2 and " ".join(adapter.texts()).endswith("Legal! Para quando você pensa no carro?")
 
 
 async def test_refused_image_goes_to_a_human(rt_tenant):

@@ -12,3 +12,7 @@
 {"id": "u12", "stage": "engajado", "msgs": ["é pra alavancagem, como no vídeo"], "slots": {"goal": "resale"}}
 {"id": "u13", "stage": "engajado", "msgs": ["quero isso como investimento"], "slots": {"goal": "resale"}}
 {"id": "u14", "stage": "engajado", "msgs": ["quero investir num apartamento de 200 mil"], "slots": {"goal": "real_estate", "credit_amount": "200000"}}
+{"id": "u15", "stage": "pronto_para_proposta", "recent": "- assistente: Pra imóvel tem grupos com parcela reduzida até a contemplação. Você quer usar a carta o quanto antes, ou não tem tanta pressa?", "msgs": ["o quanto tantes"], "slots": {"urgency": "now"}}
+{"id": "u16", "stage": "pronto_para_proposta", "recent": "- assistente: Pra imóvel tem grupos com parcela reduzida até a contemplação. Você quer usar a carta o quanto antes, ou não tem tanta pressa?", "msgs": ["sem pressa"], "slots": {"urgency": "no_rush"}}
+{"id": "u17", "stage": "engajado", "msgs": ["qro um carrro de uns 80 mil"], "slots": {"goal": "vehicle", "credit_amount": "80000"}}
+{"id": "u18", "stage": "engajado", "msgs": ["to pensandu num apartamentu"], "slots": {"goal": "real_estate"}}

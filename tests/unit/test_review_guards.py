@@ -102,3 +102,24 @@ def test_ordinary_sentences_are_left_alone(text):
 
 def test_a_placeholder_can_never_go_out():
     assert "pii_placeholder" in guard("Anotei [BANCO] e [ENDERECO] aqui.")
+
+
+@pytest.mark.parametrize("keyword,text,hit", [
+    ("falar com vendedor", "quero falar com vendendor", True),        # one letter more
+    ("contemplad", "quando sou contenplado", True),                     # one letter changed, inside a word start
+    ("cancelar", "quero cancelr", True),                                # one letter less
+    ("consultor", "chama o cosnultor", True),                           # two letters swapped
+    ("muita dívida", "tenho muita dúvida", False),                      # 6 letters: a different word, not a typo
+    ("renda", "quero a venda da carta", False),
+    ("lance", "comprei uma lancha", False),
+    ("consultor", "xonsultor", False),                                  # first letter wrong
+    ("contemplad", "quando fui contemplada", True),                     # still a prefix
+    ("logo", "vi no catálogo", False),
+])
+def test_keywords_take_one_typo_in_long_words(keyword, text, hit):
+    assert keyword_hit(keyword, normalize(text), 7) is hit
+
+
+def test_without_the_setting_keywords_are_exact():
+    assert not keyword_hit("falar com vendedor", normalize("quero falar com vendendor"))
+

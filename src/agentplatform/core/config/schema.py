@@ -149,6 +149,7 @@ class ConversationConfig(Strict):
     max_messages_in_context: PosInt = 8
     max_questions_per_message: Literal[1] = 1
     bubble_delay_ms: Annotated[int, Field(ge=0, le=10000)] = 1200
+    question_own_bubble: bool = True           # the closing question goes in a message of its own, as a person writes in a chat
     waiting_message: str = "Só um instante, já te respondo."
     first_message_disclosure: str = "Aqui é o assistente virtual de {seller}."       # added by code when the first reply forgets to say it
     greeting_pattern: str = r"^(oi|olá|ola|bom dia|boa tarde|boa noite|e aí|e ai)\b[!,.]*\s*"   # the disclosure goes right after a greeting, not before it
@@ -281,6 +282,8 @@ class MediaConfig(Strict):
 
 class InputGuardConfig(Strict):
     max_chars: PosInt = 4000
+    # Package keywords (handoff triggers, guidelines, offer again) also match with one typo in words this long or longer; 0 = exact only
+    keyword_typo_min_len: Annotated[int, Field(ge=0, le=20)] = 7
     opt_out_intent_confirm_threshold: Prob = 0.6    # the assistant asks whether the customer wants it to stop
     opt_out_intent_apply_threshold: Prob = 0.85     # clear enough: recorded right away, like the keywords
     injection_score_threshold: Prob = 0.6
@@ -329,6 +332,11 @@ class HandoffConfig(Strict):
     # The number and up to this many other words: only the confirmation goes out. More than that, while the assistant is
     # serving, the turn goes on as usual (the number is still kept).
     whatsapp_reply_max_extra_words: Annotated[int, Field(ge=0, le=30)] = 6
+    # After asking for the WhatsApp, the seller alert waits up to this long for the answer, so it already says whether the
+    # customer left a number. Any customer message sends it sooner; 0 = alert at once.
+    whatsapp_wait_minutes: Annotated[int, Field(ge=0, le=120)] = 5
+    # Console simulator conversations also send the first seller alert (to test the alert channel). Re-alerts never do.
+    simulator_alerts: bool = False
     # A handoff caused by our own failure (not by the customer or a seller) goes back to the assistant after this, and the
     # customer's unanswered messages are answered. A conversation a seller took never comes back on its own.
     auto_return_reasons: list[str] = ["technical_failure", "budget_exhausted"]

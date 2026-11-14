@@ -230,3 +230,26 @@ async def test_off_hours_pending_promoted_at_opening(tenant):
         stats = await run_alerts(conn, CFG, tenant, FallbackInbox([LogNotifier()]), noon, "https://c")
         c = await (await conn.execute("select ownership, handoff_pending from conversations where id=%s", (conv["id"],))).fetchone()
     assert stats["promoted"] == 1 and c["ownership"] == "AWAITING_HUMAN" and c["handoff_pending"] is False
+
+
+async def test_simulator_alerts_only_when_the_account_asks(tenant):
+    from agentplatform.core.orchestration.conversations import get_or_create_conversation
+    from agentplatform.lab import simulator
+    await simulator.ensure_account(tenant)
+    noon = datetime.now(timezone.utc).replace(hour=15, minute=0)
+    async with tenant_tx(tenant) as conn:
+        ca = await (await conn.execute("select id from channel_accounts where tenant_id=%s and channel='simulator'", (tenant,))).fetchone()
+        await conn.execute(
+            "insert into tenant_users (tenant_id, email_hash, email_enc, display_name, role, notify_whatsapp_enc) values (%s, %s, %s, 'Vendedor', 'seller', %s)",
+            (tenant, uuid.uuid4().bytes, b"e", await encrypt_field(conn, tenant, "+5511999990000", "tenant_users.whatsapp")))
+        convs = [await get_or_create_conversation(conn, tenant, ca["id"], "simulator", f"sim-{uuid.uuid4().hex[:8]}", "novo") for _ in range(2)]
+        for on, conv in zip((False, True), convs):
+            h = await create_handoff(conn, CFG, tenant_id=tenant, conversation_id=conv["id"], lead_id=None, reason="hot_lead",
+                                     summary={"first_name": "Sim"}, now=noon)
+            cfg = CFG.model_copy(update={"handoff": CFG.handoff.model_copy(update={"simulator_alerts": on})})
+            notifier = LogNotifier()
+            await run_alerts(conn, cfg, tenant, FallbackInbox([notifier]), noon, "https://c")
+            row = await (await conn.execute("select notified_via from handoffs where id=%s", (h["handoff_id"],))).fetchone()
+            mine = [a for _, a in notifier.sent if a.handoff_id == h["handoff_id"]]
+            assert (row["notified_via"], bool(mine)) == (("log", True) if on else ("simulator", False))
+

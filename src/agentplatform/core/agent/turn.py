@@ -45,6 +45,7 @@ from agentplatform.core.knowledge.service import KnowledgeService
 from agentplatform.core.media.processor import render_for_turn
 from agentplatform.core.models.gateway import BudgetDenied, CallContext, ModelCallError, ModelGateway, tenant_context
 from agentplatform.core.orchestration.conversations import conv_lock_key, stop_followups, utcnow
+from agentplatform.core.outbox.bubbles import question_apart
 from agentplatform.core.outbox.store import enqueue, enqueue_reply
 from agentplatform.core.packages.contract import SegmentPackage, profile_has
 
@@ -353,8 +354,9 @@ class TurnRunner:
             if url not in text:
                 text = f"{text.rstrip()} {url}"
         customer = [*s["masked_input"], *(m["text"] for m in s["recent"] if m["from"] == "cliente")]
-        return self._identified(s, with_disclosures(text, disclosures_needed(text, s.get("tool_results", []), customer,
+        text = self._identified(s, with_disclosures(text, disclosures_needed(text, s.get("tool_results", []), customer,
                                                                              self.d.config.compliance.required_disclosures)))
+        return question_apart(text) if self.d.config.conversation.question_own_bubble else text
 
     def _identified(self, s: TurnState, text: str) -> str:
         cfg = self.d.config
@@ -455,13 +457,14 @@ class TurnRunner:
             reason = "simulation_request"     # asked for a simulation the table could not answer: the seller does it
         guidelines = s.get("guidelines", []) + policy.select_guidelines(
             self.m, stage_now, u, turn_text, s["turns_in_stage"], cfg.guidelines,
-            tools=[t["tool"] for t in tool_results if (t.get("result") or {}).get("options")], funnel=cfg.funnel)
+            tools=[t["tool"] for t in tool_results if (t.get("result") or {}).get("options")], funnel=cfg.funnel,
+            typo_min_len=cfg.input_guard.keyword_typo_min_len)
         if reason and reason not in _URGENT_HANDOFFS and s.get("open_handoff"):
             reason = None
             guidelines.insert(0, cfg.handoff.already_notified_guideline)
         if "opt_out" in u.intents:
             guidelines.insert(0, cfg.guidelines.opt_out_check)
-        resend = stage_now == self.m.form_sent_stage and any(keyword_hit(k, normalize(turn_text)) for k in self.m.form_resend_keywords)
+        resend = stage_now == self.m.form_sent_stage and any(keyword_hit(k, normalize(turn_text), cfg.input_guard.keyword_typo_min_len) for k in self.m.form_resend_keywords)
         if (stage_now == self.m.form_stage or resend) and self.m.form_sent_stage and not s.get("handoff_reason"):
             # code-driven next step: single-use pre-registration link (core tool), then the "form sent" stage
             from agentplatform.core.tools.lead_form import create_link
@@ -513,7 +516,7 @@ class TurnRunner:
             asked = ("simulation_request" in u.intents or "price_question" in u.intents) and \
                 (self.m.profile_complete(profile) or proactive_ready)
             offered = proactive_ready and bool(filled & set(spec.input_model.model_fields))
-            again = proactive_ready and any(keyword_hit(k, normalize(turn_text)) for k in self.m.offer_again_keywords)
+            again = proactive_ready and any(keyword_hit(k, normalize(turn_text), self.d.config.input_guard.keyword_typo_min_len) for k in self.m.offer_again_keywords)
             if spec.name.startswith("simulate") and (asked or offered or again):
                 args = {k: v.get("value") for k, v in profile.items() if isinstance(v, dict)}
                 try:
@@ -716,6 +719,7 @@ class TurnRunner:
             src_at = datetime.fromisoformat(s["last_inbound_at"]) if s.get("last_inbound_at") else None
             phone_saved = bool(s.get("save_phone")) and not s.get("opt_out") and \
                 await customer_phone.save_from_messages(conn, tid, conv["contact_id"], s["input_ids"])
+            await customer_phone.release_wait(conn, cid, now)       # the customer answered the WhatsApp ask (number or not)
 
             if s.get("opt_out"):
                 outbox_ids += await self._commit_opt_out(conn, s, conv, now)
@@ -832,6 +836,8 @@ class TurnRunner:
             summary["whatsapp_asked"] = True
         h = await create_handoff(conn, cfg, tenant_id=tid, conversation_id=cid,
                                  lead_id=UUID(s["lead_id"]), reason=reason, summary=summary, now=now)
+        if ask and h["mode"] == "awaiting":
+            await customer_phone.hold_for_answer(conn, h["handoff_id"], now, cfg.handoff.whatsapp_wait_minutes, cfg.handoff.sla_minutes)
         ids = []
         if speaks:
             seller = cfg.conversation.persona.seller_display_name

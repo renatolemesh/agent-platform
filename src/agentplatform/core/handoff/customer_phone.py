@@ -6,6 +6,7 @@ before any prompt. It is stored encrypted on the contact, like an imported lead'
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from psycopg import AsyncConnection
@@ -53,3 +54,23 @@ async def save_from_messages(conn: AsyncConnection, tenant_id: UUID, contact_id:
            where conversation_id in (select id from conversations where contact_id=%s) and taken_at is null and not is_notice""",
         (contact_id,))
     return True
+
+
+async def hold_for_answer(conn: AsyncConnection, handoff_id: UUID, now: datetime, wait_minutes: int, sla_minutes: int) -> None:
+    """The alert waits for the answer to the WhatsApp ask, up to `wait_minutes`; the alerts job sends it when that time comes."""
+    if wait_minutes <= 0:
+        return
+    at = now + timedelta(minutes=wait_minutes)
+    await conn.execute(
+        """update handoffs set notify_at = %s, sla_due_at = %s, summary = summary || '{"whatsapp_wait": true}'::jsonb
+           where id = %s and notified_at is null and notify_at <= %s""",
+        (at, at + timedelta(minutes=sla_minutes), handoff_id, at))
+
+
+async def release_wait(conn: AsyncConnection, conversation_id: UUID, now: datetime) -> int:
+    """A customer message after the ask: the waiting alert goes out on the next alerts run. Off-hours alerts keep their time."""
+    cur = await conn.execute(
+        """update handoffs set notify_at = %s::timestamptz, sla_due_at = %s::timestamptz + (sla_due_at - notify_at), summary = summary - 'whatsapp_wait'
+           where conversation_id = %s and notified_at is null and taken_at is null and (summary->>'whatsapp_wait') = 'true'""",
+        (now, now, conversation_id))
+    return cur.rowcount

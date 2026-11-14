@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import re
 
-_SENTENCE = re.compile(r"(?<=[.!?…])\s+|\n{2,}")
+_SENTENCE = re.compile(r"(?<=[.!?…])\s+")
+_PARAGRAPH = re.compile(r"\n\s*\n")
 
 
 def _bytes(s: str) -> int:
@@ -34,10 +35,34 @@ def _hard_split(text: str, limit: int) -> list[str]:
 
 
 def split_bubbles(text: str, max_bytes: int = 1000, max_bubbles: int = 4) -> list[str]:
+    """Sentences share a bubble up to the byte limit; a blank line always starts a new bubble (a paragraph is a message,
+    as people write in a chat)."""
     text = text.strip()
     if not text:
         return []
-    parts = [p.strip() for p in _SENTENCE.split(text) if p.strip()]
+    bubbles: list[str] = []
+    for para in (p.strip() for p in _PARAGRAPH.split(text)):
+        if para:
+            bubbles += _pack([s.strip() for s in _SENTENCE.split(para) if s.strip()], max_bytes)
+    if len(bubbles) > max_bubbles:            # never flood: merge the tail into the last allowed bubble if it fits
+        head, tail = bubbles[:max_bubbles - 1], " ".join(bubbles[max_bubbles - 1:])
+        bubbles = head + _hard_split(tail, max_bytes)
+    return bubbles
+
+
+def question_apart(text: str) -> str:
+    """The closing question after a blank line, so it is sent as its own bubble. Text with no answer before the question
+    stays as it is."""
+    text = text.strip()
+    if "\n" in text or not text.endswith("?"):
+        return text
+    sents = _SENTENCE.split(text)
+    if len(sents) < 2:
+        return text
+    return " ".join(sents[:-1]) + "\n\n" + sents[-1]
+
+
+def _pack(parts: list[str], max_bytes: int) -> list[str]:
     bubbles: list[str] = []
     cur = ""
     for p in parts:
@@ -55,7 +80,4 @@ def split_bubbles(text: str, max_bytes: int = 1000, max_bubbles: int = 4) -> lis
                 cur = chunks[-1]
     if cur:
         bubbles.append(cur)
-    if len(bubbles) > max_bubbles:            # never flood: merge the tail into the last allowed bubble if it fits
-        head, tail = bubbles[:max_bubbles - 1], " ".join(bubbles[max_bubbles - 1:])
-        bubbles = head + _hard_split(tail, max_bytes)
     return bubbles
