@@ -84,18 +84,22 @@ class WhatsAppCloudNotifier:
             return False
 
 
+_ICON = {"handoff": "🔔", "realert": "⏰", "escalation": "⚠️"}
+
+
 def alert_text(alert: Alert, secret: bytes, base_url: str) -> str:
     """The alert as plain text, for channels without templates or buttons: the actions are signed links, as in the e-mail."""
-    lines = [f"Atendimento: {alert.first_name or 'cliente'}", f"Motivo: {alert.reason}"]
+    lines = [f"{_ICON.get(alert.kind, '🔔')} {alert.reason}: {alert.first_name or 'cliente'}"]
     if alert.stage:
-        lines.append(f"Estágio: {alert.stage}")
-    if alert.summary:
-        lines.append(f"Resumo: {alert.summary}")
-    lines += ["", f"Abrir no console (login necessário): {alert.console_url}"]
+        lines.append(f"Etapa: {alert.stage}")
+    body = list(alert.details) or ([alert.summary] if alert.summary else [])
+    if body:
+        lines += ["", *body]
+    lines += ["", f"👉 Abrir a conversa: {alert.console_url}"]
     if alert.handoff_id:
         base = base_url.rstrip("/")
-        lines += [f"Assumi: {base}/actions/{sign_action(secret, 'took', alert.handoff_id)}",
-                  f"Devolver ao assistente: {base}/actions/{sign_action(secret, 'return', alert.handoff_id)}"]
+        lines += [f"✅ Assumi: {base}/actions/{sign_action(secret, 'took', alert.handoff_id)}",
+                  f"↩️ Devolver ao assistente: {base}/actions/{sign_action(secret, 'return', alert.handoff_id)}"]
     return "\n".join(lines)
 
 
@@ -138,6 +142,34 @@ class WhatsAppGatewayNotifier:
     async def send_ops(self, to: str, title: str, detail: str, template: str | None = None) -> bool:
         """Platform-operator alert: the same title and detail the Cloud API template carries."""
         return await self._send(to, f"{title}\n\n{detail[:900]}")
+
+
+class TelegramTestNotifier:
+    """Tests only: every alert goes to one fixed Telegram chat, whoever the seller is, as the same text the WhatsApp gateway sends.
+    The official channel stays WhatsApp; this is not a way to reach sellers."""
+    name = "telegram_test"
+
+    def __init__(self, token: str, chat_id: str, action_secret: bytes, public_base_url: str,
+                 transport: httpx.AsyncBaseTransport | None = None):
+        self.chat_id, self.secret, self.base = chat_id, action_secret, public_base_url
+        self._c = httpx.AsyncClient(base_url=f"https://api.telegram.org/bot{token}", transport=transport, timeout=10)
+
+    async def _send(self, text: str) -> bool:
+        try:
+            r = await self._c.post("/sendMessage", json={"chat_id": self.chat_id, "text": text, "disable_web_page_preview": True})
+            if r.status_code >= 400:
+                log.warning("telegram test notifier HTTP %s", r.status_code)      # never the URL: it carries the token
+                return False
+            return True
+        except httpx.HTTPError as e:
+            log.warning("telegram test notifier error %s", type(e).__name__)
+            return False
+
+    async def send_alert(self, seller: SellerContact, alert: Alert) -> bool:
+        return await self._send(alert_text(alert, self.secret, self.base))
+
+    async def send_ops(self, to: str, title: str, detail: str, template: str | None = None) -> bool:
+        return await self._send(f"{title}\n\n{detail[:900]}")
 
 
 def parse_whatsapp_button(body: bytes) -> list[str]:

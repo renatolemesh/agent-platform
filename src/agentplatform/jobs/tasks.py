@@ -564,7 +564,7 @@ async def tenants_tick() -> Next:
             async with tenant_tx(tid) as conn:
                 if not await registry.kill_switch_on(conn, tenant_id=tid, feature="followups"):
                     await tick(conn, tr.config, tid, tr.package.manifest.templates, utcnow(), tr.policy())
-                await run_alerts(conn, tr.config, tid, rt.inbox, utcnow(), rt.settings.public_base_url + "/console")
+                await run_alerts(conn, tr.config, tid, rt.inbox, utcnow(), rt.settings.public_base_url + "/console", tr.package.manifest)
                 for cid in await auto_return_to_bot(conn, tr.config, tid, utcnow()):
                     log.info("conversation %s back with the assistant after a failure handoff", cid)
                 if tr.policy().live:

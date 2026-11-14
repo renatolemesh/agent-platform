@@ -34,6 +34,7 @@ x-app: &app
     - whatsapp_token
     - whatsapp_app_secret
     - whatsapp_alert_token
+    - telegram_bot_token
     - smtp_url
     - console_session_secret
     - connect_webhook_secret
@@ -334,6 +335,7 @@ secrets:
   whatsapp_token: { file: ./secrets/whatsapp_token }
   whatsapp_app_secret: { file: ./secrets/whatsapp_app_secret }
   whatsapp_alert_token: { file: ./secrets/whatsapp_alert_token }
+  telegram_bot_token: { file: ./secrets/telegram_bot_token }
   smtp_url: { file: ./secrets/smtp_url }
   console_session_secret: { file: ./secrets/console_session_secret }
   connect_webhook_secret: { file: ./secrets/connect_webhook_secret }

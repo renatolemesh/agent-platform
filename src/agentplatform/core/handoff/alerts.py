@@ -9,6 +9,7 @@ from psycopg import AsyncConnection
 
 from agentplatform.core.channels.ports import Alert, SellerContact
 from agentplatform.core.config.schema import PlatformConfig
+from agentplatform.core.handoff.alert_format import alert_details, reason_label, stage_label, summary_line
 from agentplatform.core.handoff.service import in_human_hours, reopen_unanswered
 from agentplatform.core.orchestration.conversations import transition_ownership
 from agentplatform.core.security.keys import decrypt_field
@@ -47,8 +48,15 @@ async def _deliver(inbox, candidates: list[SellerContact], alert: Alert) -> tupl
 SIMULATOR_CHANNEL = "simulator"     # console simulator channel (lab/simulator.py)
 
 
+def _alert(kind: str, h: dict, reason: str, console_base: str, manifest) -> Alert:
+    s = h["summary"] or {}
+    return Alert(kind, s.get("first_name"), stage_label(h["stage"], manifest), reason, summary_line(s, manifest),
+                 f"{console_base}/conversations/{h['conversation_id']}", h["id"], alert_details(s, manifest))
+
+
 async def run_alerts(conn: AsyncConnection, cfg: PlatformConfig, tenant_id: UUID, inbox, now: datetime,
-                     console_base: str) -> dict:
+                     console_base: str, manifest=None) -> dict:
+    """`manifest`: the tenant's package, for stage and profile labels in the alert text."""
     stats = {"sent": 0, "realerts": 0, "promoted": 0, "failed": 0, "escalated": 0}
     if in_human_hours(cfg, now):
         pending = await (await conn.execute(
@@ -66,8 +74,7 @@ async def run_alerts(conn: AsyncConnection, cfg: PlatformConfig, tenant_id: UUID
         if h["channel"] == SIMULATOR_CHANNEL:          # console simulator: never notify a real seller
             await conn.execute("update handoffs set notified_at=now(), notified_via='simulator' where id=%s", (h["id"],))
             continue
-        alert = Alert("handoff", h["summary"].get("first_name"), h["stage"], h["reason"],
-                      _summary_line(h["summary"]), f"{console_base}/conversations/{h['conversation_id']}", h["id"])
+        alert = _alert("handoff", h, reason_label(h["reason"]), console_base, manifest)
         first = await pick_seller(conn, tenant_id, cfg, sellers)
         via, seller = await _deliver(inbox, [first, *(s for s in sellers if s is not first)] if first else [], alert)
         if via:
@@ -86,8 +93,7 @@ async def run_alerts(conn: AsyncConnection, cfg: PlatformConfig, tenant_id: UUID
                  and h.realerts < 2 and not h.is_notice and c.ownership in ('AWAITING_HUMAN','HUMAN') and ca.channel <> %s""",
             (tenant_id, now, SIMULATOR_CHANNEL))).fetchall()
         for h in late:
-            alert = Alert("realert", h["summary"].get("first_name"), h["stage"], f"SLA: {h['reason']}",
-                          _summary_line(h["summary"]), f"{console_base}/conversations/{h['conversation_id']}", h["id"])
+            alert = _alert("realert", h, f"Ainda sem resposta: {reason_label(h['reason'])}", console_base, manifest)
             first = await pick_seller(conn, tenant_id, cfg, sellers)
             if (await _deliver(inbox, [first, *(s for s in sellers if s is not first)] if first else [], alert))[0]:
                 stats["realerts"] += 1
@@ -105,11 +111,12 @@ async def run_alerts(conn: AsyncConnection, cfg: PlatformConfig, tenant_id: UUID
                 """insert into handoffs (tenant_id, conversation_id, reason, summary, notify_at, sla_due_at)
                    values (%s,%s,'human_unanswered',%s,%s,%s)""",
                 (tenant_id, c["id"], '{"first_name": null}', now, now + timedelta(minutes=cfg.handoff.sla_minutes)))
-        stats["escalated"] = await _escalate_to_owner(conn, cfg, tenant_id, inbox, now, console_base)
+        stats["escalated"] = await _escalate_to_owner(conn, cfg, tenant_id, inbox, now, console_base, manifest)
     return stats
 
 
-async def _escalate_to_owner(conn: AsyncConnection, cfg: PlatformConfig, tenant_id: UUID, inbox, now: datetime, console_base: str) -> int:
+async def _escalate_to_owner(conn: AsyncConnection, cfg: PlatformConfig, tenant_id: UUID, inbox, now: datetime, console_base: str,
+                             manifest=None) -> int:
     """Re-alerts to the seller ran out and the customer is still waiting: the owner hears about it, once per handoff."""
     after = cfg.handoff.escalate_to_owner_after_min
     if not after:
@@ -125,8 +132,7 @@ async def _escalate_to_owner(conn: AsyncConnection, cfg: PlatformConfig, tenant_
     owners = await _contacts(conn, tenant_id, cfg, ("tenant_owner",))
     n = 0
     for h in rows:
-        alert = Alert("escalation", h["summary"].get("first_name"), h["stage"], f"Cliente sem resposta: {h['reason']}",
-                      _summary_line(h["summary"]), f"{console_base}/conversations/{h['conversation_id']}", h["id"])
+        alert = _alert("escalation", h, f"Cliente sem resposta: {reason_label(h['reason'])}", console_base, manifest)
         if (await _deliver(inbox, owners, alert))[0]:
             await conn.execute("update handoffs set escalated_at=now() where id=%s", (h["id"],))
             n += 1
@@ -194,12 +200,6 @@ async def pick_seller(conn, tenant_id, cfg: PlatformConfig, sellers: list[Seller
                  "where h.tenant_id=%s and a.after->>'seller' = %s and h.taken_at is null")
         counts[s.seller_id] = (await (await conn.execute(q, (tenant_id, str(s.seller_id)))).fetchone())["n"]
     return min(sellers, key=lambda s: counts[s.seller_id])
-
-
-def _summary_line(summary: dict) -> str:
-    prof = ", ".join(f"{k}={v}" for k, v in (summary.get("profile") or {}).items() if v is not None)
-    left = "deixou WhatsApp (veja no console) | " if summary.get("whatsapp_left") else ""     # the number itself stays in the console
-    return (left + prof + (" | " if prof else "") + (summary.get("last_message") or ""))[:300]
 
 
 async def apply_seller_action(conn: AsyncConnection, tenant_id: UUID, action: str, handoff_id: UUID, actor: UUID | None) -> str:

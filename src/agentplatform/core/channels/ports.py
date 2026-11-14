@@ -150,6 +150,7 @@ class Alert:
     summary: str
     console_url: str
     handoff_id: UUID | None
+    details: tuple[str, ...] = ()   # "Label: value" lines for text channels (alert_format); summary is the same in one line
 
 
 @dataclass(frozen=True)

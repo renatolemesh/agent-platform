@@ -19,6 +19,7 @@ from agentplatform.core.handoff.notifiers import (
     EmailNotifier,
     FallbackInbox,
     LogNotifier,
+    TelegramTestNotifier,
     WhatsAppCloudNotifier,
     WhatsAppGatewayNotifier,
 )
@@ -123,6 +124,8 @@ class Runtime:
         s = self.settings
         secret = (s.console_session_secret.get_secret_value() if s.console_session_secret else "dev").encode()
         chain = []
+        if s.app_env != "prod" and s.telegram_bot_token and s.telegram_test_chat_id:     # tests: one fixed chat, before anything real
+            chain.append(TelegramTestNotifier(s.telegram_bot_token.get_secret_value(), s.telegram_test_chat_id, secret, s.public_base_url))
         wa = self._whatsapp_alerts(secret)
         if wa:
             chain.append(wa)

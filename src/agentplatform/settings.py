@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     whatsapp_alert_url: str | None = None              # gateway base URL
     whatsapp_alert_token: SecretStr | None = None      # uazapi: instance token; Evolution API: apikey; Evolution Go: instance token
     whatsapp_alert_instance: str | None = None         # Evolution API only: the instance name in the path
+    # Tests only, never production: every seller alert also goes to this one Telegram chat (the bot cannot write first, so the
+    # chat must have started the bot). Refused with APP_ENV=prod.
+    telegram_bot_token: SecretStr | None = None
+    telegram_test_chat_id: str | None = None
 
     smtp_url: SecretStr | None = None
     alert_email_from: str | None = None
@@ -97,6 +101,8 @@ class Settings(BaseSettings):
     def _alert_gateway(self) -> "Settings":
         if self.whatsapp_alert_provider == "evolution" and self.whatsapp_alert_url and not self.whatsapp_alert_instance:
             raise ValueError("WHATSAPP_ALERT_INSTANCE is required with WHATSAPP_ALERT_PROVIDER=evolution")
+        if self.app_env == "prod" and self.telegram_test_chat_id:
+            raise ValueError("TELEGRAM_TEST_CHAT_ID is for tests only: production alerts go to each seller")
         return self
 
     @model_validator(mode="after")

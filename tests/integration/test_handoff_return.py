@@ -194,7 +194,7 @@ async def test_question_without_an_approved_answer_reaches_the_seller_without_ta
     async with tenant_tx(tenant) as conn:
         await _add_user(conn, tenant, "seller")
         await run_alerts(conn, CFG, tenant, inbox, NOON(), "http://x/console")
-    assert [a.reason for _, a in inbox.notifiers[0].sent] == ["knowledge_gap"]
+    assert [a.reason for _, a in inbox.notifiers[0].sent] == ["Pergunta sem resposta aprovada"]      # the alert says it in words
     # a second question the same day does not bother the seller again, and does not count as "the consultant was already called"
     conv2 = await inbound(tenant, ["e o sorteio?"], await _igsid(tenant, conv))
     await turn(script()).run(tenant, conv2["id"])

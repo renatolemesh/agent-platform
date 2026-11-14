@@ -6,7 +6,7 @@ import pytest
 
 from agentplatform.core.agent.turn import TurnDeps, TurnRunner
 from agentplatform.core.db.pool import tenant_tx
-from agentplatform.core.handoff.alerts import _summary_line
+from agentplatform.core.handoff.alert_format import summary_line as _summary_line
 from agentplatform.core.models.fake import ScriptedGateway, analysis
 from agentplatform.core.orchestration.conversations import transition_ownership
 from agentplatform.core.security.keys import decrypt_field, encrypt_field
@@ -67,7 +67,7 @@ async def test_the_handoff_asks_for_the_whatsapp_and_the_number_is_kept_for_the_
     assert sent[-1] == ("handoff_expectation", cfg.handoff.whatsapp_saved_message.format(seller=cfg.conversation.persona.seller_display_name))
     assert g.calls == []                                                    # no model saw it
     assert all("99876" not in (m or "") for m in masked) and any("[TELEFONE]" in (m or "") for m in masked)
-    assert "deixou WhatsApp" in _summary_line(summary) and "99876" not in _summary_line(summary)
+    assert "Deixou o WhatsApp" in _summary_line(summary) and "99876" not in _summary_line(summary)
     assert "99876" not in json.dumps(summary)
 
 

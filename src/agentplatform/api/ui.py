@@ -8,6 +8,8 @@ from decimal import Decimal
 
 from markupsafe import Markup
 
+from agentplatform.core.handoff.alert_format import REASON as _ALERT_REASON
+
 OWNER = {"BOT": ("Assistente", "accent"), "AWAITING_HUMAN": ("Aguardando vendedor", "warn"),
          "HUMAN": ("Com vendedor", "ok"), "PAUSED": ("Pausada", "muted"), "CLOSED": ("Encerrada", "muted")}
 DIRECTION = {"in": "Cliente", "out_bot": "Assistente", "out_human": "Vendedor", "out_system": "Sistema"}
@@ -33,14 +35,7 @@ STATUS = {
 ENTRYPOINT = {"dm": "Mensagem direta", "story_reply": "Resposta a story", "story_mention": "Menção em story",
               "ad_referral": "Anúncio", "icebreaker": "Pergunta rápida", "comment": "Comentário", "campaign": "Campanha",
               "import": "Importação", "webchat": "Chat do site"}
-REASON = {"knowledge_gap": "Pergunta sem resposta aprovada", "opt_out": "Pediu para parar", "opted_out_returned": "Pediu para parar e voltou a escrever",
-          "technical_failure": "Falha técnica", "conversation_budget": "Teto desta conversa",
-          "human_unanswered": "Cliente sem resposta",
-          "explicit_request": "Pediu um vendedor", "hot_lead": "Lead quente", "frustration": "Cliente irritado",
-          "no_progress": "Conversa sem avanço", "guard_blocked": "Resposta bloqueada pela revisão", "media_review": "Mídia para revisar",
-          "complaint_or_abuse": "Reclamação", "legal": "Assunto jurídico", "requires_sensitive_data": "Exige dado sensível",
-          "simulation_request": "Pediu simulação", "specialist_question": "Pergunta para o vendedor", "post_sale": "Pós-venda", "cancellation": "Cancelamento",
-          "out_of_scope": "Fora do escopo", "budget_exhausted": "Orçamento de IA esgotado"}
+REASON = _ALERT_REASON        # one map for the console and the seller alerts
 ROLE = {"platform_admin": "Administrador da plataforma", "tenant_owner": "Responsável", "seller": "Vendedor",
         "reviewer": "Revisor"}
 _RETRY_SAME_BROWSER = ("Este retorno do Facebook não corresponde a uma conexão aberta neste navegador (link antigo, já usado "

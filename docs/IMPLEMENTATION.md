@@ -353,6 +353,9 @@ O dono pediu uma opção para o assistente pedir o WhatsApp do cliente ao chamar
   - **Formato:** texto com resumo e link do console. "Assumi" e "Devolver" vão como links assinados, como no e-mail.
   - **Avisos ao operador** (`OPS_ALERT_WHATSAPP`) usam o mesmo gateway.
   - **Falha:** se o gateway recusar, o aviso segue para o e-mail.
+- **Telegram só para testes (14/11):** com `TELEGRAM_TEST_CHAT_ID` e o segredo `telegram_bot_token`, todo aviso de vendedor vai primeiro para esse único chat, com o mesmo texto do gateway.
+  - Em `APP_ENV=prod` o processo recusa iniciar com isso: o canal oficial continua sendo o WhatsApp.
+  - Foi usado porque a instância da uazapi do servidor estava desconectada.
 - **Ainda falta:** revisão jurídica do pedido de número e teste com o gateway real.
 
 ## Uma resposta e um direct por pessoa (09/11/2026)

@@ -42,10 +42,10 @@ async def test_each_gateway_gets_its_path_and_token_header(provider, instance, p
 
 def test_the_text_carries_the_console_and_signed_actions_but_no_customer_number():
     text = alert_text(ALERT, SECRET, "https://app.test/")
-    assert "Atendimento: Ana" in text and ALERT.console_url in text
-    took = next(x for x in text.splitlines() if x.startswith("Assumi: ")).split("/actions/")[1]
+    assert text.splitlines()[0] == "🔔 hot_lead: Ana" and ALERT.console_url in text
+    took = next(x for x in text.splitlines() if "Assumi: " in x).split("/actions/")[1]
     assert verify_action(SECRET, took) == ("took", HID)
-    ret = next(x for x in text.splitlines() if x.startswith("Devolver ao assistente: ")).split("/actions/")[1]
+    ret = next(x for x in text.splitlines() if "Devolver ao assistente: " in x).split("/actions/")[1]
     assert verify_action(SECRET, ret) == ("return", HID)
 
 
@@ -80,3 +80,37 @@ def test_the_runtime_uses_the_gateway_for_sellers_and_operators():
     assert isinstance(rt._build_ops_notifier().whatsapp, WhatsAppGatewayNotifier)
     rt.settings = Settings(app_env="dev", whatsapp_alert_provider="uazapi")          # no URL or token: not configured
     assert not any(isinstance(n, WhatsAppGatewayNotifier) for n in rt._build_inbox().notifiers)
+
+
+async def test_telegram_is_one_fixed_test_chat_and_never_production():
+    from agentplatform.core.handoff.notifiers import TelegramTestNotifier
+    from agentplatform.runtime import Runtime
+    from agentplatform.settings import Settings
+    seen = []
+
+    def handler(req: httpx.Request):
+        seen.append(req)
+        return httpx.Response(200, json={"ok": True})
+    n = TelegramTestNotifier("123:abc", "42", SECRET, "https://app.test", transport=httpx.MockTransport(handler))
+    assert await n.send_alert(SellerContact(uuid.uuid4(), None, None), ALERT)          # whoever the seller is
+    assert seen[0].url.path == "/bot123:abc/sendMessage"
+    assert json.loads(seen[0].content)["chat_id"] == "42" and "hot_lead: Ana" in json.loads(seen[0].content)["text"]
+    rt = object.__new__(Runtime)
+    rt.settings = Settings(app_env="dev", telegram_bot_token="123:abc", telegram_test_chat_id="42")
+    assert isinstance(rt._build_inbox().notifiers[0], TelegramTestNotifier)
+    with pytest.raises(ValueError):
+        Settings(app_env="prod", telegram_test_chat_id="42", ops_alert_email="o@x.test")
+
+
+def test_the_alert_reads_as_words_with_the_package_labels_and_never_the_number():
+    from agentplatform.core.handoff.alerts import _alert
+    from agentplatform.core.packages.contract import load_package
+    m = load_package("consortium").manifest
+    h = {"id": HID, "conversation_id": "c1", "stage": m.form_stage,
+         "summary": {"first_name": "Ana", "profile": {"credit_amount": "100000", "has_bid_funds": "true"}, "whatsapp_left": True,
+                     "last_message": "sim"}}
+    text = alert_text(_alert("handoff", h, "Lead quente", "https://app.test/console", m), SECRET, "https://app.test")
+    lines = text.splitlines()
+    assert lines[0] == "🔔 Lead quente: Ana" and lines[1] == f"Etapa: {next(s.label for s in m.stages if s.name == m.form_stage)}"
+    assert "R$ 100.000" in text and ": Sim" in text and "has_bid_funds" not in text and "credit_amount" not in text
+    assert "Deixou o WhatsApp" in text and "“sim”" in text and "https://app.test/console/conversations/c1" in text
