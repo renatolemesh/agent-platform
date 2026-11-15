@@ -379,6 +379,9 @@ O dono pediu uma opção para o assistente pedir o WhatsApp do cliente ao chamar
   - Quando falta, entra o texto novo e curto do pacote: "É uma simulação pela tabela de hoje, o valor certinho vem no contrato." Continua em toda resposta com valores.
   - O aviso de histórico ("não garante resultado futuro") não mudou e nunca é dispensado.
   - Mudança de compliance: precisa da concordância do consultor (`11` §5).
+- **Resposta que contradiz o cliente (15/11/2026):** no servidor, mesmo com a `respond@v15` e a urgência entendida como "agora", o gpt-4.1-mini respondeu "não tem tanta pressa" a "o quanto tantes".
+  - O pacote declara, por valor de slot, frases que contradizem o que o cliente acabou de dizer (`contradicted_by`). Se a resposta usa uma delas no turno em que o slot foi entendido, a revisão pede outra resposta (`contradicts_customer`), dizendo o que foi entendido.
+  - `respond@v16` explica esse motivo na nova tentativa.
   - **Casos novos:** u17 e u18 em `understand-v1`; dois casos em `respond-v1`.
 - **O aviso ao vendedor espera o WhatsApp:** quando a passagem pede o número, o aviso espera até `handoff.whatsapp_wait_minutes` (5 por padrão), para já dizer se o cliente deixou o número.
   - Qualquer mensagem do cliente libera o aviso na próxima rodada de avisos, com número ou sem. Sem resposta, ele sai quando o tempo acaba.

@@ -26,7 +26,10 @@ slots:
   - {name: term_months, type: range, question: "Você tem um prazo em mente?", label: Prazo (meses)}
   - {name: has_bid_funds, type: bool, question: "Você teria algum valor guardado para ofertar lance?", label: Tem valor para lance}
   - {name: urgency, type: enum, values: [now, months_3_12, over_12, no_rush], question: "Para quando você precisa do bem?",
-     label: Quando precisa, value_labels: {now: Agora, months_3_12: Em 3 a 12 meses, over_12: Mais de 12 meses, no_rush: Sem pressa}}
+     label: Quando precisa, value_labels: {now: Agora, months_3_12: Em 3 a 12 meses, over_12: Mais de 12 meses, no_rush: Sem pressa},
+     # the reply misread a typo ("o quanto tantes" read as "tanta pressa") and said the opposite: retried
+     contradicted_by: {now: ['\bsem (tanta |muita |nenhuma )?pressa\b', '\bnao (tem|tenha|ha) (tanta |muita |nenhuma )?pressa\b',
+                             '\bnao (esta|ta|estou) com pressa\b']}}
   - {name: city, type: text, question: "De qual cidade você fala?", label: Cidade}
   - {name: first_name, type: text, label: Primeiro nome}
   - {name: start_when, type: text, label: Quando pode começar,

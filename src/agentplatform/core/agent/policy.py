@@ -308,3 +308,17 @@ def is_risky(u: TurnUnderstanding) -> bool:
 def config_numbers() -> set[Decimal]:
     """Numbers the bot may state from configuration (business hours, window)."""
     return {Decimal(8), Decimal(22), Decimal(24), Decimal(7)}
+
+
+def contradictions(text: str, slot_updates: dict, manifest: PackageManifest) -> list[str]:
+    """What the customer said this turn, as understood, that the reply says the opposite of ("as soon as possible" answered
+    "no hurry, then"): one "Label: value (reply said "...")" per hit, from the package's `contradicted_by`."""
+    n, out = normalize(text), []
+    for spec in manifest.slots:
+        value = (slot_updates.get(spec.name) or {}).get("value")
+        for pat in spec.contradicted_by.get(str(value), []) if value is not None else []:
+            m = re.search(pat, n)
+            if m:
+                out.append(f'{spec.label or spec.name}: {spec.value_labels.get(str(value), value)} (a resposta disse "{m.group(0)}")')
+                break
+    return out

@@ -658,6 +658,8 @@ class TurnRunner:
         bad = failed(verdicts)
         if any(re.search(p, normalize(text)) for p in cfg.output_guard.opt_out_promise_patterns):
             bad.append(GuardVerdict(guard="output_guard", rule_id="opt_out_promise", verdict="block"))
+        for said in policy.contradictions(text, s.get("slot_updates") or {}, self.m):        # the reply misread the customer
+            bad.append(GuardVerdict(guard="output_guard", rule_id="contradicts_customer", verdict="rewrite", detail=said[:200]))
         a = AnalyzeOutput.model_validate(s["analysis"]) if s.get("analysis") else None
         if not any(v.verdict == "block" for v in bad) and a and policy.is_risky(a.understanding) and self._llm_budget_left(s):
             try:

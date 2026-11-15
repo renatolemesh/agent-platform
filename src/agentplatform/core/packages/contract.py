@@ -24,6 +24,7 @@ class SlotSpec(M):
     value_labels: dict[str, str] = {}         # console display of enum values
     hint: str | None = None                   # extraction hint for the analyzer (what counts as evidence)
     not_evidence: list[str] = []              # words that alone never prove this slot (e.g. the product's own name)
+    contradicted_by: dict[str, list[str]] = {}  # enum value -> regexes (normalized) a reply must not say right after the customer gave it
 
 
 class AutoTransition(M):

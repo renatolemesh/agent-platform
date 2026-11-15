@@ -157,6 +157,18 @@ def test_a_reply_that_already_says_it_is_an_estimate_gets_no_disclaimer_sentence
         [COMP.required_disclosures["history_not_guarantee"]]
 
 
+def test_a_reply_that_says_the_opposite_of_what_the_customer_just_said_is_caught():
+    """Seen on the dev server: "o quanto tantes" was understood as "now", and the reply still said "não tem tanta pressa"."""
+    from agentplatform.core.agent.policy import contradictions
+    now = {"urgency": {"value": "now"}}
+    hits = contradictions("Entendi, você não tem tanta pressa. Vai pagando as parcelas.", now, PKG)
+    assert len(hits) == 1 and "Agora" in hits[0] and "nao tem tanta pressa" in hits[0]
+    assert contradictions("Tranquilo, sem pressa nenhuma!", now, PKG)
+    assert contradictions("Show! Com um valor de lance você concorre todo mês. Teria algum valor?", now, PKG) == []
+    assert contradictions("Entendi, você não tem tanta pressa.", {"urgency": {"value": "no_rush"}}, PKG) == []
+    assert contradictions("Entendi, você não tem tanta pressa.", {}, PKG) == []       # nothing said this turn
+
+
 def test_an_account_cannot_loosen_the_inline_disclosure():
     from agentplatform.core.config.registry import load_yaml, resolve_with_package
     from agentplatform.core.config.schema import ComplianceConfig
