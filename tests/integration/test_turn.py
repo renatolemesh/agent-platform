@@ -229,6 +229,31 @@ async def test_the_same_selling_point_is_not_said_in_every_message(tenant):
     assert "juros" not in " ".join(x["payload"]["text"] for x in o)
 
 
+def test_the_same_offer_is_not_sent_twice_in_a_row():
+    """Seen replaying real conversations: the customer confirmed the amount ("45 van") and got the offer again, word for word."""
+    offer = "Pra uma carta de R$ 45.000,00 para carro ou moto, tem grupos com parcela a partir de R$ 892,50."
+    s = {"tool_results": [{"tool": "simulate_consortium", "result": {"required_text": offer}}], "next_question": None,
+         "recent": [{"from": "assistente", "text": f"{offer} Faz sentido pra você?"}, {"from": "cliente", "text": "45 van"}]}
+    r = runner({})
+    assert r._required_reply(s, f"{offer} Com lance você concorre todo mês.") == "Com lance você concorre todo mês."
+    assert r._required_reply({**s, "recent": []}, "Legal!") == offer                 # not said yet: it goes out
+
+
+async def test_the_first_message_names_the_seller_when_the_account_asks(tenant):
+    persona = CFG.conversation.persona.model_copy(update={"name_seller_on_first_message": True})
+    cfg = CFG.model_copy(update={"conversation": CFG.conversation.model_copy(update={"persona": persona})})
+    conv = await inbound(tenant, ["oi"])
+    g = ScriptedGateway({"analyze_turn": [analysis(intents=["greeting"], stage="engajado")],
+                         "respond": [draft("Oi! Sou o assistente virtual do consultor. É pra casa ou carro?"),
+                                     draft(f"Oi! Sou o assistente virtual do {persona.seller_display_name}. É pra casa ou carro?")]})
+    res = await TurnRunner(TurnDeps(config=cfg, package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
+    async with tenant_tx(tenant) as conn:
+        gr = await (await conn.execute("select rule_id from guard_results where turn_id=%s", (res.turn_id,))).fetchall()
+        o = await (await conn.execute("select payload from outbox where turn_id=%s", (res.turn_id,))).fetchall()
+    assert "seller_not_named" in {x["rule_id"] for x in gr}
+    assert persona.seller_display_name in " ".join(x["payload"]["text"] for x in o)
+
+
 async def test_the_reply_is_told_how_a_typo_was_understood(tenant):
     """The answer model reads "tantes" as "tanta pressa"; the analysis got it right, and the reply prompt says so."""
     conv = await inbound(tenant, ["o quanto tantes"])

@@ -1,3 +1,6 @@
+import pytest
+
+from agentplatform.core.agent.guards import normalize
 from agentplatform.core.agent.policy import apply_slots, decide_stage, handoff_reason, next_question, select_guidelines
 from agentplatform.core.agent.state import SlotUpdate, StageProposal, TurnUnderstanding
 from agentplatform.core.config.schema import FunnelConfig, GuidelinesConfig
@@ -69,6 +72,16 @@ def test_guidelines_and_handoff():
     assert handoff_reason(M, U(intents=["simulation_request"]), True, "qualificando", 0) is None
     assert handoff_reason(M, U(intents=["wants_human"]), False, "novo", 0) == "explicit_request"
     assert handoff_reason(M, U(asks_for_human=True), False, "novo", 0) is None    # LLM flag alone is not enough
+
+
+@pytest.mark.parametrize("said,expected", [("Opa | Cheguei", "voltou depois de combinar"),
+                                           ("De qual estado vc fala", "de onde o consultor"),
+                                           ("Taxa de contemplação", "quantas saem depende do grupo")])
+def test_what_the_real_conversations_missed_has_its_guideline(said, expected):
+    """Seen replaying the seller's real conversations: each was answered off the mark (asked the goal again, asked back the
+    customer's state, said it would confirm how contemplation works)."""
+    g = select_guidelines(M, "engajado", U(), normalize(said), 0, GuidelinesConfig())
+    assert any(expected in x for x in g)
 
 
 def test_product_words_alone_are_not_goal_evidence():

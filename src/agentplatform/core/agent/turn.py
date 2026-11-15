@@ -573,7 +573,10 @@ class TurnRunner:
         required = next((t["result"]["required_text"] for t in s.get("tool_results", [])
                          if isinstance(t.get("result"), dict) and t["result"].get("required_text")), None)
         last = [m["text"] for m in s["recent"] if m["from"] == "assistente"][-1:]
-        if not required or normalize(required) in normalize(text) or any(normalize(required) in normalize(b) for b in last):
+        said = bool(required) and any(normalize(required) in normalize(b) for b in last)
+        if said and required in text:          # the customer only confirmed the amount: the same offer is not sent twice in a row
+            return re.sub(r"\s{2,}", " ", text.replace(required, "")).strip() or text
+        if not required or normalize(required) in normalize(text) or said:
             return text
         return " ".join(x for x in (required, s.get("next_question")) if x)
 
@@ -658,6 +661,10 @@ class TurnRunner:
         bad = failed(verdicts)
         if any(re.search(p, normalize(text)) for p in cfg.output_guard.opt_out_promise_patterns):
             bad.append(GuardVerdict(guard="output_guard", rule_id="opt_out_promise", verdict="block"))
+        persona = cfg.conversation.persona
+        if s.get("first_message") and persona.disclose_on_first_message and persona.name_seller_on_first_message \
+                and normalize(persona.seller_display_name) not in normalize(text):
+            bad.append(GuardVerdict(guard="output_guard", rule_id="seller_not_named", verdict="rewrite", detail=persona.seller_display_name))
         earlier = [normalize(m["text"]) for m in s["recent"] if m["from"] == "assistente"]
         again = next((p for p in cfg.output_guard.once_per_conversation_patterns
                       if re.search(p, normalize(text)) and any(re.search(p, e) for e in earlier)), None)

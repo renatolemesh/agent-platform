@@ -200,6 +200,13 @@ def test_a_number_with_a_source_is_only_that_number():
     assert D("1546") in extract_numbers("crédito de 1.546 reais", lenient=True), "a source in Portuguese keeps its thousands"
 
 
+def test_the_chance_of_contemplation_is_never_sized():
+    """Seen replaying real conversations: "dá pra aumentar bastante a chance de ser contemplado"."""
+    assert "forbidden_phrase" in rules(output_guard("Com lance, dá pra aumentar bastante a chance de ser contemplado.", ctx()))
+    assert "forbidden_phrase" in rules(output_guard("Isso aumenta muito suas chances.", ctx()))
+    assert "forbidden_phrase" not in rules(output_guard("Quanto maior o lance, maior a chance.", ctx()))
+
+
 def test_a_retry_is_told_the_words_a_forbidden_phrase_caught_never_the_pattern():
     from agentplatform.core.agent.guards import forbidden_fragment
     from agentplatform.core.agent.state import GuardVerdict

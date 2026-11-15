@@ -12,7 +12,7 @@ models:
     temperature: 0.0
     max_output_tokens: 400
     timeout_s: 6
-    prompt_version: analyze_turn@v7
+    prompt_version: analyze_turn@v8
     provider:
       allow_fallbacks: true
   respond:
@@ -22,7 +22,7 @@ models:
     temperature: 0.4
     max_output_tokens: 500
     timeout_s: 12
-    prompt_version: respond@v17
+    prompt_version: respond@v18
     provider:
       allow_fallbacks: true
   output_judge:

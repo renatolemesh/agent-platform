@@ -125,6 +125,8 @@ class PersonaConfig(Strict):
     company_name: str = ""                     # the company or brand the seller represents, when they should mention it
     tone: Literal["friendly", "formal", "neutral"] = "friendly"
     disclose_on_first_message: bool = True
+    # The first message names the seller ("assistente virtual do <name>", not "do consultor"); one without the name is rewritten
+    name_seller_on_first_message: bool = False
 
 
 class ReplyExampleConfig(Strict):
