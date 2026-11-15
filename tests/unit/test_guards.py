@@ -137,6 +137,37 @@ def test_official_disclosure_added_when_the_reply_uses_tool_numbers():
     assert with_disclosures("Fica a partir de uns R$ 400.", [note]) == f"Fica a partir de uns R$ 400. {note}"
 
 
+def test_a_reply_that_already_says_it_is_an_estimate_gets_no_disclaimer_sentence():
+    """The consultant's way ("parcelas a partir de R$ 950 pra uma carta de 95 mil") already tells it is an estimate: no formal
+    sentence. Every sentence with the tool's numbers must say it, and the history disclaimer is never replaced."""
+    from agentplatform.core.agent.guards import disclosures_needed
+    note = COMP.required_disclosures["simulation_estimate"]
+    inline = COMP.inline_disclosures
+    tool = [{"tool": "simulate_consortium", "result": {"options": [{"credit": "95000", "installment": "950"},
+                                                                   {"credit": "120000", "installment": "1200"}],
+                                                       "disclaimer_key": "simulation_estimate"}}]
+    ok = "Pra uma carta de 95 mil, as parcelas ficam a partir de R$ 950.\nQuer usar logo ou sem pressa?"
+    assert disclosures_needed(ok, tool, [], COMP.required_disclosures, inline) == []
+    assert disclosures_needed(ok, tool, [], COMP.required_disclosures) == [note]                    # no inline rule: official text
+    half = "Pra 95 mil, parcelas a partir de R$ 950. Pra 120 mil, R$ 1.200 por mês."
+    assert disclosures_needed(half, tool, [], COMP.required_disclosures, inline) == [note]
+    hist = [{"tool": "simulate_consortium", "result": {"options": [{"credit": "95000", "avg_contemplation_months": 18}],
+                                                       "disclaimer_key": "simulation_estimate", "disclaimer_keys": ["history_not_guarantee"]}}]
+    assert disclosures_needed("Nesse grupo, em média 18 meses.", hist, [], COMP.required_disclosures, inline) == \
+        [COMP.required_disclosures["history_not_guarantee"]]
+
+
+def test_an_account_cannot_loosen_the_inline_disclosure():
+    from agentplatform.core.config.registry import load_yaml, resolve_with_package
+    from agentplatform.core.config.schema import ComplianceConfig
+    mine = COMP.model_copy(update={"inline_disclosures": {"simulation_estimate": "."}})
+    assert "inline_disclosures changed" in mine.is_at_least_as_strict_as(COMP)
+    own = COMP.model_copy(update={"inline_disclosures": {**COMP.inline_disclosures, "history_not_guarantee": "."}})
+    assert "inline_disclosures changed" in own.is_at_least_as_strict_as(COMP)
+    cfg = load_yaml("config/tenants/dev-consortium.yaml").model_copy(update={"compliance": ComplianceConfig(inline_disclosures={"history_not_guarantee": "."})})
+    assert resolve_with_package(cfg, COMP).compliance.inline_disclosures == COMP.inline_disclosures
+
+
 def test_the_group_history_brings_its_own_disclaimer_with_the_estimate():
     from agentplatform.core.agent.guards import disclosures_needed
     tool = [{"tool": "simulate_consortium", "result": {"options": [{"credit": "95000", "avg_contemplation_months": 18}],

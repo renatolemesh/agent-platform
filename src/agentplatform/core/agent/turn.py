@@ -40,6 +40,7 @@ from agentplatform.core.comments.origin import load_origin, origin_comments
 from agentplatform.core.config.schema import PlatformConfig
 from agentplatform.core.db.pool import advisory_xact_lock, tenant_tx
 from agentplatform.core.handoff import customer_phone
+from agentplatform.core.handoff.alert_format import profile_lines
 from agentplatform.core.handoff.service import build_summary, create_handoff, create_notice
 from agentplatform.core.knowledge.service import KnowledgeService
 from agentplatform.core.media.processor import render_for_turn
@@ -355,7 +356,8 @@ class TurnRunner:
                 text = f"{text.rstrip()} {url}"
         customer = [*s["masked_input"], *(m["text"] for m in s["recent"] if m["from"] == "cliente")]
         text = self._identified(s, with_disclosures(text, disclosures_needed(text, s.get("tool_results", []), customer,
-                                                                             self.d.config.compliance.required_disclosures)))
+                                                                             self.d.config.compliance.required_disclosures,
+                                                                             self.d.config.compliance.inline_disclosures)))
         return question_apart(text) if self.d.config.conversation.question_own_bubble else text
 
     def _identified(self, s: TurnState, text: str) -> str:
@@ -604,6 +606,7 @@ class TurnRunner:
                       first_message=s["first_message"], disclose=cfg.conversation.persona.disclose_on_first_message,
                       stage=s["stage"], stage_goal=st.goal, guidelines=s["guidelines"], next_question=s.get("next_question"),
                       fix_reasons=s.get("fix_reasons"), profile=self._fmt_profile(s["profile"]),
+                      understood="; ".join(profile_lines({"profile": {k: v["value"] for k, v in (s.get("slot_updates") or {}).items()}}, self.m)),
                       require_with=cfg.compliance.require_with,
                       reply_examples=[e.model_dump() for e in [*self.m.reply_examples, *cfg.conversation.reply_examples]],
                       assistant_name=cfg.conversation.persona.assistant_name,

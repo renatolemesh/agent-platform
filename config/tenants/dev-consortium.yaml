@@ -22,7 +22,7 @@ models:
     temperature: 0.4
     max_output_tokens: 500
     timeout_s: 12
-    prompt_version: respond@v14
+    prompt_version: respond@v15
     provider:
       allow_fallbacks: true
   output_judge:
@@ -121,8 +121,7 @@ compliance:
   - grupo que (mais )?contempla (mais )?rápido
   - comiss(ão|ões)
   required_disclosures:
-    simulation_estimate: Valores estimados com base na tabela vigente. As condições
-      finais constam no contrato e no regulamento do grupo.
+    simulation_estimate: É uma simulação pela tabela de hoje, o valor certinho vem no contrato.
     history_not_guarantee: Isso é histórico de assembleias anteriores e não garante
       resultado futuro.
   never_request:

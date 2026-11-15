@@ -52,6 +52,8 @@ def resolve_with_package(cfg: PlatformConfig, package_compliance: ComplianceConf
         "forbidden_phrases": list(dict.fromkeys([*p.forbidden_phrases, *t.forbidden_phrases])),
         "required_disclosures": {**p.required_disclosures, **{k: v for k, v in t.required_disclosures.items()
                                                                if p.required_disclosures.get(k, "") in v}},
+        "inline_disclosures": {**{k: v for k, v in t.inline_disclosures.items() if k not in p.required_disclosures},
+                               **p.inline_disclosures},
         "never_request": list(dict.fromkeys([*p.never_request, *t.never_request])),
         "opt_out_patterns": list(dict.fromkeys([*p.opt_out_patterns, *t.opt_out_patterns])),
         "opt_out_keywords": list(dict.fromkeys([*p.opt_out_keywords, *t.opt_out_keywords])),

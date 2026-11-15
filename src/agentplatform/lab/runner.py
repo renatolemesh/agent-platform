@@ -240,7 +240,7 @@ async def eval_respond(cfg: PlatformConfig, pkg: SegmentPackage, gateway, budget
             msgs = render(cfg.models.respond.prompt_version, nonce=secrets.token_hex(4), persona=m.persona_text(persona.seller_display_name, persona.company_name),
                           seller_name=persona.seller_display_name, first_message=c.get("first_message", False), disclose=persona.disclose_on_first_message,
                           stage=stage, stage_goal=m.stage(stage).goal, guidelines=c.get("guidelines", []), next_question=c.get("next_question"), fix_reasons=fix_reasons,
-                          profile=c.get("profile", "-"), require_with=cfg.compliance.require_with,
+                          profile=c.get("profile", "-"), understood=c.get("understood", ""), require_with=cfg.compliance.require_with,
                           reply_examples=[e.model_dump() for e in [*m.reply_examples, *cfg.conversation.reply_examples]],
                           assistant_name=persona.assistant_name, tone_instruction=cfg.conversation.tone_instructions.get(persona.tone, ""),
                           business_instructions=cfg.conversation.business_instructions.strip(), summary="-", recent=c.get("recent", "(início)"), origin=[],

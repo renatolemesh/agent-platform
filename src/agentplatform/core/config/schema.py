@@ -452,6 +452,9 @@ class FollowupsConfig(Strict):
 class ComplianceConfig(Strict):
     forbidden_phrases: list[str] = []
     required_disclosures: dict[str, str] = {}
+    # disclosure key -> regex (normalized text): a reply whose every sentence with the tool's numbers matches it already says
+    # it in its own words ("parcelas a partir de R$ 950"), so the official text is not appended. Package only: never loosened.
+    inline_disclosures: dict[str, str] = {}
     never_request: list[str] = ["cpf", "rg", "income", "assets", "bank_data", "health_data"]
     opt_out_keywords: list[str] = ["parar", "pare", "para", "parem", "pode parar", "sair", "stop", "cancelar mensagens", "não quero mais",
                                    "chega", "me deixa em paz"]
@@ -479,6 +482,8 @@ class ComplianceConfig(Strict):
             mine = self.required_disclosures.get(key, "")
             if text.strip() not in mine:        # tenant may extend the text, never remove or blank it (review #18)
                 problems.append(f"required_disclosures[{key}] removed or weakened")
+        if any(k in base.required_disclosures and v != base.inline_disclosures.get(k) for k, v in self.inline_disclosures.items()):
+            problems.append("inline_disclosures changed")
         if not set(base.extra_rules) <= set(self.extra_rules):
             problems.append("extra_rules removed")
         if any(self.require_with.get(k) != v for k, v in base.require_with.items()):

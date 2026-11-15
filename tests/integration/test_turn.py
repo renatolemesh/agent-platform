@@ -178,3 +178,15 @@ async def test_superseded_turn_does_not_commit(tenant):
         n = (await (await conn.execute("select count(*) as n from outbox where conversation_id=%s", (conv["id"],))).fetchone())["n"]
         m = (await (await conn.execute("select count(*) as n from messages where conversation_id=%s and turn_id is null", (conv["id"],))).fetchone())["n"]
     assert n == 0 and m == 1      # nothing sent; the message stays pending for the combined next turn
+
+
+async def test_the_reply_is_told_how_a_typo_was_understood(tenant):
+    """The answer model reads "tantes" as "tanta pressa"; the analysis got it right, and the reply prompt says so."""
+    conv = await inbound(tenant, ["o quanto tantes"])
+    r = runner({"analyze_turn": [analysis(intents=["wants_fast"], stage="engajado", evidence=["o quanto tantes"],
+                                          slots=[("urgency", "now", "o quanto tantes")])],
+                "respond": [draft("Com um valor para lance, você concorre todo mês nas vagas de lance.")]})
+    await r.run(tenant, conv["id"])
+    prompt = " ".join(m["content"] for node, msgs in r.d.gateway.calls if node == "respond" for m in msgs)
+    assert "como o sistema entendeu" in prompt and "Quando precisa: Agora" in prompt
+

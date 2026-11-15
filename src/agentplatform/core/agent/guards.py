@@ -309,22 +309,30 @@ def ensure_identified(text: str, disclosure: str, terms: list[str], greeting: st
     return " ".join(part for part in (head, disclosure, body) if part)
 
 
-def disclosures_needed(text: str, tool_results: list[dict], customer_texts: list[str], disclosures: dict[str, str]) -> list[str]:
+def disclosures_needed(text: str, tool_results: list[dict], customer_texts: list[str], disclosures: dict[str, str],
+                       inline: dict[str, str] | None = None) -> list[str]:
     """Official texts the reply must carry: a tool result with a disclaimer_key whose numbers (other than the customer's
-    own) appear in the reply, unless the reply already has that text."""
+    own) appear in the reply, unless the reply already has that text, or (`inline`) every sentence with those numbers
+    already says it in its own words."""
     said: set[Decimal] = set()
     for t in customer_texts:
         said |= extract_numbers(t)
-    used = extract_numbers(_URL.sub(" ", text))
+    clean = _URL.sub(" ", text)
+    used = extract_numbers(clean)
+    sentences = [(normalize(x), extract_numbers(x)) for x in re.split(r"(?<=[.!?…])\s+|\n+", clean) if x.strip()]
     out: list[str] = []
     for t in tool_results:
         r = t.get("result")
         keys = [r.get("disclaimer_key"), *(r.get("disclaimer_keys") or [])] if isinstance(r, dict) else []
         for key in keys:
             note = disclosures.get(key or "")
-            if note and note not in out and normalize(note) not in normalize(text) and \
-                    used & (extract_numbers(json.dumps(r), lenient=True) - said):
-                out.append(note)
+            theirs = extract_numbers(json.dumps(r), lenient=True) - said
+            if not note or note in out or normalize(note) in normalize(text) or not used & theirs:
+                continue
+            pattern = (inline or {}).get(key or "")
+            if pattern and all(re.search(pattern, n) for n, nums in sentences if nums & theirs):
+                continue
+            out.append(note)
     return out
 
 

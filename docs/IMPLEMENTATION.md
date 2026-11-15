@@ -373,6 +373,12 @@ O dono pediu uma opção para o assistente pedir o WhatsApp do cliente ao chamar
     - Com 5 e 6 letras, as conversas reais mostraram trocas de sentido: "renda" virava "venda", e "muita dúvida" virava "muita dívida", que ativa a orientação de momento financeiro difícil.
   - **`analyze_turn@v6`:** lê pelo sentido, com erro, sem acento ou abreviado. Se o erro deixa dois sentidos, não extrai o slot.
   - **`respond@v14`:** também lê pelo sentido. Uma resposta curta responde à última pergunta e nunca vira a opção contrária. Na dúvida, pergunta. Nunca corrige o cliente.
+  - **`respond@v15`:** recebe o que a análise entendeu neste turno ("Quando precisa: Agora") e responde de acordo. No servidor, com a v14, a análise acertou "o quanto tantes" e a resposta ainda leu "tanta pressa".
+- **Aviso de simulação no jeito do consultor (15/11/2026), desvio de C5 (`11`):** a frase oficial separada soava formal e afastava o cliente.
+  - Quando toda frase com valores da simulação já diz que é estimativa ("parcelas a partir de R$ 950 pra uma carta de 95 mil"), o código não acrescenta o aviso. Os termos aceitos ficam em `compliance.inline_disclosures` do pacote, e a conta não pode mudar nem criar esse padrão para um aviso do pacote.
+  - Quando falta, entra o texto novo e curto do pacote: "É uma simulação pela tabela de hoje, o valor certinho vem no contrato." Continua em toda resposta com valores.
+  - O aviso de histórico ("não garante resultado futuro") não mudou e nunca é dispensado.
+  - Mudança de compliance: precisa da concordância do consultor (`11` §5).
   - **Casos novos:** u17 e u18 em `understand-v1`; dois casos em `respond-v1`.
 - **O aviso ao vendedor espera o WhatsApp:** quando a passagem pede o número, o aviso espera até `handoff.whatsapp_wait_minutes` (5 por padrão), para já dizer se o cliente deixou o número.
   - Qualquer mensagem do cliente libera o aviso na próxima rodada de avisos, com número ou sem. Sem resposta, ele sai quando o tempo acaba.
