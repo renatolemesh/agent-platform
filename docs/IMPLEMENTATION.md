@@ -382,6 +382,12 @@ O dono pediu uma opção para o assistente pedir o WhatsApp do cliente ao chamar
 - **Resposta que contradiz o cliente (15/11/2026):** no servidor, mesmo com a `respond@v15` e a urgência entendida como "agora", o gpt-4.1-mini respondeu "não tem tanta pressa" a "o quanto tantes".
   - O pacote declara, por valor de slot, frases que contradizem o que o cliente acabou de dizer (`contradicted_by`). Se a resposta usa uma delas no turno em que o slot foi entendido, a revisão pede outra resposta (`contradicts_customer`), dizendo o que foi entendido.
   - `respond@v16` explica esse motivo na nova tentativa.
+- **Comparação com conversas reais do consultor (15/11/2026):** 53 mensagens de clientes de 8 conversas de WhatsApp repetidas no simulador do servidor (resultado só em `docs/privado/`). Correções:
+  - **Carta mais próxima:** quando a tabela não tem o valor pedido, a oferta montada pelo código diz "De R$ 80.000,00 certinho não tenho, a mais próxima é essa: ..." (template `plan_offer_nearest`).
+  - **Argumento repetido:** `output_guard.once_per_conversation_patterns` (na conta: "sem juros"). Se uma mensagem recente do assistente já disse, a resposta é refeita (`repeated_pitch`).
+  - **Passagem que reconhece a pergunta:** `handoff.reason_lead_in` põe uma frase antes do aviso de passagem, por motivo (na conta: "Boa pergunta, essa o {seller} te explica certinho." para `specialist_question`, como a revenda). Sem afirmação nem número: a recompra da carta continua sem texto aprovado.
+  - **`analyze_turn@v7`:** valor da carta ou da parcela só quando é do que o cliente quer comprar; herança, dívida ou o que ele tem guardado não contam.
+  - **`respond@v17`:** oferece o consultor (ligação) quando o cliente pede áudio, quer entender a fundo, quer começar ou volta depois de combinar; não devolve pergunta sobre o consultor; "sem juros" uma vez; encerra sem pergunta quando o cliente vai pensar.
   - **Casos novos:** u17 e u18 em `understand-v1`; dois casos em `respond-v1`.
 - **O aviso ao vendedor espera o WhatsApp:** quando a passagem pede o número, o aviso espera até `handoff.whatsapp_wait_minutes` (5 por padrão), para já dizer se o cliente deixou o número.
   - Qualquer mensagem do cliente libera o aviso na próxima rodada de avisos, com número ou sem. Sem resposta, ele sai quando o tempo acaba.

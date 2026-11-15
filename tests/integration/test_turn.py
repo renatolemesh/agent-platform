@@ -180,6 +180,55 @@ async def test_superseded_turn_does_not_commit(tenant):
     assert n == 0 and m == 1      # nothing sent; the message stays pending for the combined next turn
 
 
+async def test_a_reply_that_says_the_opposite_is_written_again(tenant):
+    """Seen on the dev server: "o quanto tantes" understood as "now", and the reply still said "não tem tanta pressa"."""
+    conv = await inbound(tenant, ["o quanto tantes"])
+    r = runner({"analyze_turn": [analysis(intents=["wants_fast"], stage="engajado", evidence=["o quanto tantes"],
+                                          slots=[("urgency", "now", "o quanto tantes")])],
+                "respond": [draft("Entendi, você não tem tanta pressa. Vai pagando as parcelas."),
+                            draft("Com um valor para lance, você concorre todo mês nas vagas de lance.")]})
+    res = await r.run(tenant, conv["id"])
+    async with tenant_tx(tenant) as conn:
+        g = await (await conn.execute("select rule_id from guard_results where turn_id=%s", (res.turn_id,))).fetchall()
+        o = await (await conn.execute("select payload from outbox where turn_id=%s", (res.turn_id,))).fetchall()
+    assert res.status == "committed" and "contradicts_customer" in {x["rule_id"] for x in g}
+    assert "pressa" not in " ".join(x["payload"]["text"] for x in o)
+    prompt = " ".join(m["content"] for node, msgs in r.d.gateway.calls if node == "respond" for m in msgs)
+    assert 'Quando precisa: Agora (a resposta disse "nao tem tanta pressa")' in prompt
+
+
+async def test_a_question_passed_to_the_seller_is_acknowledged_first(tenant):
+    conv = await inbound(tenant, ["como vendo a carta quando for contemplada?"])
+    res = await runner({"analyze_turn": [analysis(intents=["resale_question"], stage="engajado")],
+                        "respond": [draft("nunca chamado")]}).run(tenant, conv["id"])
+    assert res.status == "handoff"
+    async with tenant_tx(tenant) as conn:
+        o = await (await conn.execute("select payload from outbox where turn_id=%s", (res.turn_id,))).fetchall()
+    seller = CFG.conversation.persona.seller_display_name
+    assert o[0]["payload"]["text"].startswith(f"Boa pergunta, essa o {seller} te explica certinho. Vou chamar o {seller}")
+
+
+async def test_the_same_selling_point_is_not_said_in_every_message(tenant):
+    """Seen replaying real conversations: "sem juros, só taxa de administração" in almost every reply."""
+    conv = await inbound(tenant, ["oi, quero uma casa"])
+    await runner({"analyze_turn": [analysis(intents=["provide_info"], stage="engajado", slots=[("goal", "real_estate", "quero uma casa")])],
+                  "respond": [draft("Show! Consórcio não tem juros, só taxa de administração.")]}).run(tenant, conv["id"])
+    await Dispatcher({"instagram": FakeChannelAdapter()}).dispatch_conversation(tenant, conv["id"])
+    async with tenant_tx(tenant) as conn:
+        await store_inbound_message(conn, tenant, conv["id"], mid=f"m-{uuid.uuid4().hex[:8]}", kind="text", text="e o lance?",
+                                    media=None, provider_ts=datetime.now(timezone.utc), inbound_event_id=None,
+                                    service_window=timedelta(hours=24))
+    r = runner({"analyze_turn": [analysis(intents=["bid_question"], stage="engajado")],
+                "respond": [draft("No lance você oferta um valor todo mês. E lembra: sem juros, só taxa de administração."),
+                            draft("No lance você oferta um valor todo mês, e os maiores lances são contemplados.")]})
+    res = await r.run(tenant, conv["id"])
+    async with tenant_tx(tenant) as conn:
+        g = await (await conn.execute("select rule_id, detail from guard_results where turn_id=%s", (res.turn_id,))).fetchall()
+        o = await (await conn.execute("select payload from outbox where turn_id=%s", (res.turn_id,))).fetchall()
+    assert res.status == "committed" and any(x["rule_id"] == "repeated_pitch" and "sem juros" in str(x["detail"]) for x in g)
+    assert "juros" not in " ".join(x["payload"]["text"] for x in o)
+
+
 async def test_the_reply_is_told_how_a_typo_was_understood(tenant):
     """The answer model reads "tantes" as "tanta pressa"; the analysis got it right, and the reply prompt says so."""
     conv = await inbound(tenant, ["o quanto tantes"])

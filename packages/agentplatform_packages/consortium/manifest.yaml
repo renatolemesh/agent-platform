@@ -323,6 +323,8 @@ templates:
   plan_offer_reduced: "{reduced} até a contemplação"
   plan_offer_insurance: ", mais seguro de {value} por mês"
   plan_offer_question: "Faz sentido pra você?"
+  # the table has no letter of the amount asked: the customer is told the offer is the closest one, not left to wonder
+  plan_offer_nearest: "De {asked} certinho não tenho, a mais próxima é essa: "
   # Only when the plan's row has the group's average, and always with the official history disclaimer.
   plan_offer_history: " Nesse grupo, as contemplações têm saído em média em {months} meses. {note}"
   seller_offer_reminder: "Oi! Quer que eu chame o consultor para seguir com você? Se ficou alguma dúvida, pode me perguntar."

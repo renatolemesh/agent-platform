@@ -141,6 +141,8 @@ def simulate(rows: list[PlanRow], req: SimulateIn, dataset_id: str, version: int
     # "from": the lowest entry among the options with the credit closest to what was asked
     lowest = min((o for o in options if o.credit == options[0].credit), key=lambda o: o.entry_installment) if options else None
     offer = offer_text(lowest, name_goal=req.goal != "resale") if lowest else None
+    if offer and req.credit_amount is not None and lowest.credit != req.credit_amount:
+        offer = MANIFEST.templates["plan_offer_nearest"].format(asked=_brl(req.credit_amount)) + offer[0].lower() + offer[1:]
     return SimulateOut(options=options, dataset_id=dataset_id, dataset_version=version, required_text=offer,
                        disclaimer_keys=["history_not_guarantee"] if any(o.avg_contemplation_months for o in options) else [],
                        closing_question=MANIFEST.templates["plan_offer_question"] if options else None)

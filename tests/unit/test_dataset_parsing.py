@@ -75,6 +75,16 @@ def test_simulation_without_goal_or_term_offers_the_cheapest_entry():
     assert "para" not in simulate([term], SimulateIn(goal="resale"), "d", 1).required_text    # a letter to sell later has no goal of its own
 
 
+def test_the_offer_says_when_it_is_only_the_closest_letter():
+    """Seen replaying real conversations: "uns 80 mil" got the 95 thousand letter with no word about it."""
+    from agentplatform_packages.consortium import SimulateIn, simulate
+    rows = [PlanRow(plan_id="A95", goal="vehicle", credit=Decimal(95000), installment=Decimal("980.00"))]
+    near = simulate(rows, SimulateIn(credit_amount=Decimal(80000)), "d", 1).required_text
+    assert near == ("De R$ 80.000,00 certinho não tenho, a mais próxima é essa: pra uma carta de R$ 95.000,00 para carro ou moto, "
+                    "tem grupos com parcela a partir de R$ 980,00.")
+    assert simulate(rows, SimulateIn(credit_amount=Decimal(95000)), "d", 1).required_text.startswith("Pra uma carta")
+
+
 def test_the_estimate_starts_from_the_lowest_installment_for_that_credit():
     from agentplatform_packages.consortium import SimulateIn, simulate
     rows = [PlanRow(plan_id="A", goal="vehicle", credit=Decimal(100000), installment=Decimal("1750.00")),

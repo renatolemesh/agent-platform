@@ -305,6 +305,9 @@ class OutputGuardConfig(Strict):
     repetition_min_words: PosInt = 8                           # word overlap only applies to messages at least this long
     # The search found nothing, so a reply cannot open by settling the question (normalized text). Explaining in general and promising to confirm are fine.
     no_basis_claim_patterns: list[str] = [r"^(sim|pode sim|pode|claro|com certeza|da sim|nao tem|nao pode|nao da)\b"]
+    # Selling points said once per conversation (normalized text): a reply that says one again, when a recent assistant
+    # message already did, is rewritten.
+    once_per_conversation_patterns: list[str] = []
 
 
 # ---------- handoff ----------
@@ -323,6 +326,9 @@ class HandoffConfig(Strict):
     expectation_message_in_hours: str
     expectation_message_off_hours: str
     send_expectation_message: bool = True
+    # Optional sentence before the handoff message, per reason, so a question is acknowledged instead of just passed on
+    # ("Essa o {seller} te explica certinho."). Never an answer: no claim, no number.
+    reason_lead_in: dict[str, str] = {}
     # Optional: the handoff message also asks for the customer's WhatsApp, so the seller can call there. Code takes the number
     # from the original message (the model only ever sees [TELEFONE]); it is kept encrypted on the contact and shown in the console.
     ask_customer_whatsapp: bool = False

@@ -658,6 +658,12 @@ class TurnRunner:
         bad = failed(verdicts)
         if any(re.search(p, normalize(text)) for p in cfg.output_guard.opt_out_promise_patterns):
             bad.append(GuardVerdict(guard="output_guard", rule_id="opt_out_promise", verdict="block"))
+        earlier = [normalize(m["text"]) for m in s["recent"] if m["from"] == "assistente"]
+        again = next((p for p in cfg.output_guard.once_per_conversation_patterns
+                      if re.search(p, normalize(text)) and any(re.search(p, e) for e in earlier)), None)
+        if again:                                                                          # the same selling point every message
+            bad.append(GuardVerdict(guard="output_guard", rule_id="repeated_pitch", verdict="rewrite",
+                                    detail=re.search(again, normalize(text)).group(0)))
         for said in policy.contradictions(text, s.get("slot_updates") or {}, self.m):        # the reply misread the customer
             bad.append(GuardVerdict(guard="output_guard", rule_id="contradicts_customer", verdict="rewrite", detail=said[:200]))
         a = AnalyzeOutput.model_validate(s["analysis"]) if s.get("analysis") else None
@@ -848,6 +854,8 @@ class TurnRunner:
             seller = cfg.conversation.persona.seller_display_name
             text = (cfg.handoff.expectation_message_in_hours if h["mode"] == "awaiting"
                     else cfg.handoff.expectation_message_off_hours).format(seller=seller)
+            if reason in cfg.handoff.reason_lead_in:
+                text = f"{cfg.handoff.reason_lead_in[reason].format(seller=seller).rstrip()} {text}"
             if reason in _SAFE_FAILURE_REASONS:
                 text = cfg.conversation.safe_failure_message.format(seller=seller)
             elif ask:

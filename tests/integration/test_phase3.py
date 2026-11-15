@@ -145,8 +145,8 @@ async def test_the_offer_goes_out_as_written_and_the_person_is_offered_after_it(
         assert res.status == "committed"
         sent = await _sent_text(tenant, conv)
         note = _sim_cfg().compliance.required_disclosures["simulation_estimate"]
-        assert sent.endswith("Pra uma carta de R$ 95.000,00 para carro ou moto, tem grupos com parcela a partir de R$ 980,00 até a "
-                             f"contemplação. {note} {PKG.manifest.profile_question}")
+        assert sent.endswith("De R$ 100.000,00 certinho não tenho, a mais próxima é essa: pra uma carta de R$ 95.000,00 para carro ou moto, "
+                             f"tem grupos com parcela a partir de R$ 980,00 até a contemplação. {note} {PKG.manifest.profile_question}")
         assert "a partir de uns" not in sent and "chame o consultor" not in sent      # the profile first, the person after
 
         await _bot_said(tenant, conv, sent)
@@ -222,7 +222,7 @@ async def test_who_will_talk_at_home_gets_the_offer_again_as_a_summary_and_stays
         res = await TurnRunner(TurnDeps(config=_sim_cfg(), package=PKG, gateway=g, knowledge=None, now=NOON)).run(tenant, conv["id"])
         assert res.status == "committed" and await _handoffs(tenant, conv) == []
         sent = await _sent_text(tenant, conv)
-        assert "Pra uma carta de R$ 95.000,00 para carro ou moto" in sent and "?" not in sent.split("contemplação.")[-1]   # no question pushed
+        assert "pra uma carta de R$ 95.000,00 para carro ou moto" in sent and "?" not in sent.split("contemplação.")[-1]   # no question pushed
     finally:
         await _plans_active(None)
 

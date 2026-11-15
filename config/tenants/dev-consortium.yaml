@@ -12,7 +12,7 @@ models:
     temperature: 0.0
     max_output_tokens: 400
     timeout_s: 6
-    prompt_version: analyze_turn@v6
+    prompt_version: analyze_turn@v7
     provider:
       allow_fallbacks: true
   respond:
@@ -22,7 +22,7 @@ models:
     temperature: 0.4
     max_output_tokens: 500
     timeout_s: 12
-    prompt_version: respond@v16
+    prompt_version: respond@v17
     provider:
       allow_fallbacks: true
   output_judge:
@@ -92,6 +92,10 @@ handoff:
     aqui.
   expectation_message_off_hours: O {seller} responde a partir das 8h. Enquanto isso,
     posso tirar outras dúvidas.
+  reason_lead_in:
+    specialist_question: Boa pergunta, essa o {seller} te explica certinho.
+output_guard:
+  once_per_conversation_patterns: ['\b(sem|nao tem|nao cobra|nao paga|livre de) juros\b']
 comments:
   enabled: true
 followups:
