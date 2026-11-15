@@ -111,6 +111,8 @@ def apply_slots(manifest: PackageManifest, profile: dict, u: TurnUnderstanding, 
         if val is None:
             out.rejected.append((up.slot, "invalid_value"))
             continue
+        if spec.type == "money" and spec.thousands_below and 0 < Decimal(val) < spec.thousands_below:
+            val = f"{Decimal(val) * 1000:f}"                       # "45 van": 45 thousand
         prev = profile.get(up.slot)
         if prev and prev.get("confidence", 0) > up.confidence and not up.is_correction:
             out.rejected.append((up.slot, "kept_higher_confidence"))

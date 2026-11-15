@@ -29,6 +29,16 @@ def test_slots_need_literal_evidence_and_valid_values():
     assert reasons["term_months"] == "evidence_not_in_turn" and reasons["cpf"] == "unknown_slot"
 
 
+def test_a_small_amount_for_the_good_was_said_in_thousands():
+    """Seen replaying real conversations: "45 van" became a R$ 45 letter, and the offer said "De R$ 45,00 certinho não tenho"."""
+    def credit(value, said):
+        u = U(slot_updates=[SlotUpdate(slot="credit_amount", value=value, evidence_quote=said, confidence=0.9, is_correction=False)])
+        return apply_slots(M, {}, u, said, F, "m1").accepted["credit_amount"]["value"]
+    assert credit("45", "45 van") == "45000"
+    assert credit("45 mil", "45 mil") == "45000" and credit("250k", "250k") == "250000"
+    assert credit("1.500", "uns 1.500") == "1500"                  # not below the limit: kept as said
+
+
 def test_stage_only_allowed_transitions():
     assert not decide_stage(M, "novo", StageProposal(stage="cliente", confidence=1, evidence=["x"]), {}, F).applied
     assert not decide_stage(M, "novo", StageProposal(stage="com_vendedor", confidence=1, evidence=["x"]), {}, F).applied

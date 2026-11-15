@@ -20,7 +20,8 @@ slots:
      label: Objetivo, value_labels: {real_estate: Imóvel, vehicle: Carro ou moto, heavy_vehicle: Veículo pesado, services: Serviços, other_movable: Outro bem móvel, resale: Vender a carta},
      hint: "o bem ou serviço que o cliente vai comprar com a carta; resale quando ele quer a carta para vender depois, fala em alavancagem ou quer a carta como investimento, sem citar um bem (services = viagem, intercâmbio, curso, MBA, faculdade, festa, casamento, tratamento). As palavras carta, carta de crédito, crédito e consórcio sozinhas NÃO dizem o objetivo: nesse caso não extraia goal",
      not_evidence: [carta, cartas, credito, consorcio, quero, queria, preciso, gostaria, fazer, pegar, contratar, comprar, valor, bem]}
-  - {name: credit_amount, type: money, question: "Mais ou menos de quanto seria o valor do bem?", label: Valor do bem}
+  # "45 van" is 45 thousand: no letter is worth less than this, so a smaller amount was said in thousands
+  - {name: credit_amount, type: money, question: "Mais ou menos de quanto seria o valor do bem?", label: Valor do bem, thousands_below: 1000}
   - {name: monthly_budget, type: money, question: "Qual parcela caberia no seu bolso hoje?", label: Parcela que cabe,
      hint: "só o valor por mês que o cliente disse que cabe; dinheiro guardado ou para dar de lance NÃO é isto (é has_bid_funds)"}
   - {name: term_months, type: range, question: "Você tem um prazo em mente?", label: Prazo (meses)}

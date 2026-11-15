@@ -388,6 +388,7 @@ O dono pediu uma opção para o assistente pedir o WhatsApp do cliente ao chamar
   - **Passagem que reconhece a pergunta:** `handoff.reason_lead_in` põe uma frase antes do aviso de passagem, por motivo (na conta: "Boa pergunta, essa o {seller} te explica certinho." para `specialist_question`, como a revenda). Sem afirmação nem número: a recompra da carta continua sem texto aprovado.
   - **`analyze_turn@v7`:** valor da carta ou da parcela só quando é do que o cliente quer comprar; herança, dívida ou o que ele tem guardado não contam.
   - **`respond@v17`:** oferece o consultor (ligação) quando o cliente pede áudio, quer entender a fundo, quer começar ou volta depois de combinar; não devolve pergunta sobre o consultor; "sem juros" uma vez; encerra sem pergunta quando o cliente vai pensar.
+  - **Valor dito em milhares:** na segunda rodada, "45 van" virou carta de R$ 45 e a oferta disse "De R$ 45,00 certinho não tenho". O slot ganha `thousands_below` (no pacote, 1000 para `credit_amount`): valor menor que isso é lido como milhares.
   - **Casos novos:** u17 e u18 em `understand-v1`; dois casos em `respond-v1`.
 - **O aviso ao vendedor espera o WhatsApp:** quando a passagem pede o número, o aviso espera até `handoff.whatsapp_wait_minutes` (5 por padrão), para já dizer se o cliente deixou o número.
   - Qualquer mensagem do cliente libera o aviso na próxima rodada de avisos, com número ou sem. Sem resposta, ele sai quando o tempo acaba.

@@ -1,6 +1,7 @@
 """Segment package contract (plan 13, ADR-013). The core only knows these types; segments live in packages/."""
 from __future__ import annotations
 
+from decimal import Decimal
 from importlib.metadata import entry_points
 from typing import Any, Callable, Literal, Protocol
 
@@ -24,6 +25,7 @@ class SlotSpec(M):
     value_labels: dict[str, str] = {}         # console display of enum values
     hint: str | None = None                   # extraction hint for the analyzer (what counts as evidence)
     not_evidence: list[str] = []              # words that alone never prove this slot (e.g. the product's own name)
+    thousands_below: Decimal | None = None    # money: an amount below this was said in thousands ("45" for a 45 thousand good)
     contradicted_by: dict[str, list[str]] = {}  # enum value -> regexes (normalized) a reply must not say right after the customer gave it
 
 
