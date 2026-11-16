@@ -23,6 +23,7 @@ from langgraph.graph import END, START, StateGraph
 from agentplatform.core.agent import policy
 from agentplatform.core.agent.guards import (
     OutputContext,
+    asked_back,
     disclosures_needed,
     ensure_identified,
     failed,
@@ -32,6 +33,7 @@ from agentplatform.core.agent.guards import (
     normalize,
     output_guard,
     privacy_gate,
+    states_pattern,
     with_disclosures,
 )
 from agentplatform.core.agent.prompts import render
@@ -565,6 +567,11 @@ class TurnRunner:
         closing = next((t["result"]["closing_question"] for t in tool_results
                         if isinstance(t.get("result"), dict) and t["result"].get("closing_question")), None)
         offered = policy.offered_the_person(self.m, [m["text"] for m in s["recent"] if m["from"] == "assistente"])
+        asks = next((t["result"].get("closing_asks_slot") for t in tool_results
+                     if isinstance(t.get("result"), dict) and t["result"].get("closing_question")), None)
+        spec = next((x for x in self.m.slots if x.name == asks), None)
+        if closing and spec and next_q == spec.question:
+            return closing             # it asks the same thing in the offer's terms ("É pra carro ou moto mesmo?")
         return closing if closing and next_q in (None, self.m.ready_question) and not offered else next_q
 
     def _required_reply(self, s: TurnState, text: str) -> str:
@@ -671,6 +678,13 @@ class TurnRunner:
         if again:                                                                          # the same selling point every message
             bad.append(GuardVerdict(guard="output_guard", rule_id="repeated_pitch", verdict="rewrite",
                                     detail=re.search(again, normalize(text)).group(0)))
+        og = cfg.output_guard
+        back = asked_back(text, s["masked_input"], og.question_words, og.asked_back_min_overlap, og.asked_back_min_words)
+        if back:                                                               # the customer's question handed back to them
+            bad.append(GuardVerdict(guard="output_guard", rule_id="asked_back", verdict="rewrite", detail=back))
+        agenda = states_pattern(text, og.seller_agenda_patterns)
+        if agenda:                                                             # the seller's agenda is not the assistant's to state
+            bad.append(GuardVerdict(guard="output_guard", rule_id="seller_agenda", verdict="rewrite", detail=agenda))
         for said in policy.contradictions(text, s.get("slot_updates") or {}, self.m):        # the reply misread the customer
             bad.append(GuardVerdict(guard="output_guard", rule_id="contradicts_customer", verdict="rewrite", detail=said[:200]))
         a = AnalyzeOutput.model_validate(s["analysis"]) if s.get("analysis") else None

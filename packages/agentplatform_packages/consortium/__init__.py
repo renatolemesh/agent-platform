@@ -84,6 +84,7 @@ class SimulateOut(BaseModel):
     disclaimer_keys: list[str] = []              # more official texts its numbers need (the group's history)
     required_text: str | None = None             # the offer, written here: the model may not reword it
     closing_question: str | None = None
+    closing_asks_slot: str | None = None         # the closing question asks this slot: it stands in for the flow's own question
 
 
 def installment(row: PlanRow) -> tuple[Decimal, Decimal]:
@@ -136,6 +137,9 @@ def simulate(rows: list[PlanRow], req: SimulateIn, dataset_id: str, version: int
             admin_fee_pct=r.admin_fee_pct, reserve_fund_pct=r.reserve_fund_pct, insurance_monthly=ins,
             adjustment_index=r.adjustment_index, entry_installment=entry, avg_contemplation_months=r.avg_contemplation_months)))
     scored.sort(key=lambda x: x[0])               # closest credit (or budget), then the cheapest entry
+    if req.credit_amount:                         # "the closest" far from what was asked is not an offer (45 thousand -> 310)
+        off = Decimal(MANIFEST.params["nearest_max_off"]) * req.credit_amount
+        scored = [x for x in scored if abs(x[1].credit - req.credit_amount) <= off]
     options = [o for _, o in scored[:limit]]
     # a letter to sell later is not for the plan's own goal
     # "from": the lowest entry among the options with the credit closest to what was asked
@@ -143,9 +147,13 @@ def simulate(rows: list[PlanRow], req: SimulateIn, dataset_id: str, version: int
     offer = offer_text(lowest, name_goal=req.goal != "resale") if lowest else None
     if offer and req.credit_amount is not None and lowest.credit != req.credit_amount:
         offer = MANIFEST.templates["plan_offer_nearest"].format(asked=_brl(req.credit_amount)) + offer[0].lower() + offer[1:]
+    # no goal said: the offer names the goal of the plan it found, and asks if that is it (not the goal question from scratch)
+    guessed_goal = bool(options) and req.goal is None
+    closing = (MANIFEST.templates["plan_offer_goal_question"].format(goal=lowest.goal.lower()) if guessed_goal
+               else MANIFEST.templates["plan_offer_question"]) if options else None
     return SimulateOut(options=options, dataset_id=dataset_id, dataset_version=version, required_text=offer,
                        disclaimer_keys=["history_not_guarantee"] if any(o.avg_contemplation_months for o in options) else [],
-                       closing_question=MANIFEST.templates["plan_offer_question"] if options else None)
+                       closing_question=closing, closing_asks_slot="goal" if guessed_goal else None)
 
 
 class GroupHistoryIn(BaseModel):

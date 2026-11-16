@@ -65,10 +65,11 @@ def test_simulation_without_goal_or_term_offers_the_cheapest_entry():
             PlanRow(plan_id="I300", goal="real_estate", credit=Decimal(300000), installment=Decimal("2400.00"))]
     out = simulate(rows, SimulateIn(credit_amount=Decimal(100000)), "d", 1)
     first = out.options[0]
-    assert [o.plan_id for o in out.options] == ["I100", "A100", "I300"]
+    assert [o.plan_id for o in out.options] == ["I100", "A100"]               # 300 thousand is not "close" to 100
     assert first.goal == "Imóvel" and first.entry_installment == Decimal("397.00")
     assert out.required_text == "Pra uma carta de R$ 100.000,00 para imóvel, tem grupos com parcela a partir de R$ 397,00 até a contemplação."
-    assert out.closing_question == "Faz sentido pra você?"
+    assert out.closing_question == "É pra imóvel mesmo?" and out.closing_asks_slot == "goal"    # the goal was not said
+    assert simulate(rows, SimulateIn(goal="real_estate", credit_amount=Decimal(100000)), "d", 1).closing_question == "Faz sentido pra você?"
     term = PlanRow(plan_id="T", goal="vehicle", credit=Decimal(50000), term_months=60, installment=Decimal(900), insurance_monthly_pct=Decimal("0.1"))
     offer = simulate([term], SimulateIn(goal="vehicle"), "d", 1).required_text
     assert offer == "Pra uma carta de R$ 50.000,00 para carro ou moto, tem grupos com parcela a partir de R$ 900,00, mais seguro de R$ 50,00 por mês."
@@ -83,6 +84,17 @@ def test_the_offer_says_when_it_is_only_the_closest_letter():
     assert near == ("De R$ 80.000,00 certinho não tenho, a mais próxima é essa: pra uma carta de R$ 95.000,00 para carro ou moto, "
                     "tem grupos com parcela a partir de R$ 980,00.")
     assert simulate(rows, SimulateIn(credit_amount=Decimal(95000)), "d", 1).required_text.startswith("Pra uma carta")
+
+
+def test_a_letter_far_from_what_was_asked_is_not_offered_as_the_closest():
+    """Seen replaying real conversations: "45 van" got "a mais próxima" R$ 310 mil of a heavy vehicle."""
+    from agentplatform_packages.consortium import SimulateIn, simulate
+    rows = [PlanRow(plan_id="P310", goal="heavy_vehicle", credit=Decimal(310000), installment=Decimal("3751.00")),
+            PlanRow(plan_id="A60", goal="vehicle", credit=Decimal(60000), installment=Decimal("700.00"))]
+    far = simulate(rows, SimulateIn(goal="heavy_vehicle", credit_amount=Decimal(45000)), "d", 1)
+    assert far.options == [] and far.required_text is None and far.closing_question is None
+    near = simulate(rows, SimulateIn(goal="vehicle", credit_amount=Decimal(45000)), "d", 1)
+    assert [o.plan_id for o in near.options] == ["A60"] and near.required_text.startswith("De R$ 45.000,00 certinho")
 
 
 def test_the_estimate_starts_from_the_lowest_installment_for_that_credit():

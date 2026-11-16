@@ -264,3 +264,31 @@ async def test_the_reply_is_told_how_a_typo_was_understood(tenant):
     prompt = " ".join(m["content"] for node, msgs in r.d.gateway.calls if node == "respond" for m in msgs)
     assert "como o sistema entendeu" in prompt and "Quando precisa: Agora" in prompt
 
+
+
+@pytest.mark.parametrize("said,bad,good,rule", [
+    ("De qual estado vc fala", "O atendimento é online. Me conta, de qual estado você fala?",
+     "O atendimento é online, pra todo o Brasil. Quer que eu chame a Ana?", "asked_back"),
+    ("Sábado você atende também?", "Sábado a Ana pode atender sim.",
+     "Quer que eu chame a Ana pra combinar o melhor dia com você?", "seller_agenda")])
+async def test_a_reply_that_hands_the_question_back_or_states_the_agenda_is_rewritten(tenant, said, bad, good, rule):
+    """Seen replaying real conversations: the customer's question came back to them, and the seller's Saturday was promised."""
+    conv = await inbound(tenant, [said])
+    r = runner({"analyze_turn": [analysis(intents=["other"], stage="engajado")], "respond": [draft(bad), draft(good)]})
+    res = await r.run(tenant, conv["id"])
+    async with tenant_tx(tenant) as conn:
+        gr = await (await conn.execute("select rule_id from guard_results where turn_id=%s", (res.turn_id,))).fetchall()
+        o = await (await conn.execute("select payload from outbox where turn_id=%s", (res.turn_id,))).fetchall()
+    assert rule in {x["rule_id"] for x in gr}
+    assert good.split(".")[0] in " ".join(x["payload"]["text"] for x in o)
+
+
+def test_an_offer_with_a_guessed_goal_asks_it_in_its_own_terms():
+    """Seen replaying real conversations: an offer "para carro ou moto" ended with "você está pensando em imóvel, carro, moto...?"."""
+    r = runner({})
+    goal_q = next(x.question for x in PKG.manifest.slots if x.name == "goal")
+    sim = {"tool": "simulate_consortium", "result": {"closing_question": "É pra carro ou moto mesmo?", "closing_asks_slot": "goal"}}
+    s = {"recent": []}
+    assert r._closing_question(s, [sim], goal_q) == "É pra carro ou moto mesmo?"
+    other = next(x.question for x in PKG.manifest.slots if x.name == "credit_amount")
+    assert r._closing_question(s, [sim], other) == other                    # a different question the flow needs still comes first

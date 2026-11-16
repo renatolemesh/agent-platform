@@ -146,6 +146,7 @@ class PackageManifest(M):
     lead_form_labels: dict[str, str] = {}
     allowed_urls: list[str] = []
     templates: dict[str, str] = {}        # fixed texts approved by the client (follow-ups, notices)
+    params: dict[str, str] = {}           # numbers the package's own tools read (never hardcoded in them)
     auto_transitions: list[AutoTransition] = []
     scope: str = ""                        # what is in scope for this business (used by the analyzer)
     intent_hints: dict[str, str] = {}      # short description per intent

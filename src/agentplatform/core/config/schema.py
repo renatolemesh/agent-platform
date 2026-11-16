@@ -310,6 +310,18 @@ class OutputGuardConfig(Strict):
     # Selling points said once per conversation (normalized text): a reply that says one again, when a recent assistant
     # message already did, is rewritten.
     once_per_conversation_patterns: list[str] = []
+    # A reply question that hands back the customer's own question (share of the customer's content words it repeats) is rewritten.
+    asked_back_min_overlap: Prob = 0.75
+    asked_back_min_words: PosInt = 3
+    question_words: list[str] = ["qual", "quais", "quando", "onde", "como", "quanto", "quantos", "quantas", "quem", "porque",
+                                 "pq", "oque", "que", "cade"]     # among the first two words ("de qual estado...") = a question
+    # The assistant does not know the seller's agenda: a statement that the seller is available on a day or time is rewritten
+    # (normalized text; questions such as "quer que ele te chame no sábado?" are fine).
+    seller_agenda_patterns: list[str] = [
+        r"\b(sabado|domingo|segunda|terca|quarta|quinta|sexta|amanha|hoje a noite|de manha|a tarde|a noite|fim de semana)\b"
+        r"[^.?!]{0,40}\b((pode|consegue|vai|ira) (te |lhe )?(atender|ligar|falar|chamar|responder)|atende\b|esta(ra)? disponivel)",
+        r"\b(pode|consegue|vai|ira) (te |lhe )?(atender|ligar|falar|chamar)( sim)?[^.?!]{0,30}"
+        r"\b(sabado|domingo|segunda|terca|quarta|quinta|sexta|amanha|fim de semana|as \d)"]
 
 
 # ---------- handoff ----------

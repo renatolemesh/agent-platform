@@ -96,7 +96,8 @@ handoff:
   reason_lead_in:
     specialist_question: Boa pergunta, essa o {seller} te explica certinho.
 output_guard:
-  once_per_conversation_patterns: ['\b(sem|nao tem|nao cobra|nao paga|livre de) juros\b']
+  once_per_conversation_patterns: ['\b(sem|nao tem|nao cobra|nao paga|livre de) juros\b', '\bcabem? no (seu |teu )?bolso\b',
+                                   '\bsem pesar no bolso\b', '\b(forma|jeito) tranquil[ao] de planejar\b']
 comments:
   enabled: true
 followups:

@@ -359,6 +359,39 @@ def _word_overlap(a: str, b: str, min_words: int) -> float:
     return len(wa & wb) / min(len(wa), len(wb))
 
 
+def _sentences(text: str) -> list[str]:
+    return [x.strip() for x in re.findall(r"[^.!?\n]+[.!?]*", text) if x.strip()]
+
+
+def asked_back(text: str, customer_texts: list[str], question_words: list[str], min_overlap: float, min_words: int) -> str | None:
+    """A question of the reply that hands the customer's own question back ("De qual estado vc fala" -> "de qual estado você fala?")."""
+    qwords = {normalize(w) for w in question_words}
+    asked = []
+    for t in customer_texts:
+        for sent in _sentences(t):
+            words = re.findall(r"\w+", normalize(sent))
+            if sent.endswith("?") or set(words[:2]) & qwords:
+                asked.append(_content_words(normalize(sent)))
+    for q in (x for x in _sentences(text) if x.endswith("?")):
+        wq = _content_words(normalize(q))
+        for wa in asked:
+            if len(wa) >= min_words and len(wa & wq) / len(wa) >= min_overlap:
+                return q[:200]
+    return None
+
+
+def states_pattern(text: str, patterns: list[str]) -> str | None:
+    """The first statement (not a question) of the reply that matches one of the patterns (normalized text)."""
+    for sent in _sentences(text):
+        if sent.endswith("?"):
+            continue
+        for p in patterns:
+            m = re.search(p, normalize(sent))
+            if m:
+                return m.group(0)[:120]
+    return None
+
+
 _NEGATION = re.compile(r"(nao|nunca|sem|nenhum\w*|jamais|nem)(\W+\w+){0,3}\W*$")
 
 

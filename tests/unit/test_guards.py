@@ -219,3 +219,27 @@ def test_a_retry_is_told_the_words_a_forbidden_phrase_caught_never_the_pattern()
     assert TurnRunner._fix_reason(v, text) == 'forbidden_phrase: "contemplado logo"'
     assert TurnRunner._fix_reason(GuardVerdict(guard="output_guard", rule_id="forbidden_phrase", verdict="block"), text) == "forbidden_phrase"
     assert TurnRunner._fix_reason(GuardVerdict(guard="output_guard", rule_id="length", verdict="rewrite", detail="900"), text) == "length: 900"
+
+
+def test_the_customers_question_is_not_handed_back():
+    """Seen replaying real conversations: "De qual estado vc fala" got "...me conta, de qual estado você fala?"."""
+    from agentplatform.core.agent.guards import asked_back
+    from agentplatform.core.config.schema import OutputGuardConfig
+    og = OutputGuardConfig()
+    def back(reply, said):
+        return asked_back(reply, [said], og.question_words, og.asked_back_min_overlap, og.asked_back_min_words)
+    said = "Sim interessante\nDe qual estado vc fala"
+    assert back("A Ana conta isso pra você, o atendimento é online. Me conta, de qual estado você fala?", said)
+    assert not back("O atendimento é online, pra todo o Brasil. Quer que eu chame a Ana?", said)
+    assert not back("Qual a sua dúvida sobre o lance?", "tenho uma dúvida sobre o lance")      # not a question of the customer
+
+
+def test_the_sellers_agenda_is_not_stated():
+    """Seen replaying real conversations: "Sábado a Ana pode atender sim", with no agenda to know it."""
+    from agentplatform.core.agent.guards import states_pattern
+    from agentplatform.core.config.schema import OutputGuardConfig
+    p = OutputGuardConfig().seller_agenda_patterns
+    assert states_pattern("Sem problema. Sábado a Ana pode atender sim, é só combinar.", p)
+    assert states_pattern("Ele pode te ligar amanhã de manhã.", p)
+    assert not states_pattern("Quer que eu chame a Ana pra combinar com você no sábado?", p)    # an offer, as a question
+    assert not states_pattern("Boa sorte amanhã, vai dar tudo certo!", p)

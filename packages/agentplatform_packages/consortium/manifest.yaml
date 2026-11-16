@@ -11,14 +11,14 @@ persona_template: "Você é o assistente virtual de {seller_name}, consultor(a){
 slots:
   - {name: goal, type: enum, values: [real_estate, vehicle, heavy_vehicle, services, other_movable, resale],
      synonyms: {real_estate: [imovel, casa, apartamento, ape, terreno, sala comercial, reforma],
-                vehicle: [carro, moto, veiculo, automovel, suv, seminovo, zero km],
+                vehicle: [carro, moto, veiculo, automovel, suv, seminovo, zero km, van, utilitario, picape, pickup],
                 heavy_vehicle: [caminhao, onibus, trator, maquina, maquinario, implemento],
                 services: [servico, servicos, viagem, festa, estudo, cirurgia plastica, tratamento, intercambio, curso, faculdade, mba, formatura, casamento],
                 other_movable: [barco, lancha, aeronave, aviao, equipamento],
                 resale: [vender a carta, venda de carta, vender carta, vender depois, pra vender, para vender, vender, venda, revender, revenda, alavancagem, alavancar, investir, investimento]},
      question: "Você está pensando em imóvel, carro, moto, caminhão ou outro objetivo?", required_for: [pronto_para_proposta],
      label: Objetivo, value_labels: {real_estate: Imóvel, vehicle: Carro ou moto, heavy_vehicle: Veículo pesado, services: Serviços, other_movable: Outro bem móvel, resale: Vender a carta},
-     hint: "o bem ou serviço que o cliente vai comprar com a carta; resale quando ele quer a carta para vender depois, fala em alavancagem ou quer a carta como investimento, sem citar um bem (services = viagem, intercâmbio, curso, MBA, faculdade, festa, casamento, tratamento). As palavras carta, carta de crédito, crédito e consórcio sozinhas NÃO dizem o objetivo: nesse caso não extraia goal",
+     hint: "o bem ou serviço que o cliente vai comprar com a carta; resale quando ele quer a carta para vender depois, fala em alavancagem ou quer a carta como investimento, sem citar um bem (vehicle = carro, moto, van, utilitário, picape; heavy_vehicle = só caminhão, ônibus, trator, máquina; services = viagem, intercâmbio, curso, MBA, faculdade, festa, casamento, tratamento). As palavras carta, carta de crédito, crédito e consórcio sozinhas NÃO dizem o objetivo: nesse caso não extraia goal",
      not_evidence: [carta, cartas, credito, consorcio, quero, queria, preciso, gostaria, fazer, pegar, contratar, comprar, valor, bem]}
   # "45 van" is 45 thousand: no letter is worth less than this, so a smaller amount was said in thousands
   - {name: credit_amount, type: money, question: "Mais ou menos de quanto seria o valor do bem?", label: Valor do bem, thousands_below: 1000}
@@ -324,6 +324,9 @@ lead_form_labels:
   term_months: "Prazo desejado"
   has_bid_funds: "Tem recurso para lance?"
 allowed_urls: []      # each account's own sites: conversation.allowed_urls
+# the closest letter is offered only within this fraction of what was asked (0.5: from half to one and a half)
+params:
+  nearest_max_off: "0.5"
 templates:
   # An estimate, the seller's way: the credit and the installment its groups start from. Term and the installment after contemplation
   # are the seller's to explain, with the group that fits the profile.
@@ -335,6 +338,7 @@ templates:
   plan_offer_question: "Faz sentido pra você?"
   # the table has no letter of the amount asked: the customer is told the offer is the closest one, not left to wonder
   plan_offer_nearest: "De {asked} certinho não tenho, a mais próxima é essa: "
+  plan_offer_goal_question: "É pra {goal} mesmo?"
   # Only when the plan's row has the group's average, and always with the official history disclaimer.
   plan_offer_history: " Nesse grupo, as contemplações têm saído em média em {months} meses. {note}"
   seller_offer_reminder: "Oi! Quer que eu chame o consultor para seguir com você? Se ficou alguma dúvida, pode me perguntar."

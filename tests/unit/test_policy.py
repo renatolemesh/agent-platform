@@ -42,6 +42,17 @@ def test_a_small_amount_for_the_good_was_said_in_thousands():
     assert credit("1.500", "uns 1.500") == "1500"                  # not below the limit: kept as said
 
 
+def test_the_customers_own_word_names_the_goal():
+    """Seen replaying real conversations: "45 van" was read as a heavy vehicle, and the offer was a R$ 310 mil truck letter."""
+    def goal(value, said):
+        u = U(slot_updates=[SlotUpdate(slot="goal", value=value, evidence_quote=said, confidence=0.9, is_correction=False)])
+        return apply_slots(M, {}, u, said, F, "m1").accepted["goal"]["value"]
+    assert goal("heavy_vehicle", "45 van") == "vehicle"
+    assert goal("heavy_vehicle", "um caminhão") == "heavy_vehicle"
+    assert goal("real_estate", "vender o carro pra comprar uma casa") == "real_estate"     # two goals named: the model's reading
+    assert goal("vehicle", "uma vantagem pro carro") == "vehicle"                         # "vantagem" is not "van"
+
+
 def test_stage_only_allowed_transitions():
     assert not decide_stage(M, "novo", StageProposal(stage="cliente", confidence=1, evidence=["x"]), {}, F).applied
     assert not decide_stage(M, "novo", StageProposal(stage="com_vendedor", confidence=1, evidence=["x"]), {}, F).applied

@@ -395,6 +395,14 @@ O dono pediu uma opção para o assistente pedir o WhatsApp do cliente ao chamar
   - **Pacote:** orientações `came_back` ("cheguei": oferecer o consultor), `where_is_seller` (não devolver a pergunta) e `contemplation_rate` (explicar sorteio e lance); frase proibida que mede a chance de contemplação ("aumenta bastante a chance").
   - **`analyze_turn@v8`:** valor no passado sobre algo que já existe ou que alguém recebeu (herança) não é o valor da carta, e dinheiro de outra pessoa não é lance. **`respond@v18`:** apresentação com o nome; não diz que o cliente tem lance sem o perfil dizer.
   - **Casos novos:** u17 e u18 em `understand-v1`; dois casos em `respond-v1`.
+- **Quarta rodada (15/11/2026):** cada correção tem checagem no código, não só orientação ao modelo (na terceira, "de qual estado vc fala" seguiu a orientação pela metade).
+  - **Objetivo pela palavra do cliente:** num slot enum com sinônimos, se a evidência cita como palavra inteira os sinônimos de um único valor, vale esse valor, não o do modelo ("45 van" é carro; o modelo dizia veículo pesado). Van, utilitário e picape entraram em `vehicle`.
+  - **"A mais próxima" com limite:** `params.nearest_max_off` no pacote (0,5): carta fora de metade a uma vez e meia do valor pedido não é oferecida ("45 mil" recebia R$ 310 mil de veículo pesado). Sem opção, vale a regra de sempre (sem valores; com pedido de simulação, passa ao vendedor). `PackageManifest.params` guarda os números que as ferramentas do pacote leem.
+  - **Objetivo adivinhado:** sem objetivo dito, a oferta nomeia o objetivo do plano achado e fecha com "É pra {goal} mesmo?" (`closing_asks_slot`). Essa pergunta substitui a do fluxo para o mesmo slot (antes: oferta "para carro ou moto" e depois "imóvel, carro, moto...?").
+  - **Pergunta devolvida:** `asked_back` refaz a resposta quando uma pergunta dela repete 75% das palavras de uma pergunta do cliente deste turno (`output_guard.asked_back_*`, `question_words`).
+  - **Agenda do vendedor:** `seller_agenda` refaz a afirmação de que o vendedor atende ou liga em um dia ou horário (`output_guard.seller_agenda_patterns`). Pergunta oferecendo combinar é permitida.
+  - **Frases prontas uma vez:** "parcelas que cabem no bolso", "sem pesar no bolso" e "forma tranquila de planejar" entraram em `once_per_conversation_patterns`.
+  - **`respond@v19`:** as três regras acima, com o motivo de cada uma na nova tentativa.
 - **O aviso ao vendedor espera o WhatsApp:** quando a passagem pede o número, o aviso espera até `handoff.whatsapp_wait_minutes` (5 por padrão), para já dizer se o cliente deixou o número.
   - Qualquer mensagem do cliente libera o aviso na próxima rodada de avisos, com número ou sem. Sem resposta, ele sai quando o tempo acaba.
   - Fora do horário, o aviso continua na hora de abertura.

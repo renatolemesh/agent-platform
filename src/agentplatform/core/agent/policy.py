@@ -63,6 +63,13 @@ def _norm_value(slot_type: str, value: str, values: list[str], synonyms: dict[st
     return v or None
 
 
+def evidence_names(synonyms: dict[str, list[str]], evidence: str) -> set[str]:
+    """The enum values whose synonyms appear as whole words in the customer's words."""
+    n = normalize(evidence)
+    return {val for val, words in synonyms.items()
+            if any(re.search(rf"\b{re.escape(normalize(w))}\b", n) for w in [val, *words])}
+
+
 _FILLER_WORDS = {"um", "uma", "uns", "umas", "o", "a", "os", "as", "de", "da", "do", "pra", "pro", "para", "com", "e", "eu",
                  "me", "minha", "meu", "so", "tipo", "assim", "ai", "la"}
 
@@ -111,6 +118,10 @@ def apply_slots(manifest: PackageManifest, profile: dict, u: TurnUnderstanding, 
         if val is None:
             out.rejected.append((up.slot, "invalid_value"))
             continue
+        if spec.type == "enum" and spec.synonyms:
+            named = evidence_names(spec.synonyms, up.evidence_quote or "")
+            if len(named) == 1:
+                val = named.pop()          # the customer's own word names one value ("45 van" is a car, not a heavy vehicle)
         if spec.type == "money" and spec.thousands_below and 0 < Decimal(val) < spec.thousands_below:
             val = f"{Decimal(val) * 1000:f}"                       # "45 van": 45 thousand
         prev = profile.get(up.slot)
